@@ -21,6 +21,7 @@ export function toErrorMessage(err) {
 const MOCK_USERS = {
   'rajni@resolute.com':     { password: 'admin123',     role: 'admin',    name: 'Rajni',         avatar: 'RJ', superAdmin: true },
   'saravanan@resolute.com': { password: 'admin123',     role: 'admin',    name: 'Saravanan',     avatar: 'SV', superAdmin: true },
+  'vivek@resolute.com':     { password: 'vivek123',     role: 'admin',    name: 'Vivek',         avatar: 'VK', superAdmin: true },
   'admin@resolute.com':     { password: 'admin123',     role: 'admin',    name: 'Alex Morrison', avatar: 'AM', superAdmin: false },
   'screener@resolute.com':  { password: 'screener123',  role: 'screener', name: 'Sam Carter',    avatar: 'SC' },
   'examiner@resolute.com':  { password: 'examiner123',  role: 'examiner', name: 'Jordan Lee',    avatar: 'JL' },
