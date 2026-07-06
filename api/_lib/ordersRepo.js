@@ -14,9 +14,9 @@ async function nextOrderId() {
   return `RTS-${max + 1}`
 }
 
-// Create a draft order from extracted email fields. Draft status in this
-// pipeline = 'received' + assigned to the Screener (first production role),
-// so it lands in the screening intake queue for review.
+// Create a draft order from extracted email fields. New orders are HELD with
+// Admin for the quote/price discussion (workflow.quote) — production sees them
+// only after the client accepts the price and Admin sends the confirmation.
 export async function createInboundOrder(fields, meta = {}) {
   const id = await nextOrderId()
   const row = {
@@ -25,12 +25,13 @@ export async function createInboundOrder(fields, meta = {}) {
     type: fields.orderType || 'Full Search',
     status: 'received',                       // draft / PENDING_REVIEW equivalent
     priority: 'normal',
-    assigned_to: 'screener',
+    assigned_to: 'admin',
     progress: 5,
     created: new Date().toISOString().slice(0, 10),
     completed_dates: {},
     completed_by: {},
     workflow: {
+      quote: { stage: 'pending', amount: null, thread: [] },
       intake: {
         source: 'email',
         propertyAddress: fields.propertyAddress ?? null,

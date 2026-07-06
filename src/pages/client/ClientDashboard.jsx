@@ -10,6 +10,8 @@ import {
 import { ORDERS } from '../../data/mockData'
 import { useOrders } from '../../context/OrderContext'
 import ClientBilling from './ClientBilling'
+import ClientInbox from './ClientInbox'
+import { Inbox } from 'lucide-react'
 import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '../../lib/billing'
 
 const ROLE_COLOR = '#4d7c2f'
@@ -17,6 +19,7 @@ const NAV = [
   { path: '/client',         label: 'Dashboard',   icon: LayoutDashboard },
   { path: '/client/order',   label: 'Place Order', icon: PlusCircle },
   { path: '/client/orders',  label: 'My Orders',   icon: ClipboardList },
+  { path: '/client/inbox',   label: 'Inbox',       icon: Inbox },
   { path: '/client/billing', label: 'Billing',     icon: DollarSign },
   { path: '/client/support', label: 'Support',     icon: MessageSquare },
 ]
@@ -192,7 +195,7 @@ function PlaceOrderPage() {
         Assigned <span className="font-mono font-bold" style={{ color:ROLE_COLOR }}>{createdId || 'RTS-10049'}</span>
       </p>
       <p className="text-xs mb-8" style={{ color:'#64748b' }}>
-        We'll email a quote to {form.email || 'your email'} within 1 business hour.
+        Your quote will arrive in your portal Inbox for approval — work begins once you accept and we confirm.
       </p>
       <div className="flex gap-3">
         <button onClick={() => { setSubmitted(false); setStep(1); setCreatedId(null) }} className="btn-primary">Place Another</button>
@@ -529,6 +532,11 @@ function BillingPage() {
   return <ClientBilling myOrders={myOrders} />
 }
 
+function InboxPage() {
+  const myOrders = useMyOrders()
+  return <ClientInbox myOrders={myOrders} />
+}
+
 export default function ClientDashboard() {
   return (
     <Layout navItems={NAV} role="client" roleColor={ROLE_COLOR}>
@@ -536,6 +544,7 @@ export default function ClientDashboard() {
         <Route index         element={<ClientHome />} />
         <Route path="order"  element={<PlaceOrderPage />} />
         <Route path="orders" element={<MyOrdersPage />} />
+        <Route path="inbox" element={<InboxPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="support" element={<SupportPage />} />
       </Routes>

@@ -6,10 +6,11 @@ import USAMap from '../../components/USAMap'
 import AssignModal from '../../components/AssignModal'
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
-  Package, CheckCircle, Clock, Search, Plus, Filter, Eye, DollarSign,
+  Package, CheckCircle, Clock, Search, Plus, Filter, Eye, DollarSign, MessageSquare,
   ChevronDown, ChevronUp, FileText, ArrowUpRight, X, Lock, ShieldCheck, UserPlus, Download,
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
+import AdminQuotes from './AdminQuotes'
 import { downloadCsv } from '../../lib/exportCsv'
 import AttachedDocs from '../../components/AttachedDocs'
 import {
@@ -34,6 +35,7 @@ const ROLE_HOVER  = '#4d8c2a'
 const NAV = [
   { path: '/admin',          label: 'Dashboard',    icon: LayoutDashboard },
   { path: '/admin/orders',   label: 'Orders',       icon: ClipboardList, badge: 8 },
+  { path: '/admin/quotes',   label: 'Quotes',       icon: MessageSquare },
   { path: '/admin/users',    label: 'Users',        icon: Users,         badge: 9 },
   { path: '/admin/billing',  label: 'Billing',      icon: DollarSign },
   { path: '/admin/map',      label: 'Coverage Map', icon: MapPin },
@@ -1135,6 +1137,7 @@ export default function AdminDashboard() {
       <Routes>
         <Route index            element={<AdminHome />} />
         <Route path="orders"   element={<AdminOrders />} />
+        <Route path="quotes"   element={<AdminQuotes />} />
         <Route path="users"    element={<AdminUsers />} />
         <Route path="billing"  element={<AdminBilling />} />
         <Route path="map"      element={<AdminMap />} />

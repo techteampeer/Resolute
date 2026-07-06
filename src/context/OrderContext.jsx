@@ -98,8 +98,9 @@ export function OrderProvider({ children }) {
     persist(updated)
   }
 
-  // Create a new draft order (client "Place an Order"). Draft = 'received' in the
-  // Screener intake queue. Prepends locally; best-effort persist when configured.
+  // Create a new draft order (client "Place an Order"). New orders are HELD
+  // with Admin for the quote/price discussion — production (Screener) only
+  // sees them after the client accepts and Admin sends the confirmation.
   const createOrder = (data = {}) => {
     const max = orders.reduce((m, o) => {
       const n = parseInt(String(o.id).replace(/\D/g, ''), 10)
@@ -110,11 +111,14 @@ export function OrderProvider({ children }) {
       client: data.client || 'Web Order',
       state: data.state || '', county: data.county || '', type: data.type || 'Full Search',
       status: 'received', priority: data.priority || 'normal', payment: data.payment || 'Check',
-      clarification: null, assignedTo: 'screener',
+      clarification: null, assignedTo: 'admin',
       screener: null, examiner: null, typer: null, delivery: null,
       progress: 5, created: todayISO(), eta: data.eta || '', completed: null,
       completedDates: {}, completedBy: {},
-      workflow: { intake: { source: 'web', ...(data.intake || {}) } },
+      workflow: {
+        intake: { source: 'web', ...(data.intake || {}) },
+        quote: { stage: 'pending', amount: null, thread: [] },
+      },
     }
     setOrders(os => [order, ...os])
     if (isSupabaseConfigured) insertOrder(order)

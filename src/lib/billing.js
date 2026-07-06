@@ -46,11 +46,15 @@ export function setClientTerms(clientCode, termKey) {
 export const canConfirmPayments = (user) => user?.email?.toLowerCase() === 'vivek@resolute.com'
 
 // ── Invoices ─────────────────────────────────────────────────────────────────
-// Fallback estimates until the Typer's final invoice total is stamped on the
-// order (workflow.invoiceAmount, set on Finalize).
+// Price precedence: the quote the client AGREED to (workflow.quote.amount,
+// once accepted/confirmed) → the Typer's final invoice total
+// (workflow.invoiceAmount, stamped on Finalize) → catalog estimate.
 const BASE_PRICE = { 'Full Search': 175, 'Two-Owner': 150, 'Current Owner': 125, 'Lien Search': 110, 'Tax Certificate': 95, 'HOA Estoppel': 120 }
-export const invoiceAmount = (o) =>
-  (o.workflow?.invoiceAmount ?? BASE_PRICE[o.type] ?? 125) + (o.priority === 'rush' ? 50 : 0)
+export const invoiceAmount = (o) => {
+  const q = o.workflow?.quote
+  if (q?.amount != null && ['accepted', 'confirmed'].includes(q.stage)) return Number(q.amount)
+  return (o.workflow?.invoiceAmount ?? BASE_PRICE[o.type] ?? 125) + (o.priority === 'rush' ? 50 : 0)
+}
 export const invoiceNumber = (o) => `INV-${o.id}`
 export const money = (n) => (Number(n) || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
 
