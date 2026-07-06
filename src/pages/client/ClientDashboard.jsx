@@ -7,14 +7,17 @@ import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare,
   Package, CheckCircle, Clock, ChevronRight, X, MapPin, Zap, Send, FileText, DollarSign
 } from 'lucide-react'
-import { ORDERS, PAYMENT_METHODS } from '../../data/mockData'
+import { ORDERS } from '../../data/mockData'
 import { useOrders } from '../../context/OrderContext'
+import ClientBilling from './ClientBilling'
+import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '../../lib/billing'
 
 const ROLE_COLOR = '#4d7c2f'
 const NAV = [
   { path: '/client',         label: 'Dashboard',   icon: LayoutDashboard },
   { path: '/client/order',   label: 'Place Order', icon: PlusCircle },
   { path: '/client/orders',  label: 'My Orders',   icon: ClipboardList },
+  { path: '/client/billing', label: 'Billing',     icon: DollarSign },
   { path: '/client/support', label: 'Support',     icon: MessageSquare },
 ]
 const MY_IDS = ['RTS-10041', 'RTS-10042', 'RTS-10045']
@@ -25,49 +28,31 @@ function useMyOrders() {
   return MY_IDS.map(id => orders.find(o => o.id === id) || ORDERS.find(o => o.id === id)).filter(Boolean)
 }
 
-// Fallback billable estimate when the typed invoice total isn't stamped on the order yet.
-const BASE_PRICE = { 'Full Search': 175, 'Two-Owner': 150, 'Current Owner': 125, 'Lien Search': 110, 'Tax Certificate': 95, 'HOA Estoppel': 120 }
-const estimatePrice = (o) => (o.workflow?.invoiceAmount ?? BASE_PRICE[o.type] ?? 125) + (o.priority === 'rush' ? 50 : 0)
-
-// Invoice + payment card shown when Delivery sent the order via the client portal.
+// Invoice summary card — payment itself happens on the Billing page (ACH/Check).
 function InvoiceCard({ order }) {
-  const { updateOrder } = useOrders()
-  const pay = order.workflow?.payment
-  const amount = estimatePrice(order)
-  const [method, setMethod] = useState(pay?.method || PAYMENT_METHODS[1])
-  const confirm = () => updateOrder({ ...order, workflow: { ...order.workflow, payment: { method, status: 'submitted', at: new Date().toISOString().slice(0, 10) } } })
-  const money = (n) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+  const navigate = useNavigate()
+  const status = payStatusOf(order)
+  const s = PAY_STATUS[status]
   return (
     <div className="glass-card p-5" style={{ border: '1px solid rgba(160,192,112,0.28)' }}>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <FileText className="w-4 h-4" style={{ color: ROLE_COLOR }} />
-          <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>Invoice · {order.id}</span>
+          <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{invoiceNumber(order)}</span>
+          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ background: `${s.color}1a`, color: s.color }}>{s.label}</span>
         </div>
-        <span className="text-lg font-bold tabular-nums" style={{ color: '#1e293b' }}>{money(amount)}</span>
+        <span className="text-lg font-bold tabular-nums" style={{ color: '#1e293b' }}>{money(invoiceAmount(order))}</span>
       </div>
-      <p className="text-[11px] mb-3" style={{ color: '#64748b' }}>Sales tax applied automatically at settlement.</p>
-      {pay?.status === 'submitted' ? (
+      {status === 'confirmed' ? (
         <div className="flex items-center gap-2 text-sm px-3 py-2.5 rounded-xl"
           style={{ background: 'rgba(109,188,120,0.12)', border: '1px solid rgba(109,188,120,0.25)', color: '#15803d' }}>
-          <CheckCircle className="w-4 h-4" /> Payment submitted via {pay.method} on {pay.at}
+          <CheckCircle className="w-4 h-4" /> Payment received — thank you.
         </div>
       ) : (
-        <>
-          <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748b' }}>Payment Method</div>
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            {PAYMENT_METHODS.map(m => (
-              <button key={m} onClick={() => setMethod(m)}
-                className="py-2.5 rounded-xl text-sm font-medium transition-all border flex items-center justify-center gap-1.5"
-                style={method === m
-                  ? { background: `${ROLE_COLOR}1e`, border: `1px solid ${ROLE_COLOR}55`, color: '#1e293b' }
-                  : { border: '1px solid rgba(30,41,59,0.08)', color: '#475569' }}>
-                <DollarSign className="w-3.5 h-3.5" /> {m}
-              </button>
-            ))}
-          </div>
-          <button onClick={confirm} className="btn-primary w-full text-sm py-2.5">Confirm Payment via {method}</button>
-        </>
+        <button onClick={() => navigate('/client/billing')} className="btn-primary w-full text-sm py-2.5 flex items-center justify-center gap-1.5">
+          <DollarSign className="w-3.5 h-3.5" />
+          {status === 'marked' ? 'View payment status' : 'Pay via ACH / Check'}
+        </button>
       )}
     </div>
   )
@@ -539,6 +524,11 @@ function MyOrdersPage() {
   )
 }
 
+function BillingPage() {
+  const myOrders = useMyOrders()
+  return <ClientBilling myOrders={myOrders} />
+}
+
 export default function ClientDashboard() {
   return (
     <Layout navItems={NAV} role="client" roleColor={ROLE_COLOR}>
@@ -546,6 +536,7 @@ export default function ClientDashboard() {
         <Route index         element={<ClientHome />} />
         <Route path="order"  element={<PlaceOrderPage />} />
         <Route path="orders" element={<MyOrdersPage />} />
+        <Route path="billing" element={<BillingPage />} />
         <Route path="support" element={<SupportPage />} />
       </Routes>
     </Layout>

@@ -517,6 +517,13 @@ function Finalize({ comp, order, f, user, completeStep, updateOrder, navigate })
   const submit = async () => {
     if (!ready || submitting) return
     setSubmitting(true)
+    // Stamp the final invoice total on the order — this becomes the payable
+    // amount on the client Billing page (replaces the estimate).
+    const lineTotal = (li) => (Number(li.costPerUnit) || 0) * (Number(li.units) || 0)
+    const invoiceAmount =
+      (f.invoice?.services || []).reduce((a, li) => a + lineTotal(li), 0) +
+      (f.invoice?.additionalCosts || []).reduce((a, li) => a + (li.discount ? -1 : 1) * lineTotal(li), 0)
+    const invoicedAt = new Date().toISOString().slice(0, 10)
     // Generate the commitment document and attach it to the order so it flows
     // to Admin and Delivery under Files, like every other stage's document.
     try {
@@ -529,8 +536,11 @@ function Finalize({ comp, order, f, user, completeStep, updateOrder, navigate })
       } else {
         ref = { id: uid(), name: file.name, type: 'word', url: URL.createObjectURL(file) }
       }
-      updateOrder({ ...order, workflow: { ...order.workflow, commitmentDoc: ref } })
-    } catch (e) { /* attachment is best-effort; still submit */ }
+      updateOrder({ ...order, workflow: { ...order.workflow, commitmentDoc: ref, invoiceAmount, invoicedAt } })
+    } catch (e) {
+      // Doc attach is best-effort — still stamp the invoice total.
+      updateOrder({ ...order, workflow: { ...order.workflow, invoiceAmount, invoicedAt } })
+    }
     completeStep(order.id, 'typer', user?.name, 'Commitment typed, generated & verified')
     navigate(-1)
   }

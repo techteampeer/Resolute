@@ -21,6 +21,7 @@ const ROLES = [
 const ADMIN_ACCOUNTS = [
   { key: 'rajni',     label: 'Rajni',     tier: 'Super admin', email: 'rajni@resolute.com',     pass: 'admin123' },
   { key: 'saravanan', label: 'Saravanan', tier: 'Super admin', email: 'saravanan@resolute.com', pass: 'admin123' },
+  { key: 'vivek',     label: 'Vivek',     tier: 'Super admin · Billing', email: 'vivek@resolute.com', pass: 'vivek123' },
   { key: 'member',    label: 'Member',    tier: 'Client codes only', email: 'admin@resolute.com', pass: 'admin123' },
 ]
 
