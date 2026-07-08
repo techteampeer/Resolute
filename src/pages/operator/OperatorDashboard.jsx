@@ -23,12 +23,12 @@ const STAGE = {
   typer:    { label: 'Typing',      color: '#0e7490', verb: 'Type commitment' },
   delivery: { label: 'Delivery',    color: '#b45309', verb: 'Deliver to client' },
 }
-const ASSIGN = [['in_house', 'In-House'], ['abc', 'ABC (Abroad, US)'], ['both', 'Both']]
+const ASSIGN = [['in_house', 'In-House'], ['abs', 'ABS (Abstract)'], ['both', 'Both']]
 
 // One adaptive modal that runs whichever stage the order is currently in.
 function StageModal({ order, onClose }) {
   const { user } = useAuth()
-  const { completeStep, updateOrder } = useOrders()
+  const { completeStep, returnToAdmin, updateOrder } = useOrders()
   const navigate = useNavigate()
   const role = nextRoleFor(order)
   const meta = STAGE[role] || {}
@@ -38,9 +38,15 @@ function StageModal({ order, onClose }) {
   const [method, setMethod] = useState(order.workflow?.deliveryMethod || 'email')
   const [notes, setNotes] = useState('')
 
+  // Every step hands back to Admin for approval (same as the separate portals).
+  // Delivery is the final stage — completing it delivers the order outright.
   const advance = (workflowPatch) => {
-    if (workflowPatch) updateOrder({ ...order, workflow: { ...order.workflow, ...workflowPatch } })
-    completeStep(order.id, role, user?.name, notes || 'operator')
+    if (role === 'delivery') {
+      if (workflowPatch) updateOrder({ ...order, workflow: { ...order.workflow, ...workflowPatch } })
+      completeStep(order.id, role, user?.name, notes || 'single seating')
+    } else {
+      returnToAdmin(order.id, role, user?.name, notes || 'single seating', workflowPatch || {})
+    }
     onClose()
   }
 
@@ -103,7 +109,7 @@ function StageModal({ order, onClose }) {
           <div className="mb-4 p-4 rounded-xl" style={{ background: 'rgba(62,158,196,0.10)', border: '1px solid rgba(62,158,196,0.25)' }}>
             <div className="flex items-center gap-2 mb-1"><Keyboard className="w-4 h-4" style={{ color: '#0e7490' }} />
               <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>Type the commitment</span></div>
-            <p className="text-xs mb-3" style={{ color: '#475569' }}>Opens the full sectioned fulfillment form. Submitting there advances the order.</p>
+            <p className="text-xs mb-3" style={{ color: '#475569' }}>Opens the full sectioned fulfillment form. Submitting there sends the order to Admin for approval.</p>
             <button onClick={() => { onClose(); navigate(`/operator/order/${order.id}`) }}
               className="btn-primary text-sm py-2.5 w-full flex items-center justify-center gap-2">
               <FileText className="w-4 h-4" /> Open Fulfillment Form
@@ -144,7 +150,7 @@ function StageModal({ order, onClose }) {
                 : null)}
               className="btn-primary w-full text-sm py-2.5 flex items-center justify-center gap-2"
               style={{ opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
-              <Send className="w-4 h-4" /> {meta.verb} &amp; Advance
+              <Send className="w-4 h-4" /> {role === 'delivery' ? `${meta.verb} & Complete` : `${meta.verb} & Send to Admin`}
             </button>
           </>
         )}
@@ -157,19 +163,25 @@ const Lbl = ({ children }) => (
   <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748b' }}>{children}</label>
 )
 
+// The Single Seating desk only works the four production stages. Orders parked
+// with Admin (or not yet routed by Admin) are read-only until Admin approves.
+const WORKABLE_QUEUES = ['screener', 'examiner', 'typer', 'delivery', 'operator']
+
 function OperatorHome() {
   const { user } = useAuth()
   const { orders } = useOrders()
   const [selected, setSelected] = useState(null)
   const active = orders.filter(o => o.status !== 'delivered' && nextRoleFor(o))
-  const byStage = (r) => active.filter(o => nextRoleFor(o) === r).length
+  const actionable = active.filter(o => WORKABLE_QUEUES.includes(o.assignedTo))
+  const awaiting   = active.filter(o => !WORKABLE_QUEUES.includes(o.assignedTo))
+  const byStage = (r) => actionable.filter(o => nextRoleFor(o) === r).length
 
   return (
     <div className="space-y-6">
       {selected && <StageModal order={selected} onClose={() => setSelected(null)} />}
       <div>
-        <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>All-in-One Workspace</h1>
-        <p className="text-sm" style={{ color: '#475569' }}>Run every stage — screening through delivery — from one desk</p>
+        <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>Single Seating Workspace</h1>
+        <p className="text-sm" style={{ color: '#475569' }}>Work every stage — screening through delivery — with Admin approval after each step</p>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {Object.entries(STAGE).map(([r, s]) => (
@@ -185,7 +197,7 @@ function OperatorHome() {
       <div className="glass-card p-5">
         <h2 className="font-semibold mb-4" style={{ color: '#1e293b' }}>Active Orders</h2>
         <div className="space-y-3">
-          {active.map((o, i) => {
+          {actionable.map((o, i) => {
             const role = nextRoleFor(o)
             const s = STAGE[role] || {}
             return (
@@ -212,9 +224,38 @@ function OperatorHome() {
               </motion.div>
             )
           })}
-          {active.length === 0 && <div className="text-sm text-center py-6" style={{ color: '#64748b' }}>No active orders.</div>}
+          {actionable.length === 0 && <div className="text-sm text-center py-6" style={{ color: '#64748b' }}>No active orders.</div>}
         </div>
       </div>
+
+      {/* Steps completed here wait for Admin sign-off before the next stage unlocks. */}
+      {awaiting.length > 0 && (
+        <div className="glass-card p-5">
+          <h2 className="font-semibold mb-4" style={{ color: '#1e293b' }}>Awaiting Admin Approval</h2>
+          <div className="space-y-3">
+            {awaiting.map(o => {
+              const s = STAGE[nextRoleFor(o)] || {}
+              return (
+                <div key={o.id} className="flex items-center gap-4 p-4 rounded-xl"
+                  style={{ background: 'rgba(30,41,59,0.03)', border: '1px dashed rgba(30,41,59,0.15)', opacity: 0.75 }}>
+                  <div className="w-2 h-10 rounded-full flex-shrink-0" style={{ background: '#94a3b8' }} />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{o.id}</span>
+                    <div className="font-medium text-sm mt-0.5 truncate" style={{ color: '#1e293b' }}>{displayClient(o.client, user)}</div>
+                    <div className="text-xs" style={{ color: '#64748b' }}>{o.type} · {o.state}, {o.county}</div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: 'rgba(30,41,59,0.08)', color: '#64748b' }}>
+                      Awaiting Admin Approval
+                    </span>
+                    <div className="text-xs mt-1" style={{ color: '#64748b' }}>Next: {s.label || '—'}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -243,7 +284,7 @@ function CompletedList() {
 
 export default function OperatorDashboard() {
   return (
-    <Layout navItems={NAV} role="operator" roleColor={ROLE_COLOR}>
+    <Layout navItems={NAV} role="single seating" roleColor={ROLE_COLOR}>
       <Routes>
         <Route index element={<OperatorHome />} />
         <Route path="order/:id" element={<FulfillmentScreen />} />
