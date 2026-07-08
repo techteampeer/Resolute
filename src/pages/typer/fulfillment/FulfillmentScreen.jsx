@@ -510,10 +510,14 @@ function Supplementary({ order, f, set }) {
 
 // ── Section 12: Finalize ─────────────────────────────────────────────────────
 function Finalize({ comp, order, f, user, completeStep, updateOrder, navigate }) {
+  const { returnToAdmin } = useOrders()
   const [showDoc, setShowDoc] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const missing = comp.items.filter(i => !i.done)
   const ready = missing.length === 0
+  // From the Single Seating desk every step needs Admin approval before the
+  // next stage; the dedicated typer portal advances the order directly.
+  const singleSeating = user?.role === 'operator'
   const submit = async () => {
     if (!ready || submitting) return
     setSubmitting(true)
@@ -541,14 +545,17 @@ function Finalize({ comp, order, f, user, completeStep, updateOrder, navigate })
       // Doc attach is best-effort — still stamp the invoice total.
       updateOrder({ ...order, workflow: { ...order.workflow, invoiceAmount, invoicedAt } })
     }
-    completeStep(order.id, 'typer', user?.name, 'Commitment typed, generated & verified')
+    if (singleSeating) returnToAdmin(order.id, 'typer', user?.name, 'Commitment typed, generated & verified')
+    else completeStep(order.id, 'typer', user?.name, 'Commitment typed, generated & verified')
     navigate(-1)
   }
   return (
     <div>
       {showDoc && <CommitmentDocumentModal order={order} onClose={() => setShowDoc(false)} />}
       <p className="text-[12.5px] mb-3" style={{ color: T.faint }}>
-        When you submit, the order is sent to the customer for review.
+        {singleSeating
+          ? 'When you submit, the order is sent to Admin for approval before delivery.'
+          : 'When you submit, the order is sent to the customer for review.'}
       </p>
       {!ready && (
         <div className="rounded-lg px-3 py-2.5 mb-3 flex items-start gap-2" style={{ background: 'rgba(196,164,78,0.08)', border: '1px solid rgba(196,164,78,0.25)' }}>
@@ -560,7 +567,7 @@ function Finalize({ comp, order, f, user, completeStep, updateOrder, navigate })
       )}
       <div className="flex items-center gap-2 flex-wrap">
         <GhostButton icon={FileText} onClick={() => setShowDoc(true)}>Generate Commitment Document</GhostButton>
-        <AccentButton icon={Send} disabled={!ready || submitting} onClick={submit}>{submitting ? 'Generating…' : 'Submit to Customer Review'}</AccentButton>
+        <AccentButton icon={Send} disabled={!ready || submitting} onClick={submit}>{submitting ? 'Generating…' : singleSeating ? 'Submit for Admin Approval' : 'Submit to Customer Review'}</AccentButton>
       </div>
     </div>
   )

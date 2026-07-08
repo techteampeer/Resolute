@@ -17,6 +17,9 @@ const STAGES = [
   { key:'typer',    label:'Typer' },
   { key:'delivery', label:'Delivery' },
 ]
+// Assignable queues: the four pipeline stages, plus the Single Seating desk
+// which works whichever stage is next (each step returns here for approval).
+const QUEUES = [...STAGES, { key:'operator', label:'Single Seating' }]
 
 // Pre-select the queue that naturally owns the order's current status.
 const defaultStageFor = (status) => ({
@@ -27,8 +30,11 @@ const defaultStageFor = (status) => ({
 
 export default function AssignModal({ order, user, onClose }) {
   const { assignOrder } = useOrders()
-  // Default to the next role that still needs to act; fall back to the status-based guess.
-  const [queue, setQueue]           = useState(order.assignedTo || nextRoleFor(order) || defaultStageFor(order.status))
+  // Default to the next role that still needs to act; fall back to the status-based
+  // guess. 'admin' means the order is parked here for approval — not a real queue.
+  const [queue, setQueue]           = useState(
+    (order.assignedTo && order.assignedTo !== 'admin' ? order.assignedTo : null)
+    || nextRoleFor(order) || defaultStageFor(order.status))
   const [personName, setPersonName] = useState('')
 
   const people = USERS.filter(u => u.role === queue)
@@ -82,7 +88,7 @@ export default function AssignModal({ order, user, onClose }) {
           <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
             letterSpacing:'0.05em', color:Q.faint, marginBottom:8 }}>Stage</label>
           <div style={{ display:'flex', gap:8, marginBottom:18, flexWrap:'wrap' }}>
-            {STAGES.map(s => (
+            {QUEUES.map(s => (
               <button key={s.key} onClick={() => pickQueue(s.key)} style={radioStyle(queue === s.key)}>
                 {s.label}
               </button>

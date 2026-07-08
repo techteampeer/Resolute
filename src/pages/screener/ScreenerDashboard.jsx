@@ -10,7 +10,7 @@ import { useOrders } from '../../context/OrderContext'
 import DocUpload from '../../components/DocUpload'
 
 const ROLE_COLOR = '#4d7c2f'
-const ASSIGN_OPTS = [['in_house', 'In-House'], ['abc', 'ABC (Abroad, US)'], ['both', 'Both']]
+const ASSIGN_OPTS = [['in_house', 'In-House'], ['abs', 'ABS (Abstract)'], ['both', 'Both']]
 const NAV = [
   { path: '/screener',           label: 'Dashboard',       icon: LayoutDashboard },
   { path: '/screener/queue',     label: 'Screening Queue', icon: ClipboardList, badge: 3 },
