@@ -31,6 +31,16 @@ Verify every new feature against these constraints before implementing.
      `src/lib/billing.js`) confirms funds after physical receipt/deposit.
 - Never collapse "uploaded" into "paid"; guard confirmation behind the Vivek
   role check.
+- **Vendor payouts (money OUT):** searches the screener routes to ABS or Both
+  owe the abstractor vendor a fee (`src/lib/payouts.js`). Super admins
+  (Rajni/Saravanan/Vivek) view payouts and enter vendor + fee per order; ONLY
+  Vivek marks payouts and subscriptions paid (he executes transfers from the
+  Chase account outside the app — the portal is a ledger, never a gateway).
+- Payout/billing cycles are selectable per vendor and per client:
+  weekly / 15 days / 30 days (clients also have per-order mode).
+- Commissions: intentionally not implemented yet — rules TBD.
+- This portal is being built to REPLACE Qualia; do not build Qualia
+  integrations.
 
 ## Domain model (quick reference)
 

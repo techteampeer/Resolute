@@ -29,6 +29,15 @@ export const CLIENTS = [
   { code: 'CL07', name: 'Coastal Title Services', contact: 'Quinn Rivera',   email: 'quinn@coastaltitle.com',  phone: '(704) 555-0164', registered: '2025-05-15', activity: 'low',    orders: 2,  payment: 'ACH'              },
 ]
 
+// Abstractor vendor registry — outside search firms the screener can route to
+// (the "ABS (Abstract)" assignment). Vivek pays them from the Chase account on
+// each vendor's payout cycle; `cycle` here is the default (editable in Billing).
+export const VENDORS = [
+  { code: 'VN01', name: 'Meridian Abstracting LLC', contact: 'Paul Ortiz',   coverage: 'FL · GA · SC', cycle: 'weekly' },
+  { code: 'VN02', name: 'TitleTrace Abstractors',   contact: 'Gina Malone',  coverage: 'TX · OK · LA', cycle: 'days15' },
+  { code: 'VN03', name: 'Keystone Search Group',    contact: 'Ed Novak',     coverage: 'NY · NJ · PA', cycle: 'days30' },
+]
+
 const CODE_BY_NAME   = Object.fromEntries(CLIENTS.map(c => [c.name, c.code]))
 export const clientCode   = (name) => CODE_BY_NAME[name] || name
 export const clientByName = (name) => CLIENTS.find(c => c.name === name) || null
