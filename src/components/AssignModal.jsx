@@ -30,10 +30,13 @@ const defaultStageFor = (status) => ({
 
 export default function AssignModal({ order, user, onClose }) {
   const { assignOrder } = useOrders()
-  // Default to the next role that still needs to act; fall back to the status-based
-  // guess. 'admin' means the order is parked here for approval — not a real queue.
+  // Single Seating orders default back to that desk on every approval so the
+  // same desk carries them start to finish. Otherwise default to the next role
+  // that still needs to act, then the status-based guess. 'admin' means the
+  // order is parked here for approval — not a real queue.
   const [queue, setQueue]           = useState(
-    (order.assignedTo && order.assignedTo !== 'admin' ? order.assignedTo : null)
+    (order.workflow?.singleSeating ? 'operator' : null)
+    || (order.assignedTo && order.assignedTo !== 'admin' ? order.assignedTo : null)
     || nextRoleFor(order) || defaultStageFor(order.status))
   const [personName, setPersonName] = useState('')
 

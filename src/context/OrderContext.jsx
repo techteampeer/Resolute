@@ -34,6 +34,10 @@ export function OrderProvider({ children }) {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
       const next = { ...o, assignedTo: queue }
+      // Routing to the Single Seating desk claims the order for that desk
+      // end-to-end; routing to a stage role releases it back to the pipeline.
+      if (queue === 'operator') next.workflow = { ...o.workflow, singleSeating: true }
+      else if (['screener', 'examiner', 'typer', 'delivery'].includes(queue)) next.workflow = { ...o.workflow, singleSeating: false }
       if (personName) next[queue] = personName
       if (o.status == null || o.status === 'received') next.status = 'received'
       persist(next)
