@@ -163,17 +163,16 @@ const Lbl = ({ children }) => (
   <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748b' }}>{children}</label>
 )
 
-// The Single Seating desk only works the four production stages. Orders parked
-// with Admin (or not yet routed by Admin) are read-only until Admin approves.
-const WORKABLE_QUEUES = ['screener', 'examiner', 'typer', 'delivery', 'operator']
-
+// The Single Seating desk only sees orders Admin has routed to it. A routed
+// order stays with the desk start to finish; between steps it parks with
+// Admin for approval and shows here read-only until re-approved.
 function OperatorHome() {
   const { user } = useAuth()
   const { orders } = useOrders()
   const [selected, setSelected] = useState(null)
   const active = orders.filter(o => o.status !== 'delivered' && nextRoleFor(o))
-  const actionable = active.filter(o => WORKABLE_QUEUES.includes(o.assignedTo))
-  const awaiting   = active.filter(o => !WORKABLE_QUEUES.includes(o.assignedTo))
+  const actionable = active.filter(o => o.assignedTo === 'operator')
+  const awaiting   = active.filter(o => o.workflow?.singleSeating && o.assignedTo !== 'operator')
   const byStage = (r) => actionable.filter(o => nextRoleFor(o) === r).length
 
   return (
@@ -181,7 +180,7 @@ function OperatorHome() {
       {selected && <StageModal order={selected} onClose={() => setSelected(null)} />}
       <div>
         <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>Single Seating Workspace</h1>
-        <p className="text-sm" style={{ color: '#475569' }}>Work every stage — screening through delivery — with Admin approval after each step</p>
+        <p className="text-sm" style={{ color: '#475569' }}>Orders assigned to your desk — worked start to finish, with Admin approval at every phase</p>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {Object.entries(STAGE).map(([r, s]) => (
@@ -224,7 +223,7 @@ function OperatorHome() {
               </motion.div>
             )
           })}
-          {actionable.length === 0 && <div className="text-sm text-center py-6" style={{ color: '#64748b' }}>No active orders.</div>}
+          {actionable.length === 0 && <div className="text-sm text-center py-6" style={{ color: '#64748b' }}>No orders assigned to your desk. Admin routes orders here from the Assign modal.</div>}
         </div>
       </div>
 
@@ -263,7 +262,7 @@ function OperatorHome() {
 function CompletedList() {
   const { user } = useAuth()
   const { orders } = useOrders()
-  const done = orders.filter(o => o.status === 'delivered')
+  const done = orders.filter(o => o.status === 'delivered' && o.workflow?.singleSeating)
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>Completed</h1>
