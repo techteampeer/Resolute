@@ -4,6 +4,10 @@
 // accrual → paid reconciliation. Super admins can view and enter fees; only
 // Vivek (canConfirmPayments) may mark anything paid.
 import { VENDORS } from '../data/mockData'
+import {
+  isSupabaseConfigured, fetchVendors, saveVendorCycle as saveVendorCycleRemote,
+  fetchSubscriptions, saveSubscription,
+} from './backend'
 
 export const PAYOUT_CYCLES = [
   { key: 'weekly', label: 'Weekly',  days: 7,  desc: 'Paid every 7 days' },
@@ -12,8 +16,9 @@ export const PAYOUT_CYCLES = [
 ]
 export const cycleByKey = (key) => PAYOUT_CYCLES.find(c => c.key === key) || PAYOUT_CYCLES[2]
 
-// Vendor payout cycles live in localStorage (mock mode), same pattern as
-// client payment terms; the VENDORS registry provides the default.
+// Vendor cycles: localStorage is the synchronous read cache; the vendors table
+// is durable when Supabase is configured. The VENDORS registry is the mock
+// fallback and default.
 const CYCLES_LS_KEY = 'resolute.vendorCycles'
 const readCycles = () => { try { return JSON.parse(localStorage.getItem(CYCLES_LS_KEY)) || {} } catch { return {} } }
 export const getVendorCycle = (code) =>
@@ -21,6 +26,17 @@ export const getVendorCycle = (code) =>
 export function setVendorCycle(code, cycleKey) {
   const map = readCycles(); map[code] = cycleKey
   localStorage.setItem(CYCLES_LS_KEY, JSON.stringify(map))
+  if (isSupabaseConfigured) saveVendorCycleRemote(code, cycleKey)
+}
+// Pull the vendor registry (incl. cycles) from Supabase; refreshes the cycle
+// cache and returns the list, or null in mock mode / on error.
+export async function hydrateVendors() {
+  if (!isSupabaseConfigured) return null
+  const vendors = await fetchVendors()
+  if (vendors) {
+    localStorage.setItem(CYCLES_LS_KEY, JSON.stringify(Object.fromEntries(vendors.map(v => [v.code, v.cycle]))))
+  }
+  return vendors
 }
 
 // Orders routed to outside abstractors owe the vendor a search fee.
@@ -70,6 +86,17 @@ export const readSubscriptions = () => {
 export function writeSubscriptions(subs) {
   localStorage.setItem(SUBS_LS_KEY, JSON.stringify(subs))
   return subs
+}
+// Pull durable subscriptions into the local cache; null in mock mode / on error.
+export async function hydrateSubscriptions() {
+  if (!isSupabaseConfigured) return null
+  const subs = await fetchSubscriptions()
+  if (subs) writeSubscriptions(subs)
+  return subs
+}
+// Persist a single subscription row (call after paySubscription).
+export function persistSubscription(s) {
+  if (isSupabaseConfigured) saveSubscription(s)
 }
 export const subscriptionNextDue = (s) =>
   s.lastPaidAt ? addDays(s.lastPaidAt, cycleByKey(s.cycle).days) : todayISO()

@@ -1,19 +1,21 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { DollarSign, CheckCircle, XCircle, AlertTriangle, FileText, Landmark, Plus, RefreshCw } from 'lucide-react'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
 import { CLIENTS, VENDORS } from '../../data/mockData'
+import { isSupabaseConfigured, savePayoutLedger } from '../../lib/backend'
 import {
-  TERMS, termByKey, getClientTerms, setClientTerms, canConfirmPayments,
+  TERMS, termByKey, getClientTerms, setClientTerms, hydrateClientTerms, canConfirmPayments,
   invoiceAmount, invoiceNumber, money, clientCodeOf, paymentOf, payStatusOf,
   PAY_STATUS, isBillable, dueDate, isOverdue, openStatement,
   confirmPayment, bouncePayment,
 } from '../../lib/billing'
 import {
-  PAYOUT_CYCLES, cycleByKey, getVendorCycle, setVendorCycle,
+  PAYOUT_CYCLES, cycleByKey, getVendorCycle, setVendorCycle, hydrateVendors,
   isAbsAssigned, payoutOf, needsFee, payoutDue, isPayoutOverdue,
   buildPayout, payPayout,
-  readSubscriptions, writeSubscriptions, subscriptionNextDue, isSubscriptionDue, paySubscription,
+  readSubscriptions, writeSubscriptions, subscriptionNextDue, isSubscriptionDue,
+  paySubscription, hydrateSubscriptions, persistSubscription,
 } from '../../lib/payouts'
 
 const Q = {
@@ -36,6 +38,9 @@ export default function AdminBilling() {
   const [view, setView] = useState('invoices')   // 'invoices' (money in) | 'payouts' (money out)
   const [filter, setFilter] = useState('all')
   const [, bump] = useState(0) // re-render after a terms change
+
+  // Pull durable client terms into the local cache when Supabase is on.
+  useEffect(() => { hydrateClientTerms().then(ok => ok && bump(n => n + 1)) }, [])
 
   const billable = useMemo(() => orders.filter(isBillable), [orders])
   const byClient = useMemo(() => {
@@ -261,17 +266,36 @@ export default function AdminBilling() {
 function VendorPayouts({ orders, updateOrder, user, vivek }) {
   const [, bump] = useState(0) // re-render after cycle change
   const [subs, setSubs] = useState(readSubscriptions)
+  const [vendors, setVendors] = useState(VENDORS)
+
+  // Hydrate the durable registry when Supabase is on (mock list otherwise).
+  useEffect(() => {
+    hydrateVendors().then(v => { if (v) { setVendors(v); bump(n => n + 1) } })
+    hydrateSubscriptions().then(s => { if (s) setSubs(s) })
+  }, [])
 
   const eligible = useMemo(() => orders.filter(isAbsAssigned), [orders])
   const pending  = eligible.filter(needsFee)
   const accrued  = eligible.filter(o => payoutOf(o)?.status === 'accrued')
   const paid     = eligible.filter(o => payoutOf(o)?.status === 'paid')
 
-  const setFee = (o, vendor, amount) =>
-    updateOrder({ ...o, workflow: { ...o.workflow, abstractorFee: buildPayout({ vendor, amount, userName: user?.name }) } })
-  const markPaid = (o) =>
-    updateOrder({ ...o, workflow: { ...o.workflow, abstractorFee: payPayout(payoutOf(o), user?.name) } })
-  const paySub = (s) => setSubs(writeSubscriptions(subs.map(x => x.id === s.id ? paySubscription(x, user?.name) : x)))
+  // workflow JSONB is authoritative for the UI; the vendor_payouts table is
+  // the durable financial ledger mirrored on every transition.
+  const setFee = (o, vendor, amount) => {
+    const payout = buildPayout({ vendor, amount, userName: user?.name })
+    updateOrder({ ...o, workflow: { ...o.workflow, abstractorFee: payout } })
+    if (isSupabaseConfigured) savePayoutLedger(o.id, payout)
+  }
+  const markPaid = (o) => {
+    const payout = payPayout(payoutOf(o), user?.name)
+    updateOrder({ ...o, workflow: { ...o.workflow, abstractorFee: payout } })
+    if (isSupabaseConfigured) savePayoutLedger(o.id, payout)
+  }
+  const paySub = (s) => {
+    const next = paySubscription(s, user?.name)
+    setSubs(writeSubscriptions(subs.map(x => x.id === s.id ? next : x)))
+    persistSubscription(next)
+  }
 
   const sum = (list) => list.reduce((a, o) => a + (payoutOf(o)?.amount || 0), 0)
   const overdueTotal = sum(accrued.filter(isPayoutOverdue))
@@ -301,12 +325,12 @@ function VendorPayouts({ orders, updateOrder, user, vivek }) {
             <div className="font-semibold text-sm" style={{ color: Q.text }}>Awaiting Fee Entry</div>
             <div className="text-xs" style={{ color: Q.faint }}>Searches routed to abstractors — pick the vendor and enter the agreed fee</div>
           </div>
-          {pending.map(o => <FeeEntryRow key={o.id} order={o} onSave={setFee} />)}
+          {pending.map(o => <FeeEntryRow key={o.id} order={o} vendors={vendors} onSave={setFee} />)}
         </div>
       )}
 
       {/* Per-vendor payables */}
-      {VENDORS.map(v => {
+      {vendors.map(v => {
         const rows = eligible.filter(o => payoutOf(o)?.vendor === v.code)
         if (!rows.length) return null
         const cycleKey = getVendorCycle(v.code)
@@ -454,7 +478,7 @@ function VendorPayouts({ orders, updateOrder, user, vivek }) {
 }
 
 // One pending ABS order: vendor select + fee input → accrues the payable.
-function FeeEntryRow({ order, onSave }) {
+function FeeEntryRow({ order, vendors, onSave }) {
   const [vendor, setVendor] = useState('')
   const [amount, setAmount] = useState('')
   const ready = vendor && Number(amount) > 0
@@ -470,7 +494,7 @@ function FeeEntryRow({ order, onSave }) {
         className="text-xs rounded-lg px-2 py-1.5"
         style={{ border: `1px solid ${Q.border}`, background: Q.card, color: Q.text }}>
         <option value="">Select vendor…</option>
-        {VENDORS.map(v => <option key={v.code} value={v.code}>{v.name}</option>)}
+        {vendors.map(v => <option key={v.code} value={v.code}>{v.name}</option>)}
       </select>
       <input type="number" min="0" step="5" value={amount} onChange={e => setAmount(e.target.value)}
         placeholder="Fee $" className="text-xs rounded-lg px-2 py-1.5 w-24"

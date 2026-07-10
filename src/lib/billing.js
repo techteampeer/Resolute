@@ -5,7 +5,7 @@
 // The app tracks intent + reconciliation: Unpaid → Client Marked Paid →
 // Confirmed (by the billing super admin) → or Bounced.
 import { clientByName } from '../data/mockData'
-import { isSupabaseConfigured, supabase } from './supabase'
+import { isSupabaseConfigured, fetchClientTerms, saveClientTerms } from './backend'
 
 // ── Remittance details (PLACEHOLDERS — fill in real values here later) ──────
 export const REMITTANCE = {
@@ -28,18 +28,23 @@ export const TERMS = [
 ]
 export const termByKey = (key) => TERMS.find(t => t.key === key) || TERMS[0]
 
-// Client terms live in localStorage (mock mode) and best-effort sync to
-// Supabase clients.payment_terms when configured.
+// Client terms: localStorage is the synchronous read cache; Supabase
+// clients.payment_terms is the durable source when configured (hydrate on
+// page load, write through on change).
 const TERMS_LS_KEY = 'resolute.clientTerms'
 const readTermsMap = () => { try { return JSON.parse(localStorage.getItem(TERMS_LS_KEY)) || {} } catch { return {} } }
 export const getClientTerms = (clientCode) => readTermsMap()[clientCode] || 'per_order'
 export function setClientTerms(clientCode, termKey) {
   const map = readTermsMap(); map[clientCode] = termKey
   localStorage.setItem(TERMS_LS_KEY, JSON.stringify(map))
-  if (isSupabaseConfigured) {
-    supabase.from('clients').update({ payment_terms: termKey }).eq('code', clientCode)
-      .then(({ error }) => { if (error) console.error('[terms]', error.message) })
-  }
+  if (isSupabaseConfigured) saveClientTerms(clientCode, termKey)
+}
+// Pull the durable terms into the local cache; returns true when refreshed.
+export async function hydrateClientTerms() {
+  if (!isSupabaseConfigured) return false
+  const map = await fetchClientTerms()
+  if (map) localStorage.setItem(TERMS_LS_KEY, JSON.stringify(map))
+  return !!map
 }
 
 // ── Who may confirm payments (deposit reconciliation) ────────────────────────
