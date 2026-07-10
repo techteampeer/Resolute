@@ -161,12 +161,12 @@ function PlaceOrderPage() {
   })
   const [submitted, setSubmitted] = useState(false)
   const set = (k,v) => setForm(f => ({ ...f, [k]:v }))
-  const submit = () => {
+  const submit = async () => {
     const fullName = (a, b) => `${a || ''} ${b || ''}`.trim()
     const buyer = fullName(form.buyerFirst, form.buyerLast)
     const borrower = fullName(form.borrowerFirst, form.borrowerLast)
     const seller = fullName(form.sellerFirst, form.sellerLast)
-    const order = createOrder({
+    const order = await createOrder({
       state: form.state, county: form.county, type: form.searchType || 'Full Search',
       priority: form.priority,
       intake: {

@@ -1,10 +1,10 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { FileText, CheckCircle, Upload, AlertTriangle, Landmark, Mail, Clock } from 'lucide-react'
 import { useOrders } from '../../context/OrderContext'
 import { isSupabaseConfigured, uploadDocument } from '../../lib/backend'
 import {
-  REMITTANCE, hasRemittanceDetails, termByKey, getClientTerms,
+  REMITTANCE, hasRemittanceDetails, termByKey, getClientTerms, hydrateClientTerms,
   invoiceAmount, invoiceNumber, money, clientCodeOf, paymentOf, payStatusOf,
   PAY_STATUS, isBillable, dueDate, isOverdue, openStatement, buildPayment,
 } from '../../lib/billing'
@@ -181,6 +181,9 @@ function InvoiceRow({ order, termKey, onPaid }) {
 
 export default function ClientBilling({ myOrders }) {
   const { updateOrder } = useOrders()
+  const [, bump] = useState(0)
+  // Pull durable terms into the local cache so due dates match Admin's view.
+  useEffect(() => { hydrateClientTerms().then(ok => ok && bump(n => n + 1)) }, [])
   const billable = myOrders.filter(isBillable)
   const clientCode = billable.map(clientCodeOf).find(Boolean) || clientCodeOf(myOrders[0] || {}) || 'CL01'
   const termKey = getClientTerms(clientCode)

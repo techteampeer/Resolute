@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { ORDERS, ACTIVITY, nextRoleFor, statusForRole } from '../data/mockData'
-import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder } from '../lib/backend'
+import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId } from '../lib/backend'
 
 const OrderContext = createContext(null)
 
@@ -23,11 +23,17 @@ export function OrderProvider({ children }) {
     let unsub = () => {}
     const load = () => fetchOrders().then(rows => { if (rows) setOrders(rows) })
     load()
+    fetchActivity().then(rows => { if (rows) setActivityLog(rows) })
     unsub = subscribeOrders(load)
     return () => unsub()
   }, [])
 
-  const log = (entry) => setActivityLog(a => [entry, ...a])
+  // Local activity feed + best-effort append to the durable order_events audit
+  // trail (orderId/actor ride on the entry when the caller knows them).
+  const log = (entry) => {
+    setActivityLog(a => [entry, ...a])
+    if (isSupabaseConfigured) logEvent({ orderId: entry.orderId, action: entry.action, type: entry.type, actor: entry.actor })
+  }
   const persist = (order) => { if (isSupabaseConfigured) saveOrder(order) }
 
   const assignOrder = (orderId, { queue, personName } = {}) => {
@@ -43,7 +49,7 @@ export function OrderProvider({ children }) {
       persist(next)
       return next
     }))
-    log({ id: Date.now(), action: `Admin assigned ${orderId} to ${queue}${personName ? ` · ${personName}` : ''}`, time: 'Just now', type: 'status' })
+    log({ id: Date.now(), orderId, action: `Admin assigned ${orderId} to ${queue}${personName ? ` · ${personName}` : ''}`, time: 'Just now', type: 'status' })
   }
 
   let advancedTo = null
@@ -66,7 +72,7 @@ export function OrderProvider({ children }) {
       return next
     }))
     log({
-      id: Date.now(),
+      id: Date.now(), orderId, actor: userName,
       action: `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId}`
         + (advancedTo ? ` → handed to ${advancedTo}` : ' → delivered') + (notes ? ` (${notes})` : ''),
       time: 'Just now', type: 'progress',
@@ -94,7 +100,7 @@ export function OrderProvider({ children }) {
       persist(next)
       return next
     }))
-    log({ id: Date.now(), action: `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId} → returned to Admin for assignment` + (notes ? ` (${notes})` : ''), time: 'Just now', type: 'status' })
+    log({ id: Date.now(), orderId, actor: userName, action: `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId} → returned to Admin for assignment` + (notes ? ` (${notes})` : ''), time: 'Just now', type: 'status' })
   }
 
   const updateOrder = (updated) => {
@@ -104,13 +110,19 @@ export function OrderProvider({ children }) {
 
   // Create a new draft order (client "Place an Order"). Draft = 'received' in the
   // Screener intake queue. Prepends locally; best-effort persist when configured.
-  const createOrder = (data = {}) => {
-    const max = orders.reduce((m, o) => {
-      const n = parseInt(String(o.id).replace(/\D/g, ''), 10)
-      return Number.isNaN(n) ? m : Math.max(m, n)
-    }, 10048)
+  // ID comes from the DB sequence when Supabase is on (two simultaneous orders
+  // can't collide); the local max()+1 is the mock fallback.
+  const createOrder = async (data = {}) => {
+    let id = isSupabaseConfigured ? await nextOrderId() : null
+    if (!id) {
+      const max = orders.reduce((m, o) => {
+        const n = parseInt(String(o.id).replace(/\D/g, ''), 10)
+        return Number.isNaN(n) ? m : Math.max(m, n)
+      }, 10048)
+      id = `RTS-${max + 1}`
+    }
     const order = {
-      id: `RTS-${max + 1}`,
+      id,
       client: data.client || 'Web Order',
       state: data.state || '', county: data.county || '', type: data.type || 'Full Search',
       status: 'received', priority: data.priority || 'normal', payment: data.payment || 'Check',
@@ -122,7 +134,7 @@ export function OrderProvider({ children }) {
     }
     setOrders(os => [order, ...os])
     if (isSupabaseConfigured) insertOrder(order)
-    log({ id: Date.now(), action: `New order ${order.id} placed (${order.type})`, time: 'Just now', type: 'new' })
+    log({ id: Date.now(), orderId: order.id, action: `New order ${order.id} placed (${order.type})`, time: 'Just now', type: 'new' })
     return order
   }
 

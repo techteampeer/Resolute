@@ -115,6 +115,80 @@ export async function saveFulfillment(orderId, data) {
   if (error) console.error('[saveFulfillment]', error.message)
 }
 
+// ── Client payment terms ──────────────────────────────────────────────────────
+export async function fetchClientTerms() {
+  const { data, error } = await supabase.from('clients').select('code, payment_terms')
+  if (error) { console.error('[terms]', error.message); return null }
+  return Object.fromEntries(data.map(r => [r.code, r.payment_terms || 'per_order']))
+}
+
+export async function saveClientTerms(code, termKey) {
+  const { error } = await supabase.from('clients').update({ payment_terms: termKey }).eq('code', code)
+  if (error) console.error('[terms]', error.message)
+}
+
+// ── Vendors & payout ledger ───────────────────────────────────────────────────
+export async function fetchVendors() {
+  const { data, error } = await supabase.from('vendors').select('*').order('code')
+  if (error) { console.error('[vendors]', error.message); return null }
+  return data.map(r => ({ code: r.code, name: r.name, contact: r.contact, coverage: r.coverage, cycle: r.cycle }))
+}
+
+export async function saveVendorCycle(code, cycle) {
+  const { error } = await supabase.from('vendors').update({ cycle }).eq('code', code)
+  if (error) console.error('[vendorCycle]', error.message)
+}
+
+// Durable financial record mirroring order.workflow.abstractorFee (which stays
+// authoritative for the UI). Upsert keyed by order — one payable per order.
+export async function savePayoutLedger(orderId, payout) {
+  const { error } = await supabase.from('vendor_payouts').upsert({
+    order_id: orderId, vendor_code: payout.vendor, amount: payout.amount,
+    status: payout.status, set_by: payout.setBy || null, set_at: payout.setAt || null,
+    paid_by: payout.paidBy || null, paid_at: payout.paidAt || null,
+    reference: payout.reference || null,
+  }, { onConflict: 'order_id' })
+  if (error) console.error('[payoutLedger]', error.message)
+}
+
+// ── Subscriptions ─────────────────────────────────────────────────────────────
+export async function fetchSubscriptions() {
+  const { data, error } = await supabase.from('subscriptions').select('*').order('id')
+  if (error) { console.error('[subscriptions]', error.message); return null }
+  return data.map(r => ({ id: r.id, name: r.name, amount: Number(r.amount), cycle: r.cycle, lastPaidAt: r.last_paid_at, paidBy: r.paid_by }))
+}
+
+export async function saveSubscription(s) {
+  const { error } = await supabase.from('subscriptions').upsert({
+    id: s.id, name: s.name, amount: s.amount, cycle: s.cycle,
+    last_paid_at: s.lastPaidAt, paid_by: s.paidBy,
+  })
+  if (error) console.error('[subscription]', error.message)
+}
+
+// ── Audit trail (append-only order_events) ────────────────────────────────────
+export async function fetchActivity(limit = 50) {
+  const { data, error } = await supabase.from('order_events')
+    .select('*').order('created_at', { ascending: false }).limit(limit)
+  if (error) { console.error('[activity]', error.message); return null }
+  return data.map(r => ({
+    id: r.id, action: r.action, type: r.type,
+    time: new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+  }))
+}
+
+export async function logEvent({ orderId = null, action, type = 'status', actor = null }) {
+  const { error } = await supabase.from('order_events').insert({ order_id: orderId, action, type, actor })
+  if (error) console.error('[logEvent]', error.message)
+}
+
+// ── Server-generated order IDs ────────────────────────────────────────────────
+export async function nextOrderId() {
+  const { data, error } = await supabase.rpc('next_order_id')
+  if (error) { console.error('[nextOrderId]', error.message); return null }
+  return data
+}
+
 // ── Storage (documents bucket) ────────────────────────────────────────────────
 export async function uploadDocument(orderId, file) {
   const safe = file.name.replace(/[^\w.\-]+/g, '_')
