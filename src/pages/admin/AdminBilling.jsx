@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { DollarSign, CheckCircle, XCircle, AlertTriangle, FileText, Lock, Landmark, Plus, RefreshCw } from 'lucide-react'
+import { DollarSign, CheckCircle, XCircle, AlertTriangle, FileText, Landmark, Plus, RefreshCw } from 'lucide-react'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
 import { CLIENTS, VENDORS } from '../../data/mockData'
@@ -93,12 +93,6 @@ export default function AdminBilling() {
                 </button>
               ))}
             </div>
-          )}
-          {!vivek && (
-            <span className="text-xs px-3 py-1.5 rounded-full inline-flex items-center gap-1.5"
-              style={{ background: 'rgba(30,41,59,0.05)', color: Q.muted, border: `1px solid ${Q.border}` }}>
-              <Lock className="w-3.5 h-3.5" /> Payments are executed by Vivek (billing super admin)
-            </span>
           )}
         </div>
       </div>
