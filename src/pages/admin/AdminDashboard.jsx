@@ -164,7 +164,13 @@ function OrderEditModal({ order, user, onClose, onSave }) {
     const completed = form.status === 'delivered'
       ? (order.completed || order.eta)
       : null
-    onSave({ ...order, ...form, assignedTo: form.assignedTo || null, completed })
+    const assignedTo = form.assignedTo || null
+    // Mirror assignOrder: routing to the Single Seating desk claims the order
+    // end-to-end; routing to a stage role releases it back to the pipeline.
+    const workflow = assignedTo === 'operator' ? { ...order.workflow, singleSeating: true }
+      : ['screener', 'examiner', 'typer', 'delivery'].includes(assignedTo) ? { ...order.workflow, singleSeating: false }
+      : order.workflow
+    onSave({ ...order, ...form, assignedTo, workflow, completed })
     onClose()
   }
 
@@ -243,10 +249,12 @@ function OrderEditModal({ order, user, onClose, onSave }) {
               <Field label="Assigned To (current owner)">
                 <select style={selectStyle} value={form.assignedTo} onChange={e => set('assignedTo', e.target.value)}>
                   <option value="">Unassigned</option>
+                  <option value="admin">Admin (awaiting approval)</option>
                   <option value="screener">Screener</option>
                   <option value="examiner">Examiner</option>
                   <option value="typer">Typer</option>
                   <option value="delivery">Delivery</option>
+                  <option value="operator">Single Seating</option>
                 </select>
               </Field>
               <Field label="Status">
@@ -653,7 +661,9 @@ function OrdersPipeline() {
                   <td style={{ padding:'10px 16px', color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{o.payment}</td>
                   <td style={{ padding:'10px 16px', fontSize:12, whiteSpace:'nowrap',
                     color: o.assignedTo ? Q.text : Q.faint, textTransform:'capitalize' }}>
-                    {o.assignedTo ? `${o.assignedTo} · ${o[o.assignedTo]}` : '—'}
+                    {o.assignedTo
+                      ? `${o.assignedTo === 'operator' ? 'single seating' : o.assignedTo}${o[o.assignedTo] ? ` · ${o[o.assignedTo]}` : ''}`
+                      : '—'}
                   </td>
                   <td style={{ padding:'10px 16px', fontSize:12, whiteSpace:'nowrap',
                     color: lastCompleted(o) ? '#16a34a' : Q.faint }}>
