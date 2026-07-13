@@ -5,9 +5,11 @@
 # 2. Supabase CLI + dockerd +  -> the project-scoped MCP server in .mcp.json
 #    `supabase start`             (http://localhost:54321/mcp) is reachable
 #
-# Step 2 needs the environment's network policy to allow GitHub release
-# downloads and Docker registries/CDNs; on the default restricted policy it
-# logs a warning and the session starts without the local Supabase stack.
+# Step 2 needs the environment's network policy to allow Docker
+# registries/CDNs (Full access, or a Custom allowlist); on the default
+# Trusted policy it logs a warning and the session starts without the
+# local Supabase stack. The CLI binary itself comes from the npm registry
+# (github.com release downloads are always repo-scoped in this sandbox).
 set -uo pipefail
 
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
@@ -25,19 +27,23 @@ fi
 # --- 2. Supabase local stack -------------------------------------------------
 if ! command -v supabase >/dev/null 2>&1; then
   case "$(uname -m)" in
-    x86_64) sb_arch=amd64 ;;
+    x86_64) sb_arch=x64 ;;
     aarch64 | arm64) sb_arch=arm64 ;;
     *) sb_arch="" ;;
   esac
-  if [ -n "$sb_arch" ] && curl -fsSL --retry 3 -o /tmp/supabase-cli.tar.gz \
-      "https://github.com/supabase/cli/releases/latest/download/supabase_linux_${sb_arch}.tar.gz"; then
-    tar -xzf /tmp/supabase-cli.tar.gz -C /tmp supabase &&
-      install -m 0755 /tmp/supabase /usr/local/bin/supabase &&
-      log "installed Supabase CLI $(supabase --version)"
+  sb_tmp=$(mktemp -d)
+  # The npm platform package ships a `supabase` shim plus the real
+  # `supabase-go` binary; the two must be installed side by side.
+  if [ -n "$sb_arch" ] &&
+    (cd "$sb_tmp" &&
+      npm pack "@supabase/cli-linux-${sb_arch}@latest" --silent >/dev/null &&
+      tar -xzf supabase-cli-linux-*.tgz &&
+      install -m 0755 package/bin/supabase package/bin/supabase-go /usr/local/bin/); then
+    log "installed Supabase CLI $(supabase --version)"
   else
-    log "WARN: Supabase CLI download blocked — enable broader network access" \
-      "for this environment (github.com releases + Docker registries)."
+    log "WARN: could not install Supabase CLI from the npm registry."
   fi
+  rm -rf "$sb_tmp"
 fi
 
 if command -v supabase >/dev/null 2>&1; then
