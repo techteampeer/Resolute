@@ -1,0 +1,4 @@
+# Supabase CLI local-dev config. Only project_id is required; every other
+# setting uses the CLI's defaults (API on 54321, which also serves the MCP
+# endpoint registered in .mcp.json as http://localhost:54321/mcp).
+project_id = "resolute"
