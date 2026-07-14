@@ -1,20 +1,17 @@
 -- =====================================================================
 -- Resolute — consolidated migration: "Operator" feature → latest
--- Baseline assumed: state BEFORE the Operator changes (base schema already run).
--- Safe / idempotent. Run ONCE in the Supabase SQL editor.
+-- Baseline: the init migration (20260601000000_init.sql). Safe / idempotent.
 --
--- Postgres rule: a new enum value cannot be USED in the same transaction that
--- ADDs it. This script therefore adds the enum values first and COMMITs before
--- any statement that uses them. If your client errors on COMMIT (or reports
--- "unsafe use of new value"), run PART 1 by itself first, then run the rest.
+-- Enum note: on a fresh database both values below already exist from init
+-- (no-ops here); the guards keep this re-runnable on older databases. New
+-- enum values from a PREVIOUS migration are always usable here because the
+-- CLI runs each migration file in its own transaction.
 -- =====================================================================
 
 -- ── PART 1 — Enum additions ─────────────────────────────────────────────────
 -- Operator role (all-in-one portal) + "Out for Delivery" order status.
 alter type user_role    add value if not exists 'operator';
 alter type order_status add value if not exists 'delivery';
-
-commit;  -- close the implicit transaction so the new values become usable below
 
 -- ── PART 2 — Schema (prerequisite column; pre-Operator, guarded for safety) ──
 -- Per-role workflow data: search assignment, screener/examiner docs,

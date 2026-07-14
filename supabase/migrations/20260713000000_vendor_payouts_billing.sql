@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Resolute — vendors, payouts ledger, subscriptions, audit trail, order IDs,
--- and demo-user seeding. Idempotent; run ONCE on top of schema.sql +
--- operator_to_latest.sql + payment_system.sql.
+-- and demo-user seeding. Idempotent; runs on top of the earlier
+-- timestamped migrations in this directory.
 -- =====================================================================
 
 -- ── 1) Vendors (abstractor firms the screener can route ABS searches to) ─────

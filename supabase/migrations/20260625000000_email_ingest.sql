@@ -1,5 +1,5 @@
 -- Email-to-order ingest: idempotency ledger + human review queue.
--- Idempotent; safe to run on top of the existing schema (see schema.sql).
+-- Idempotent; safe to run on top of the init migration.
 
 -- Processed-message ledger. One row per inbound Message-ID we have handled,
 -- so re-runs / provider retries never create duplicate orders.
