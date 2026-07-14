@@ -18,7 +18,7 @@ instead of becoming an order (wrong title orders are costly).
 5. Every Message-ID is recorded in `email_ingest_log` (idempotency: re-runs and
    provider retries skip anything already handled).
 
-Migration: `supabase/migrations/email_ingest.sql` (idempotent).
+Migration: `supabase/migrations/20260625000000_email_ingest.sql` (idempotent).
 
 ## Run
 ```bash

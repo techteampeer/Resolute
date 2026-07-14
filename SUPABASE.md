@@ -16,14 +16,23 @@ env vars are absent, so nothing breaks while you set this up.
 1. **Create a project** at [supabase.com](https://supabase.com) (pick a region
    near your users; note the database password somewhere safe).
 
-2. **Run the SQL** — SQL Editor → paste + Run each file **in this order**:
-   1. `supabase/schema.sql` — tables, enums, RLS, storage bucket, seed clients/orders
-   2. `supabase/migrations/operator_to_latest.sql` — operator role + workflow column
-      (run PART 1 alone first if the editor complains about new enum values)
-   3. `supabase/migrations/payment_system.sql` — client payment terms + Vivek account
-   4. `supabase/migrations/email_ingest.sql` — inbound-email draft orders support
-   5. `supabase/migrations/vendor_payouts_billing.sql` — vendors, payout ledger,
-      subscriptions, audit trail, order-ID sequence, **and all demo user accounts**
+2. **Run the SQL.** All schema lives in `supabase/migrations/` as timestamped
+   files the Supabase CLI applies automatically **in filename order**:
+
+   | File | Contents |
+   |---|---|
+   | `20260601000000_init.sql` | tables, enums, RLS, storage bucket, seed clients/orders |
+   | `20260615000000_operator_portal.sql` | operator role + workflow column |
+   | `20260620000000_payment_system.sql` | client payment terms + Vivek account |
+   | `20260625000000_email_ingest.sql` | inbound-email draft orders support |
+   | `20260713000000_vendor_payouts_billing.sql` | vendors, payout ledger, subscriptions, audit trail, order-ID sequence, **all demo user accounts** |
+
+   **Via CLI (preferred):** `supabase link --project-ref <ref>` then
+   `supabase db push` — applies anything not yet applied, tracked in the
+   `supabase_migrations` table.
+
+   **Via dashboard (no CLI):** SQL Editor → paste + Run each file in the
+   filename order above. All files are idempotent.
 
 3. **Users are seeded automatically** by step 2.5 with the same demo
    credentials the mock login uses (rajni/saravanan/vivek/admin/screener/
@@ -42,14 +51,32 @@ env vars are absent, so nothing breaks while you set this up.
    Vivek; refresh — everything must survive. Open a second browser as another
    role and watch realtime updates land.
 
+## Local development (Supabase CLI)
+
+```bash
+supabase start      # boots local Postgres/Auth/Storage in Docker
+supabase db reset   # (re)applies every migration + seeds — full Resolute schema
+```
+
+- `supabase start` prints a local URL + anon key. **These are the CLI's public
+  demo defaults, identical on every machine — not secrets.** Put them in
+  `.env.local` (`VITE_SUPABASE_URL=http://127.0.0.1:54321`,
+  `VITE_SUPABASE_ANON_KEY=<printed anon key>`) to run the app against the
+  local stack; never reuse them for the cloud project.
+- The local MCP endpoint (`http://localhost:54321/mcp`, registered in
+  `.mcp.json` as `supabase`) lets Claude Code query the local database
+  directly. `supabase-cloud` is the hosted MCP for the real project.
+- Demo logins work locally too (seeded by the last migration).
+
 ## Operational practices
 
 - **Backups**: Database → Backups → enable Point-in-Time Recovery on the
   production project. Take a manual `pg_dump` before running any migration.
 - **Two projects**: create a second (free) project as dev/staging; run the same
   SQL there and point `.env.local` at it, so testing never touches prod data.
-- **New migrations**: never edit `schema.sql` after go-live — add a new
-  numbered file under `supabase/migrations/` and run it in prod once.
+- **New migrations**: never edit an already-applied migration — add a new
+  timestamped file under `supabase/migrations/`
+  (`supabase migration new <name>` generates one) and `supabase db push`.
 - **Service-role key**: only the **anon** key goes in the browser (`VITE_*`).
   The service-role key is used solely by `api/webhooks/inbound-email.js`
   (set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` as Vercel server env vars,

@@ -1,6 +1,6 @@
 // Server-side "repository" for the orders table — the serverless equivalent of
 // the app's OrderContext/backend mappers. Mirrors the columns in
-// supabase/schema.sql (status enum, assigned_to role, workflow JSONB).
+// the Supabase init migration (status enum, assigned_to role, workflow JSONB).
 import { supabaseAdmin } from './supabaseAdmin.js'
 
 // Next RTS-#### id, continuing the existing numbering.
