@@ -117,7 +117,7 @@ grant execute on function public.next_order_id() to authenticated;
 create or replace function public._seed_user(
   p_email text, p_pass text, p_name text, p_role user_role,
   p_super boolean default false, p_client text default null
-) returns void language plpgsql security definer set search_path = public as $$
+) returns void language plpgsql security definer set search_path = public, extensions as $$
 declare uid uuid;
 begin
   select id into uid from auth.users where email = p_email;
