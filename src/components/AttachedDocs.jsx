@@ -1,5 +1,6 @@
 import React from 'react'
 import { FileText, Eye, Paperclip } from 'lucide-react'
+import { openDocument } from '../lib/backend'
 
 // Documents attached by earlier stages, carried on order.workflow so they
 // travel with the order to Admin and to every downstream assignee.
@@ -26,8 +27,8 @@ export default function AttachedDocs({ workflow, className = '' }) {
               <div className="text-[12.5px] font-medium truncate" style={{ color: '#1e293b' }}>{file.name}</div>
               <div className="text-[10px] uppercase tracking-wide" style={{ color: '#64748b' }}>{label}</div>
             </div>
-            {file.url && (
-              <button onClick={() => window.open(file.url, '_blank')} title="Preview / download"
+            {(file.url || file.path) && (
+              <button onClick={() => openDocument(file)} title="Preview / download"
                 className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors" style={{ color: '#475569' }}
                 onMouseOver={e => e.currentTarget.style.background = '#f1f5f9'}
                 onMouseOut={e => e.currentTarget.style.background = 'transparent'}>

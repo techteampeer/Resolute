@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { UploadCloud, FileText, Trash2, CheckCircle2, AlertCircle, Eye } from 'lucide-react'
 import { ACCEPTED_DOCS, validDocType, fileKind, uid } from '../data/fulfillment'
-import { isSupabaseConfigured, uploadDocument } from '../lib/backend'
+import { isSupabaseConfigured, uploadDocument, openDocument } from '../lib/backend'
 
 // Compact PDF/Word upload used across the role portals (dark theme).
 // Uploads to Supabase Storage when configured; otherwise stores a local ref.
@@ -35,7 +35,7 @@ export default function DocUpload({ orderId, value, onChange, accent = '#4d7c2f'
             : <><CheckCircle2 className="w-3 h-3" style={{ color: accent }} /> Uploaded</>}
         </div>
       </div>
-      {value.url && <button onClick={() => window.open(value.url, '_blank')} title="Preview"
+      {(value.url || value.path) && <button onClick={() => openDocument(value)} title="Preview"
         className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ color: '#64748b' }}><Eye className="w-4 h-4" /></button>}
       <button onClick={() => onChange(null)} title="Remove"
         className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ color: '#dc2626' }}><Trash2 className="w-4 h-4" /></button>

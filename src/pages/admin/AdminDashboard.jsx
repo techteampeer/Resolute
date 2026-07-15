@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
+import { openDocument } from '../../lib/backend'
 import AttachedDocs from '../../components/AttachedDocs'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS, MESSAGES,
@@ -123,6 +124,19 @@ function Field({ label, children }) {
   )
 }
 
+// Read-only label/value row for the order-detail overview. Renders nothing when
+// the value is empty so partially-filled intakes stay tidy. `wide` spans both
+// grid columns (for long values like the full property address).
+function Detail({ label, value, wide }) {
+  if (!value) return null
+  return (
+    <div style={wide ? { gridColumn:'1 / -1' } : undefined}>
+      <span style={{ color:Q.faint }}>{label}: </span>
+      <span style={{ color:Q.text, fontWeight:500 }}>{value}</span>
+    </div>
+  )
+}
+
 const selectStyle = {
   width:'100%', padding:'8px 10px', borderRadius:8, border:`1px solid ${Q.border}`,
   background:Q.bg, color:Q.text, fontSize:13, outline:'none',
@@ -179,6 +193,9 @@ function OrderEditModal({ order, user, onClose, onSave }) {
   const orderActivity = activityLog.filter(a => a.action && a.action.includes(order.id))
   const orderMessages = MESSAGES.filter(m => m.orderId === order.id)
   const files = orderFiles(order)
+  // Order specifics the client submitted on the place-order form, carried on
+  // order.workflow.intake (property, parties/owner names, APN, contact, notes).
+  const intake = order.workflow?.intake
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -242,6 +259,33 @@ function OrderEditModal({ order, user, onClose, onSave }) {
               </div>
             )}
           </div>
+
+          {/* Order details submitted by the client on the place-order form */}
+          {intake && (
+            <div style={{ padding:'16px 22px 0' }}>
+              <div style={{ background:Q.bg, border:`1px solid ${Q.border}`, borderRadius:10, padding:'12px 14px' }}>
+                <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em',
+                  color:Q.faint, marginBottom:8 }}>Order details (from client)</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 16px', fontSize:13 }}>
+                  <Detail label="Property" value={intake.propertyAddress} wide />
+                  <Detail label="County / State" value={[order.county, order.state].filter(Boolean).join(', ')} />
+                  <Detail label="Parcel / APN" value={intake.parcelNumberAPN} />
+                  <Detail label="Buyer" value={intake.buyer} />
+                  <Detail label="Borrower" value={intake.borrowerName} />
+                  <Detail label="Seller" value={intake.seller} />
+                  <Detail label="Product" value={intake.orderType || order.type} />
+                  <Detail label="Requested by" value={intake.from} wide />
+                  <Detail label="Company" value={intake.company} />
+                </div>
+                {intake.specialInstructions && (
+                  <div style={{ marginTop:10 }}>
+                    <div style={{ fontSize:11, color:Q.faint, marginBottom:2 }}>Special instructions</div>
+                    <div style={{ fontSize:13, color:Q.text, whiteSpace:'pre-wrap' }}>{intake.specialInstructions}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Assignment — drives the Assigned/Unassigned state */}
           <div style={{ padding:'16px 22px 0' }}>
@@ -382,8 +426,8 @@ function OrderEditModal({ order, user, onClose, onSave }) {
                       <div style={{ fontSize:13, fontWeight:500, color:Q.text }}>{f.name}</div>
                       <div style={{ fontSize:11, color:Q.faint }}>{f.stage} · {(f.type || 'file').toUpperCase()}</div>
                     </div>
-                    {f.url && (
-                      <button onClick={() => window.open(f.url, '_blank')} title="Preview / download"
+                    {(f.url || f.path) && (
+                      <button onClick={() => openDocument(f)} title="Preview / download"
                         style={{ background:'transparent', border:'none', cursor:'pointer', color:Q.muted }}>
                         <Eye style={{ width:16, height:16 }} />
                       </button>

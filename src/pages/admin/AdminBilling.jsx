@@ -3,7 +3,7 @@ import { DollarSign, CheckCircle, XCircle, AlertTriangle, FileText, Landmark, Pl
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
 import { CLIENTS, VENDORS } from '../../data/mockData'
-import { isSupabaseConfigured, savePayoutLedger } from '../../lib/backend'
+import { isSupabaseConfigured, savePayoutLedger, openDocument } from '../../lib/backend'
 import {
   TERMS, termByKey, getClientTerms, setClientTerms, hydrateClientTerms, canConfirmPayments,
   invoiceAmount, invoiceNumber, money, clientCodeOf, paymentOf, payStatusOf,
@@ -209,7 +209,7 @@ export default function AdminBilling() {
                           {p ? (
                             <>
                               {p.method} · <span className="font-mono">{p.reference || '—'}</span>
-                              {p.checkDoc?.url && <> · <a href={p.checkDoc.url} target="_blank" rel="noreferrer" className="underline" style={{ color: ACCENT }}>check</a></>}
+                              {(p.checkDoc?.url || p.checkDoc?.path) && <> · <button onClick={() => openDocument(p.checkDoc)} className="underline" style={{ color: ACCENT, background:'none', border:'none', padding:0, font:'inherit', cursor:'pointer' }}>check</button></>}
                               {p.statementId && <div style={{ color: Q.faint }}>{p.statementId}</div>}
                             </>
                           ) : '—'}

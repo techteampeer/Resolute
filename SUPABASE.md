@@ -21,11 +21,17 @@ env vars are absent, so nothing breaks while you set this up.
 
    | File | Contents |
    |---|---|
-   | `20260601000000_init.sql` | tables, enums, RLS, storage bucket, seed clients/orders |
+   | `20260601000000_init.sql` | tables, enums, RLS, storage bucket, profile trigger |
    | `20260615000000_operator_portal.sql` | operator role + workflow column |
-   | `20260620000000_payment_system.sql` | client payment terms + Vivek account |
+   | `20260620000000_payment_system.sql` | client payment terms |
    | `20260625000000_email_ingest.sql` | inbound-email draft orders support |
-   | `20260713000000_vendor_payouts_billing.sql` | vendors, payout ledger, subscriptions, audit trail, order-ID sequence, **all demo user accounts** |
+   | `20260713000000_vendor_payouts_billing.sql` | vendors, payout ledger, subscriptions, audit trail, order-ID sequence |
+
+   **Migrations are schema only**, so `db push` produces a clean, empty
+   production database. Demo/sample data (clients, orders, vendors,
+   subscriptions) and the ten demo logins live in `supabase/seed.sql`, which
+   the CLI applies on local `supabase db reset` **only** — never on `db push`.
+   Production has no default accounts.
 
    **Via CLI (preferred):** `supabase link --project-ref <ref>` then
    `supabase db push` — applies anything not yet applied, tracked in the
@@ -34,11 +40,17 @@ env vars are absent, so nothing breaks while you set this up.
    **Via dashboard (no CLI):** SQL Editor → paste + Run each file in the
    filename order above. All files are idempotent.
 
-3. **Users are seeded automatically** by step 2.5 with the same demo
-   credentials the mock login uses (rajni/saravanan/vivek/admin/screener/
-   examiner/typer/delivery/client/operator @resolute.com).
-   **Change these passwords before real data enters the system** —
-   Authentication → Users → each user → Reset password.
+3. **Create your first admin** (production has no seeded accounts).
+   Authentication → Users → Add user → email + password, tick **Auto
+   Confirm**. The `handle_new_user` trigger creates the profile automatically
+   (default role `client`); promote it in the SQL Editor:
+   ```sql
+   update public.profiles set role='admin', super_admin=true
+   where email='you@yourfirm.com';
+   ```
+   Add the rest of your staff the same way — set each profile's `role`, and
+   `super_admin=true` only for the billing/super admins. No default passwords
+   ever exist in production.
 
 4. **Set env vars** (values from Project Settings → API):
    - Local: copy `.env.example` → `.env.local`, fill
@@ -46,10 +58,11 @@ env vars are absent, so nothing breaks while you set this up.
    - Vercel: Project → Settings → Environment Variables → add the same two →
      redeploy.
 
-5. **Verify**: log in as each role; place a client order (ID should come from
-   the DB sequence); screen one to ABS; enter a fee as Rajni; mark it paid as
-   Vivek; refresh — everything must survive. Open a second browser as another
-   role and watch realtime updates land.
+5. **Verify** (with the accounts you created in step 3): place a client order
+   (ID should come from the DB sequence); screen one to ABS; enter a vendor
+   fee as a super admin; mark it paid as the billing admin; refresh —
+   everything must survive. Open a second browser as another role and watch
+   realtime updates land.
 
 ## Local development (Supabase CLI)
 
@@ -66,7 +79,8 @@ supabase db reset   # (re)applies every migration + seeds — full Resolute sche
 - The local MCP endpoint (`http://localhost:54321/mcp`, registered in
   `.mcp.json` as `supabase`) lets Claude Code query the local database
   directly. `supabase-cloud` is the hosted MCP for the real project.
-- Demo logins work locally too (seeded by the last migration).
+- Demo logins + sample data are seeded locally by `supabase/seed.sql`
+  (applied on `supabase db reset`, never on `db push`).
 
 ## Operational practices
 

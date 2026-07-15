@@ -203,3 +203,31 @@ export async function removeDocument(path) {
   if (!path) return
   await supabase.storage.from('documents').remove([path])
 }
+
+// Open a stored document reference in a new tab. The `documents` bucket is
+// PRIVATE, so signed URLs expire (1h) — persisting one into JSONB and reusing
+// it later fails once an order moves between stages/portals (which is why
+// attachments stopped opening everywhere). We keep the durable storage `path`
+// and re-sign it on demand here; the stored `url` is only a fallback (e.g.
+// mock-mode blob URLs). The tab is opened synchronously first so the async
+// re-sign doesn't trip the browser's popup blocker.
+export async function openDocument(ref) {
+  if (!ref) return null
+  const canResign = isSupabaseConfigured && supabase && !!ref.path
+  if (!canResign && !ref.url) {
+    alert('This document isn’t available to open — it may still be uploading, or was attached in a local session that wasn’t persisted.')
+    return null
+  }
+  const win = window.open('about:blank', '_blank')
+  let url = ref.url || null
+  if (canResign) {
+    try {
+      const { data } = await supabase.storage.from('documents').createSignedUrl(ref.path, 3600)
+      if (data?.signedUrl) url = data.signedUrl
+    } catch { /* fall back to any stored url */ }
+  }
+  if (!win) return url            // popup blocked — nothing more we can do
+  if (url) win.location.href = url
+  else win.close()
+  return url
+}

@@ -1,7 +1,8 @@
 -- =====================================================================
--- Resolute — vendors, payouts ledger, subscriptions, audit trail, order IDs,
--- and demo-user seeding. Idempotent; runs on top of the earlier
--- timestamped migrations in this directory.
+-- Resolute — vendors, payouts ledger, subscriptions, audit trail, and
+-- server-generated order IDs. Schema only; runs on top of the earlier
+-- timestamped migrations in this directory. (Demo vendors/subscriptions
+-- and all demo logins live in supabase/seed.sql — local dev only.)
 -- =====================================================================
 
 -- ── 1) Vendors (abstractor firms the screener can route ABS searches to) ─────
@@ -20,12 +21,6 @@ create policy vendors_read on public.vendors for select using (public.is_staff()
 drop policy if exists vendors_admin_write on public.vendors;
 create policy vendors_admin_write on public.vendors for all
   using (public.is_admin()) with check (public.is_admin());
-
-insert into public.vendors (code, name, contact, coverage, cycle) values
-  ('VN01','Meridian Abstracting LLC','Paul Ortiz','FL · GA · SC','weekly'),
-  ('VN02','TitleTrace Abstractors','Gina Malone','TX · OK · LA','days15'),
-  ('VN03','Keystone Search Group','Ed Novak','NY · NJ · PA','days30')
-on conflict (code) do nothing;
 
 -- ── 2) Vendor payouts ledger (money OUT, one payable per order) ───────────────
 -- The order's workflow JSONB stays authoritative for the UI; this table is the
@@ -75,11 +70,6 @@ drop policy if exists subscriptions_admin_write on public.subscriptions;
 create policy subscriptions_admin_write on public.subscriptions for all
   using (public.is_admin()) with check (public.is_admin());
 
-insert into public.subscriptions (id, name, amount, cycle) values
-  ('sub1','DataTree Title Plant',299,'days30'),
-  ('sub2','NetOnline County Access',149,'days30')
-on conflict (id) do nothing;
-
 -- ── 4) Append-only audit trail ────────────────────────────────────────────────
 -- No UPDATE/DELETE policies on purpose: rows can only be added and read.
 create table if not exists public.order_events (
@@ -110,51 +100,3 @@ create or replace function public.next_order_id()
 returns text language sql security definer set search_path = public as
 $$ select 'RTS-' || nextval('public.order_id_seq') $$;
 grant execute on function public.next_order_id() to authenticated;
-
--- ── 6) Seed the demo accounts (mirrors src/context/AuthContext.jsx) ──────────
--- Same technique payment_system.sql used for Vivek. Change these passwords
--- before real client data enters the system.
-create or replace function public._seed_user(
-  p_email text, p_pass text, p_name text, p_role user_role,
-  p_super boolean default false, p_client text default null
-) returns void language plpgsql security definer set search_path = public, extensions as $$
-declare uid uuid;
-begin
-  select id into uid from auth.users where email = p_email;
-  if uid is null then
-    uid := gen_random_uuid();
-    insert into auth.users (
-      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-      raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
-      confirmation_token, recovery_token, email_change, email_change_token_new,
-      email_change_token_current, phone_change, phone_change_token, reauthentication_token
-    ) values (
-      '00000000-0000-0000-0000-000000000000', uid, 'authenticated', 'authenticated',
-      p_email, crypt(p_pass, gen_salt('bf')), now(),
-      '{"provider":"email","providers":["email"]}',
-      jsonb_build_object('name', p_name, 'role', p_role::text), now(), now(),
-      '', '', '', '', '', '', '', ''
-    );
-    insert into auth.identities (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
-    values (gen_random_uuid(), uid, uid::text,
-      jsonb_build_object('sub', uid::text, 'email', p_email), 'email', now(), now(), now());
-  end if;
-  insert into public.profiles (id, email, name, role, super_admin, client_code)
-  values (uid, p_email, p_name, p_role, p_super, p_client)
-  on conflict (id) do update
-    set name = excluded.name, role = excluded.role,
-        super_admin = excluded.super_admin, client_code = excluded.client_code;
-end $$;
-
-select public._seed_user('rajni@resolute.com',    'admin123',    'Rajni',         'admin',    true);
-select public._seed_user('saravanan@resolute.com','admin123',    'Saravanan',     'admin',    true);
-select public._seed_user('vivek@resolute.com',    'vivek123',    'Vivek',         'admin',    true);
-select public._seed_user('admin@resolute.com',    'admin123',    'Alex Morrison', 'admin',    false);
-select public._seed_user('screener@resolute.com', 'screener123', 'Sam Carter',    'screener');
-select public._seed_user('examiner@resolute.com', 'examiner123', 'Jordan Lee',    'examiner');
-select public._seed_user('typer@resolute.com',    'typer123',    'Priya Nair',    'typer');
-select public._seed_user('delivery@resolute.com', 'delivery123', 'Morgan Davis',  'delivery');
-select public._seed_user('client@resolute.com',   'client123',   'Taylor Brooks', 'client',   false, 'CL01');
-select public._seed_user('operator@resolute.com', 'operator123', 'Jordan Blake',  'operator');
-
-drop function public._seed_user(text, text, text, user_role, boolean, text);

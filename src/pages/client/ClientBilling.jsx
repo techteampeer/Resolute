@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { FileText, CheckCircle, Upload, AlertTriangle, Landmark, Mail, Clock } from 'lucide-react'
 import { useOrders } from '../../context/OrderContext'
-import { isSupabaseConfigured, uploadDocument } from '../../lib/backend'
+import { isSupabaseConfigured, uploadDocument, openDocument } from '../../lib/backend'
 import {
   REMITTANCE, hasRemittanceDetails, termByKey, getClientTerms, hydrateClientTerms,
   invoiceAmount, invoiceNumber, money, clientCodeOf, paymentOf, payStatusOf,
@@ -158,7 +158,7 @@ function InvoiceRow({ order, termKey, onPaid }) {
           {p && status !== 'unpaid' && (
             <div className="text-xs mt-1" style={{ color: '#64748b' }}>
               {p.method} ref <span className="font-mono">{p.reference}</span>
-              {p.checkDoc?.url && <> · <a href={p.checkDoc.url} target="_blank" rel="noreferrer" className="underline" style={{ color: ROLE_COLOR }}>check image</a></>}
+              {(p.checkDoc?.url || p.checkDoc?.path) && <> · <button onClick={() => openDocument(p.checkDoc)} className="underline" style={{ color: ROLE_COLOR, background:'none', border:'none', padding:0, font:'inherit', cursor:'pointer' }}>check image</button></>}
               {status === 'marked' && ' · awaiting deposit confirmation'}
               {status === 'confirmed' && ` · confirmed ${p.confirmedAt}`}
             </div>
