@@ -25,6 +25,13 @@ const ADMIN_ACCOUNTS = [
   { key: 'member',    label: 'Member',    tier: 'Client codes only', email: 'admin@resolute.com', pass: 'admin123' },
 ]
 
+// The role picker + credential pre-fill are a LOCAL-DEV convenience only.
+// Production builds must never advertise accounts or passwords, so they render
+// a plain email/password sign-in instead. `import.meta.env.DEV` is true under
+// `vite` (dev server) and false under `vite build`; set VITE_SHOW_DEMO_CREDS=true
+// to force the demo picker on in a non-dev build (e.g. an internal staging URL).
+const SHOW_DEMO = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO_CREDS === 'true'
+
 export default function LoginPage() {
   const navigate = useNavigate()
   const { login } = useAuth()
@@ -136,8 +143,9 @@ export default function LoginPage() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
             className="glass-card p-8">
             <h2 className="text-2xl font-bold mb-1" style={{ color: '#1e293b' }}>Sign in</h2>
-            <p className="text-sm mb-8" style={{ color: '#64748b' }}>Select your role to continue</p>
+            <p className="text-sm mb-8" style={{ color: '#64748b' }}>{SHOW_DEMO ? 'Select your role to continue' : 'Sign in to your account'}</p>
 
+            {SHOW_DEMO && (<>
             {/* Role grid */}
             <div className="grid grid-cols-3 gap-2 mb-8">
               {ROLES.map(role => {
@@ -209,6 +217,7 @@ export default function LoginPage() {
                 </motion.div>
               )}
             </AnimatePresence>
+            </>)}
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -254,9 +263,11 @@ export default function LoginPage() {
               </motion.button>
             </form>
 
-            <p className="text-center text-xs mt-6" style={{ color: '#64748b' }}>
-              Demo credentials pre-filled · Select a role above
-            </p>
+            {SHOW_DEMO && (
+              <p className="text-center text-xs mt-6" style={{ color: '#64748b' }}>
+                Demo credentials pre-filled · Select a role above
+              </p>
+            )}
           </motion.div>
         </div>
       </div>
