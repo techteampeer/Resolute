@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { UploadCloud, FileText, File as FileIcon, Trash2, Eye, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { T } from './ui'
 import { ACCEPTED_DOCS, validDocType, fileKind, uid } from '../../../data/fulfillment'
+import { openDocument } from '../../../lib/backend'
 
 const KB = 1024, MB = KB * 1024
 const fmtSize = (b) => (b > MB ? `${(b / MB).toFixed(1)} MB` : `${Math.max(1, Math.round(b / KB))} KB`)
@@ -73,7 +74,7 @@ export function FileDropZone({ onFiles, multiple = false, compact = false }) {
 
 // One uploaded file row: icon, name/size, progress, success, actions.
 export function FileRow({ file, onRemove, onRetry, onReplace, checkbox, checked, onCheck }) {
-  const preview = () => { if (file.url) window.open(file.url, '_blank') }
+  const preview = () => openDocument(file)
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
       className="flex items-center gap-3 px-3 py-2 rounded-lg"
@@ -102,7 +103,7 @@ export function FileRow({ file, onRemove, onRetry, onReplace, checkbox, checked,
         {file.status === 'error' && onRetry && (
           <IconAct title="Retry" onClick={onRetry}><RefreshCw className="w-3.5 h-3.5" /></IconAct>
         )}
-        {file.status === 'done' && file.url && (
+        {file.status === 'done' && (file.url || file.path) && (
           <IconAct title="Preview" onClick={preview}><Eye className="w-3.5 h-3.5" /></IconAct>
         )}
         {file.status === 'done' && onReplace && (
