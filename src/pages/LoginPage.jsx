@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth, toErrorMessage } from '../context/AuthContext'
 import {
@@ -32,9 +32,15 @@ const ADMIN_ACCOUNTS = [
 // to force the demo picker on in a non-dev build (e.g. an internal staging URL).
 const SHOW_DEMO = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO_CREDS === 'true'
 
-export default function LoginPage() {
+// `variant` splits the entry surfaces: 'client' (external, /login) never shows
+// the role picker or any account hints; 'staff' (internal, /staff) keeps the
+// role convenience — but only in dev/staging via SHOW_DEMO. Both post to the
+// same auth backend; the split is UX + not advertising internal roles to clients.
+export default function LoginPage({ variant = 'client' }) {
   const navigate = useNavigate()
   const { login } = useAuth()
+  const isStaff = variant === 'staff'
+  const showPicker = isStaff && SHOW_DEMO
   const [selectedRole, setSelectedRole] = useState(null)
   const [adminAccount, setAdminAccount] = useState('rajni')
   const [email, setEmail]     = useState('')
@@ -142,10 +148,10 @@ export default function LoginPage() {
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
             className="glass-card p-8">
-            <h2 className="text-2xl font-bold mb-1" style={{ color: '#1e293b' }}>Sign in</h2>
-            <p className="text-sm mb-8" style={{ color: '#64748b' }}>{SHOW_DEMO ? 'Select your role to continue' : 'Sign in to your account'}</p>
+            <h2 className="text-2xl font-bold mb-1" style={{ color: '#1e293b' }}>{isStaff ? 'Staff sign in' : 'Sign in'}</h2>
+            <p className="text-sm mb-8" style={{ color: '#64748b' }}>{showPicker ? 'Select your role to continue' : isStaff ? 'Internal team access' : 'Sign in to your account'}</p>
 
-            {SHOW_DEMO && (<>
+            {showPicker && (<>
             {/* Role grid */}
             <div className="grid grid-cols-3 gap-2 mb-8">
               {ROLES.map(role => {
@@ -263,11 +269,18 @@ export default function LoginPage() {
               </motion.button>
             </form>
 
-            {SHOW_DEMO && (
+            {showPicker && (
               <p className="text-center text-xs mt-6" style={{ color: '#64748b' }}>
                 Demo credentials pre-filled · Select a role above
               </p>
             )}
+
+            {/* Cross-link between the client and staff entries */}
+            <p className="text-center text-xs mt-5" style={{ color: '#64748b' }}>
+              {isStaff
+                ? <Link to="/login" style={{ color: '#4d7c2f', fontWeight: 600 }}>← Back to client portal</Link>
+                : <>Resolute team member? <Link to="/staff" style={{ color: '#4d7c2f', fontWeight: 600 }}>Staff sign-in →</Link></>}
+            </p>
           </motion.div>
         </div>
       </div>
