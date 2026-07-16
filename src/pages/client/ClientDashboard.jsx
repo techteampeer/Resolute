@@ -7,7 +7,7 @@ import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare,
   Package, CheckCircle, Clock, ChevronRight, X, MapPin, Zap, Send, FileText, DollarSign
 } from 'lucide-react'
-import { ORDERS } from '../../data/mockData'
+import { clientCode as codeByName } from '../../data/mockData'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
 import { DEMO_ORDERS } from '../../data/demoData'
@@ -22,15 +22,18 @@ const NAV = [
   { path: '/client/billing', label: 'Billing',     icon: DollarSign },
   { path: '/client/support', label: 'Support',     icon: MessageSquare },
 ]
-const MY_IDS = ['RTS-10041', 'RTS-10042', 'RTS-10045']
-
-// Live copies of this client's orders (so delivered invoices/status reflect).
+// This client's orders, scoped by their client code — mirrors the Supabase RLS
+// (client_code = my_client_code()) so the UI shows exactly what the backend
+// would return. Supabase order rows carry `clientCode`; mock orders carry the
+// client name, mapped to a code via codeByName. No code → nothing (RLS parity).
 function useMyOrders() {
   const { user } = useAuth()
   const { orders } = useOrders()
-  // Demo sessions read ONLY the isolated fixture — never real/context orders.
   if (user?.demo) return DEMO_ORDERS
-  return MY_IDS.map(id => orders.find(o => o.id === id) || ORDERS.find(o => o.id === id)).filter(Boolean)
+  const my = user?.clientCode
+  if (!my) return []
+  const codeOf = (o) => o.clientCode || codeByName(o.client)
+  return orders.filter(o => codeOf(o) === my)
 }
 
 // Invoice summary card — payment itself happens on the Billing page (ACH/Check).
