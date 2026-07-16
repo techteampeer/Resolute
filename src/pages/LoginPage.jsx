@@ -38,7 +38,7 @@ const SHOW_DEMO = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO_CREDS ==
 // same auth backend; the split is UX + not advertising internal roles to clients.
 export default function LoginPage({ variant = 'client' }) {
   const navigate = useNavigate()
-  const { login } = useAuth()
+  const { login, loginAsDemo } = useAuth()
   const isStaff = variant === 'staff'
   const showPicker = isStaff && SHOW_DEMO
   const [selectedRole, setSelectedRole] = useState(null)
@@ -273,6 +273,22 @@ export default function LoginPage({ variant = 'client' }) {
               <p className="text-center text-xs mt-6" style={{ color: '#64748b' }}>
                 Demo credentials pre-filled · Select a role above
               </p>
+            )}
+
+            {/* Guest demo — client entry only, no signup, no backend */}
+            {!isStaff && (
+              <>
+                <div className="flex items-center gap-3 my-5">
+                  <div className="flex-1 h-px" style={{ background: 'rgba(30,41,59,0.10)' }} />
+                  <span className="text-[11px] uppercase tracking-wider" style={{ color: '#94a3b8' }}>or</span>
+                  <div className="flex-1 h-px" style={{ background: 'rgba(30,41,59,0.10)' }} />
+                </div>
+                <button type="button" onClick={() => { loginAsDemo(); navigate('/client') }}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
+                  style={{ background: 'rgba(77,124,47,0.10)', border: '1px solid rgba(77,124,47,0.30)', color: '#3d7020' }}>
+                  Try the live demo — no sign-up
+                </button>
+              </>
             )}
 
             {/* Cross-link between the client and staff entries */}

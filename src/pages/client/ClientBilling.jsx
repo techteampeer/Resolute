@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { FileText, CheckCircle, Upload, AlertTriangle, Landmark, Mail, Clock } from 'lucide-react'
 import { useOrders } from '../../context/OrderContext'
+import { useAuth } from '../../context/AuthContext'
 import { isSupabaseConfigured, uploadDocument, openDocument } from '../../lib/backend'
 import {
   REMITTANCE, hasRemittanceDetails, termByKey, getClientTerms, hydrateClientTerms,
@@ -137,7 +138,7 @@ function PayPanel({ payLabel, docKeyId, onPaid }) {
   )
 }
 
-function InvoiceRow({ order, termKey, onPaid }) {
+function InvoiceRow({ order, termKey, onPaid, demo }) {
   const [open, setOpen] = useState(false)
   const status = payStatusOf(order)
   const p = paymentOf(order)
@@ -166,12 +167,12 @@ function InvoiceRow({ order, termKey, onPaid }) {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-lg font-bold tabular-nums" style={{ color: '#1e293b' }}>{money(invoiceAmount(order))}</span>
-          {(status === 'unpaid' || status === 'bounced') && (
+          {!demo && (status === 'unpaid' || status === 'bounced') && (
             <button onClick={() => setOpen(!open)} className="btn-secondary text-xs px-3 py-2">{open ? 'Close' : 'Pay'}</button>
           )}
         </div>
       </div>
-      {open && (status === 'unpaid' || status === 'bounced') && (
+      {!demo && open && (status === 'unpaid' || status === 'bounced') && (
         <PayPanel payLabel={invoiceNumber(order)} docKeyId={order.id}
           onPaid={(pay) => { onPaid(order, pay); setOpen(false) }} />
       )}
@@ -181,6 +182,8 @@ function InvoiceRow({ order, termKey, onPaid }) {
 
 export default function ClientBilling({ myOrders }) {
   const { updateOrder } = useOrders()
+  const { user } = useAuth()
+  const isDemo = !!user?.demo
   const [, bump] = useState(0)
   // Pull durable terms into the local cache so due dates match Admin's view.
   useEffect(() => { hydrateClientTerms().then(ok => ok && bump(n => n + 1)) }, [])
@@ -211,6 +214,12 @@ export default function ClientBilling({ myOrders }) {
         </span>
       </div>
 
+      {isDemo && (
+        <div className="text-xs px-4 py-2.5 rounded-xl" style={{ background:'rgba(77,124,47,0.08)', border:'1px solid rgba(77,124,47,0.22)', color:'#3d7020' }}>
+          Payments are disabled in the demo — the invoices below are sample data.
+        </div>
+      )}
+
       {/* Consolidated statement (termed clients) */}
       {stmt && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -227,9 +236,11 @@ export default function ClientBilling({ myOrders }) {
             </div>
             <div className="flex items-center gap-3">
               <span className="text-xl font-bold tabular-nums" style={{ color: '#1e293b' }}>{money(stmt.total)}</span>
-              <button onClick={() => setPayStmt(!payStmt)} className="btn-primary text-xs px-4 py-2">
-                {payStmt ? 'Close' : 'Pay Statement'}
-              </button>
+              {!isDemo && (
+                <button onClick={() => setPayStmt(!payStmt)} className="btn-primary text-xs px-4 py-2">
+                  {payStmt ? 'Close' : 'Pay Statement'}
+                </button>
+              )}
             </div>
           </div>
           <div className="mt-3 space-y-1">
@@ -262,7 +273,7 @@ export default function ClientBilling({ myOrders }) {
               <span className="tabular-nums font-bold text-sm" style={{ color: '#1e293b' }}>{money(invoiceAmount(o))}</span>
             </div>
           )
-          : <InvoiceRow key={o.id} order={o} termKey={termKey} onPaid={payOne} />
+          : <InvoiceRow key={o.id} order={o} termKey={termKey} onPaid={payOne} demo={isDemo} />
         )}
       </div>
 
