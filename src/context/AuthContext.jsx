@@ -28,7 +28,7 @@ const MOCK_USERS = {
   'examiner@resolute.com':  { password: 'examiner123',  role: 'examiner', name: 'Jordan Lee',    avatar: 'JL' },
   'typer@resolute.com':     { password: 'typer123',     role: 'typer',    name: 'Priya Nair',    avatar: 'PN' },
   'delivery@resolute.com':  { password: 'delivery123',  role: 'delivery', name: 'Morgan Davis',  avatar: 'MD' },
-  'client@resolute.com':    { password: 'client123',    role: 'client',   name: 'Taylor Brooks', avatar: 'TB' },
+  'client@resolute.com':    { password: 'client123',    role: 'client',   name: 'Taylor Brooks', avatar: 'TB', clientCode: 'CL01' },
   'operator@resolute.com':  { password: 'operator123',  role: 'operator', name: 'Jordan Blake',   avatar: 'JB' },
 }
 
@@ -62,7 +62,7 @@ export function AuthProvider({ children }) {
     }
     const found = MOCK_USERS[email.toLowerCase()]
     if (found && found.password === password) {
-      setUser({ email: email.toLowerCase(), role: found.role, name: found.name, avatar: found.avatar, superAdmin: !!found.superAdmin })
+      setUser({ email: email.toLowerCase(), role: found.role, name: found.name, avatar: found.avatar, superAdmin: !!found.superAdmin, clientCode: found.clientCode || null })
       return { success: true, role: found.role }
     }
     return { success: false, error: 'Invalid credentials' }
