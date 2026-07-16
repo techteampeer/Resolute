@@ -32,7 +32,8 @@ export default function App() {
       <FulfillmentProvider>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
+          <Route path="/login" element={<LoginPage variant="client" />} />
+          <Route path="/staff" element={<LoginPage variant="staff" />} />
           <Route path="/" element={<RoleRedirect />} />
           <Route path="/admin/*" element={
             <ProtectedRoute allowedRole="admin"><AdminDashboard /></ProtectedRoute>
