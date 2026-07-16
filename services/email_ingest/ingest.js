@@ -77,11 +77,14 @@ export async function processMessage(msg, deps) {
     try { refs = await uploadPdfs(messageId || subject || 'unmatched', pdfs) }
     catch (e) { log({ messageId, action: 'warn', reason: `attachment upload failed: ${e.message}` }) }
   }
+  // Write the idempotency-ledger row FIRST: email_review_queue.message_id has a
+  // foreign key to email_ingest_log.message_id, so the log row must exist before
+  // the review row can reference it.
+  await markProcessed({ messageId, sender, subject, status: 'queued', reviewReason })
   await enqueueReview({
     messageId, sender, subject, clientCode: client?.code || null,
     parsed, attachments: refs, reviewReason,
   })
-  await markProcessed({ messageId, sender, subject, status: 'queued', reviewReason })
   notify({ messageId, sender, subject, reviewReason })
   log({ messageId, action: 'queued', reason: reviewReason })
   return { action: 'queued', reason: reviewReason, parsed }
