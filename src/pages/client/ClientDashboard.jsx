@@ -9,6 +9,8 @@ import {
 } from 'lucide-react'
 import { ORDERS } from '../../data/mockData'
 import { useOrders } from '../../context/OrderContext'
+import { useAuth } from '../../context/AuthContext'
+import { DEMO_ORDERS } from '../../data/demoData'
 import ClientBilling from './ClientBilling'
 import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '../../lib/billing'
 
@@ -24,7 +26,10 @@ const MY_IDS = ['RTS-10041', 'RTS-10042', 'RTS-10045']
 
 // Live copies of this client's orders (so delivered invoices/status reflect).
 function useMyOrders() {
+  const { user } = useAuth()
   const { orders } = useOrders()
+  // Demo sessions read ONLY the isolated fixture — never real/context orders.
+  if (user?.demo) return DEMO_ORDERS
   return MY_IDS.map(id => orders.find(o => o.id === id) || ORDERS.find(o => o.id === id)).filter(Boolean)
 }
 
@@ -151,6 +156,7 @@ const TURNAROUND = [
 
 function PlaceOrderPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const { createOrder } = useOrders()
   const [step, setStep] = useState(1)
   const [createdId, setCreatedId] = useState(null)
@@ -179,6 +185,22 @@ function PlaceOrderPage() {
     setCreatedId(order.id)
     setSubmitted(true)
   }
+
+  // Demo is a read-only sandbox — no real orders created.
+  if (user?.demo) return (
+    <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[60vh] text-center">
+      <div className="w-16 h-16 rounded-full flex items-center justify-center mb-5" style={{ background:'rgba(77,124,47,0.14)' }}>
+        <PlusCircle className="w-8 h-8" style={{ color:ROLE_COLOR }} />
+      </div>
+      <h2 className="text-xl font-bold mb-2" style={{ color:'#1e293b' }}>Placing orders is disabled in the demo</h2>
+      <p className="text-sm mb-6" style={{ color:'#475569' }}>
+        You're exploring a read-only sandbox. Create a free account to place and track real title orders.
+      </p>
+      <button onClick={() => navigate('/client/orders')} className="btn-primary text-sm px-5 py-2.5">
+        Browse the sample orders instead
+      </button>
+    </div>
+  )
 
   if (submitted) return (
     <motion.div initial={{ opacity:0, scale:0.95 }} animate={{ opacity:1, scale:1 }}
@@ -530,8 +552,16 @@ function BillingPage() {
 }
 
 export default function ClientDashboard() {
+  const { user } = useAuth()
   return (
     <Layout navItems={NAV} role="client" roleColor={ROLE_COLOR}>
+      {user?.demo && (
+        <div className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm"
+          style={{ background:'rgba(77,124,47,0.10)', border:'1px solid rgba(77,124,47,0.28)', color:'#3d7020' }}>
+          <Zap className="w-4 h-4 flex-shrink-0" />
+          <span><strong>Demo mode</strong> — sample data, read-only. Nothing here is real, and it resets when you refresh.</span>
+        </div>
+      )}
       <Routes>
         <Route index         element={<ClientHome />} />
         <Route path="order"  element={<PlaceOrderPage />} />

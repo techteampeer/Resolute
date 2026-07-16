@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { isSupabaseConfigured, getCurrentUser, signIn, signOut, onAuthChange } from '../lib/backend'
+import { DEMO_USER } from '../data/demoData'
 
 const AuthContext = createContext(null)
 
@@ -67,13 +68,18 @@ export function AuthProvider({ children }) {
     return { success: false, error: 'Invalid credentials' }
   }
 
+  // Guest demo: an ephemeral client session that NEVER touches the backend
+  // (no signIn, no Supabase session), so it can't reach real data and resets on
+  // refresh. The demo client view reads its own fixture (see demoData.js).
+  const loginAsDemo = () => setUser({ ...DEMO_USER })
+
   const logout = async () => {
-    if (isSupabaseConfigured) await signOut()
+    if (isSupabaseConfigured && !user?.demo) await signOut()
     setUser(null)
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, loginAsDemo, logout }}>
       {children}
     </AuthContext.Provider>
   )
