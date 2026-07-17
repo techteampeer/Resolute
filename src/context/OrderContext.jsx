@@ -123,7 +123,10 @@ export function OrderProvider({ children }) {
     }
     const order = {
       id,
+      // Attribute the order to the placing client so it appears in their
+      // My Orders (clientCode scoping) and satisfies/readbacks under RLS.
       client: data.client || 'Web Order',
+      clientCode: data.clientCode || null,
       state: data.state || '', county: data.county || '', type: data.type || 'Full Search',
       status: 'received', priority: data.priority || 'normal', payment: data.payment || 'Check',
       clarification: null, assignedTo: 'screener',

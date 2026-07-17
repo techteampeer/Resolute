@@ -39,7 +39,9 @@ export const VENDORS = [
 ]
 
 const CODE_BY_NAME   = Object.fromEntries(CLIENTS.map(c => [c.name, c.code]))
+const NAME_BY_CODE   = Object.fromEntries(CLIENTS.map(c => [c.code, c.name]))
 export const clientCode   = (name) => CODE_BY_NAME[name] || name
+export const clientName   = (code) => NAME_BY_CODE[code] || null
 export const clientByName = (name) => CLIENTS.find(c => c.name === name) || null
 // Returns the real client name for super admins, otherwise the stable client code.
 export const displayClient = (name, user) => (user && user.superAdmin) ? name : (CODE_BY_NAME[name] || name)
