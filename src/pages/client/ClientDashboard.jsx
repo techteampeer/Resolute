@@ -7,7 +7,7 @@ import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare,
   Package, CheckCircle, Clock, ChevronRight, X, MapPin, Zap, Send, FileText, DollarSign
 } from 'lucide-react'
-import { clientCode as codeByName } from '../../data/mockData'
+import { clientCode as codeByName, clientName } from '../../data/mockData'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
 import { DEMO_ORDERS } from '../../data/demoData'
@@ -163,10 +163,17 @@ function PlaceOrderPage() {
   const { createOrder } = useOrders()
   const [step, setStep] = useState(1)
   const [createdId, setCreatedId] = useState(null)
+  // BUG_008: a registered client shouldn't retype contact details every order —
+  // prefill from the signed-in profile (still editable per order).
+  const [first = '', ...rest] = (user?.name || '').split(' ')
   const [form, setForm] = useState({
     searchType:'', state:'', county:'', address:'', city:'', zip:'', parcelId:'',
     buyerFirst:'', buyerLast:'', borrowerFirst:'', borrowerLast:'', sellerFirst:'', sellerLast:'',
-    priority:'normal', firstName:'', lastName:'', email:'', company:'', role:'', notes:''
+    priority:'normal',
+    firstName: first, lastName: rest.join(' '),
+    email: user?.email || '',
+    company: clientName(user?.clientCode) || '',
+    role:'', notes:''
   })
   const [submitted, setSubmitted] = useState(false)
   const set = (k,v) => setForm(f => ({ ...f, [k]:v }))
@@ -178,6 +185,10 @@ function PlaceOrderPage() {
     const order = await createOrder({
       state: form.state, county: form.county, type: form.searchType || 'Full Search',
       priority: form.priority,
+      // Attribute to the signed-in client so the order is trackable in My
+      // Orders and readable back under RLS (client_code = my_client_code()).
+      clientCode: user?.clientCode || null,
+      client: clientName(user?.clientCode) || user?.name || 'Web Order',
       intake: {
         source: 'web', propertyAddress: [form.address, form.city, form.state, form.zip].filter(Boolean).join(', '),
         parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
