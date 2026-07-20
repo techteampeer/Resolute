@@ -5,9 +5,10 @@ import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare,
-  Package, CheckCircle, Clock, ChevronRight, X, MapPin, Zap, Send, FileText, DollarSign
+  Package, CheckCircle, Clock, ChevronRight, X, MapPin, Zap, Send, FileText, DollarSign, Search
 } from 'lucide-react'
 import { clientCode as codeByName, clientName } from '../../data/mockData'
+import { openDocument } from '../../lib/backend'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
 import { DEMO_ORDERS } from '../../data/demoData'
@@ -86,12 +87,15 @@ function clientStage(order) {
   return { idx: 0, label: 'Received', color: '#4d7c2f' }
 }
 
-function TrackOrder({ order }) {
+// BUG_007: clicking an order opens its detail view (see ClientOrderModal).
+function TrackOrder({ order, onOpen }) {
   const stage = clientStage(order)
   const idx = stage.idx
   const sc  = stage.color
   return (
-    <div className="glass-card p-5">
+    <div className={`glass-card p-5 ${onOpen ? 'cursor-pointer transition-shadow hover:shadow-lg' : ''}`}
+      role={onOpen ? 'button' : undefined} tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen} onKeyDown={e => onOpen && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}>
       <div className="flex items-center justify-between mb-4">
         <div>
           <div className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{order.id}</div>
@@ -136,6 +140,81 @@ function TrackOrder({ order }) {
           transition={{ duration:1.2, ease:'easeOut' }}
           style={{ background:'linear-gradient(90deg,#3d7020,#8fc268)' }} />
       </div>
+    </div>
+  )
+}
+
+// BUG_007: client-facing order detail. Shows the tracking stage, everything the
+// client submitted (workflow.intake), milestone dates, clarification state, and
+// any documents delivered to the client (opened via the re-signing openDocument).
+function ClientOrderModal({ order, onClose }) {
+  const stage = clientStage(order)
+  const intake = order.workflow?.intake
+  const docs = [
+    order.workflow?.commitmentDoc && { ...order.workflow.commitmentDoc, label: 'Title Commitment' },
+    ...(order.workflow?.supplementaryDocs || []).filter(d => d.sendToCustomer).map(d => ({ ...d.file, label: 'Supplementary' })),
+  ].filter(Boolean)
+  const Row = ({ k, v }) => v ? (
+    <div><span style={{ color:'#64748b' }}>{k}: </span><span className="font-medium" style={{ color:'#1e293b' }}>{v}</span></div>
+  ) : null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(15,23,42,0.45)' }} onClick={onClose}>
+      <motion.div initial={{ scale:0.96, opacity:0 }} animate={{ scale:1, opacity:1 }} onClick={e => e.stopPropagation()}
+        className="glass-card w-full overflow-y-auto" style={{ maxWidth:560, maxHeight:'90vh', background:'#fff', borderRadius:14 }}>
+        <div className="flex items-start justify-between p-5 pb-3">
+          <div>
+            <div className="font-mono font-semibold text-sm" style={{ color:ROLE_COLOR }}>{order.id}</div>
+            <div className="font-bold text-lg" style={{ color:'#1e293b' }}>{order.type}</div>
+            <div className="text-xs" style={{ color:'#64748b' }}>{order.county}, {order.state} · placed {order.created}</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background:`${stage.color}1e`, color:stage.color }}>{stage.label}</span>
+            <button onClick={onClose} className="p-1" style={{ color:'#64748b' }}><X className="w-4 h-4" /></button>
+          </div>
+        </div>
+        <div className="px-5 pb-5 space-y-4">
+          {order.clarification === 'pending' && (
+            <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background:'rgba(220,140,40,0.10)', border:'1px solid rgba(220,140,40,0.25)', color:'#b45309' }}>
+              Clarification requested — our team is waiting on additional information for this order.
+            </div>
+          )}
+          <div className="rounded-xl p-4 space-y-1.5 text-sm" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
+            <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#64748b' }}>Order details</div>
+            <Row k="Property" v={intake?.propertyAddress} />
+            <Row k="Parcel / APN" v={intake?.parcelNumberAPN} />
+            <Row k="Buyer" v={intake?.buyer} />
+            <Row k="Borrower" v={intake?.borrowerName} />
+            <Row k="Seller" v={intake?.seller} />
+            <Row k="Priority" v={order.priority === 'rush' ? 'RUSH' : 'Normal'} />
+            <Row k="Special instructions" v={intake?.specialInstructions} />
+            {!intake && <div className="text-xs" style={{ color:'#64748b' }}>Submitted before detailed intake was captured.</div>}
+          </div>
+          <div className="rounded-xl p-4 text-sm space-y-1.5" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
+            <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#64748b' }}>Timeline</div>
+            <Row k="Placed" v={order.created} />
+            <Row k="Estimated delivery" v={order.eta} />
+            <Row k="Delivered" v={order.completed} />
+            <div className="pt-1"><span style={{ color:'#64748b' }}>Progress: </span><span className="font-medium" style={{ color:'#1e293b' }}>{order.progress}%</span></div>
+          </div>
+          {docs.length > 0 && (
+            <div className="rounded-xl p-4 space-y-2" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#64748b' }}>Delivered documents</div>
+              {docs.map((d, i) => (
+                <div key={d.id || i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(30,41,59,0.08)' }}>
+                  <FileText className="w-4 h-4 flex-shrink-0" style={{ color: d.type === 'pdf' ? '#dc2626' : '#2563eb' }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-medium truncate" style={{ color:'#1e293b' }}>{d.name}</div>
+                    <div className="text-[10px] uppercase tracking-wide" style={{ color:'#64748b' }}>{d.label}</div>
+                  </div>
+                  {(d.url || d.path) && (
+                    <button onClick={() => openDocument(d)} className="text-xs font-semibold underline" style={{ color:ROLE_COLOR, background:'none', border:'none', cursor:'pointer' }}>Open</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </motion.div>
     </div>
   )
 }
@@ -433,6 +512,7 @@ function PlaceOrderPage() {
 function ClientHome() {
   const myOrders = useMyOrders()
   const navigate = useNavigate()
+  const [openOrder, setOpenOrder] = useState(null)
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -466,10 +546,11 @@ function ClientHome() {
           <h2 className="font-semibold" style={{ color:'#1e293b' }}>Order Tracking</h2>
           {myOrders.map(o => (
             <React.Fragment key={o.id}>
-              <TrackOrder order={o} />
+              <TrackOrder order={o} onOpen={() => setOpenOrder(o)} />
               {o.workflow?.invoiceVisibleToClient && <InvoiceCard order={o} />}
             </React.Fragment>
           ))}
+          {openOrder && <ClientOrderModal order={openOrder} onClose={() => setOpenOrder(null)} />}
         </div>
         <div className="glass-card p-5">
           <h2 className="font-semibold mb-1" style={{ color:'#1e293b' }}>Coverage Map</h2>
@@ -545,17 +626,43 @@ function SupportPage() {
 
 function MyOrdersPage() {
   const myOrders = useMyOrders()
+  const [openOrder, setOpenOrder] = useState(null)
+  const [q, setQ] = useState('')
+  // BUG_006: search across order #, type, status/stage, and property details —
+  // works for both active and completed orders so users don't page-hunt.
+  const query = q.trim().toLowerCase()
+  const shown = !query ? myOrders : myOrders.filter(o => {
+    const hay = [
+      o.id, o.type, o.status, clientStage(o).label, o.state, o.county,
+      o.workflow?.intake?.propertyAddress, o.workflow?.intake?.parcelNumberAPN,
+    ].filter(Boolean).join(' ').toLowerCase()
+    return hay.includes(query)
+  })
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>My Orders</h1>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>My Orders</h1>
+        <div className="relative" style={{ minWidth: 260 }}>
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
+          <input value={q} onChange={e => setQ(e.target.value)}
+            placeholder="Search order #, property, status…"
+            className="input-field text-sm pl-9 w-full" />
+        </div>
+      </div>
       <div className="space-y-4">
-        {myOrders.map(o => (
+        {shown.map(o => (
           <React.Fragment key={o.id}>
-            <TrackOrder order={o} />
+            <TrackOrder order={o} onOpen={() => setOpenOrder(o)} />
             {o.workflow?.invoiceVisibleToClient && <InvoiceCard order={o} />}
           </React.Fragment>
         ))}
+        {shown.length === 0 && (
+          <div className="glass-card p-8 text-center text-sm" style={{ color: '#64748b' }}>
+            {myOrders.length === 0 ? 'No orders yet.' : `No orders match “${q}”.`}
+          </div>
+        )}
       </div>
+      {openOrder && <ClientOrderModal order={openOrder} onClose={() => setOpenOrder(null)} />}
     </div>
   )
 }
