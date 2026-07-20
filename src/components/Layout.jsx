@@ -1,16 +1,62 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useOrders } from '../context/OrderContext'
+import { clientCode as codeByName } from '../data/mockData'
 import { MapPin, LogOut, Bell, ChevronDown, Menu } from 'lucide-react'
+
+// BUG_001: notifications derive from the live activity feed. A stable per-item
+// key (durable id, else time+text) lets us track which the signed-in user has
+// already seen, persisted in localStorage so the badge doesn't reset on reload.
+const notifKey = (n, i) => String(n.id ?? `${n.time || ''}|${n.action || ''}`)
+const seenStoreKey = (user) => `resolute:notifSeen:${user?.email || user?.name || 'anon'}`
+const readSeen = (user) => {
+  try { return new Set(JSON.parse(localStorage.getItem(seenStoreKey(user)) || '[]')) }
+  catch { return new Set() }
+}
+const NOTIF_DOT = { new: '#4d7c2f', delivered: '#16a34a', progress: '#d97706', status: '#7c3aed', user: '#2563eb' }
 
 export default function Layout({ children, navItems, role, roleColor = '#4d7c2f', lightTheme = true }) {
   const { user, logout } = useAuth()
+  const { activityLog = [], orders = [] } = useOrders() || {}
   const navigate    = useNavigate()
   const location    = useLocation()
   const [collapsed, setCollapsed]       = useState(false)
   const [mobileOpen, setMobileOpen]     = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [showNotif, setShowNotif]       = useState(false)
+  const [seen, setSeen]                 = useState(() => readSeen(user))
+
+  // Notifications visible to this user. Staff/admin see the whole feed; a client
+  // sees only entries about their own orders (mirrors My Orders/RLS scoping).
+  const notifications = useMemo(() => {
+    const isClient = role === 'client'
+    if (!isClient) return activityLog
+    const myCode = user?.clientCode
+    if (!myCode) return []
+    const codeOf = (o) => o.clientCode || codeByName(o.client)
+    const myIds = new Set(orders.filter(o => codeOf(o) === myCode).map(o => o.id))
+    return activityLog.filter(n => {
+      if (n.orderId) return myIds.has(n.orderId)
+      const m = String(n.action || '').match(/RTS-\d+/)   // seed entries carry the id only in text
+      return m ? myIds.has(m[0]) : false
+    })
+  }, [activityLog, orders, role, user?.clientCode])
+
+  const unreadCount = notifications.reduce((c, n, i) => c + (seen.has(notifKey(n, i)) ? 0 : 1), 0)
+
+  const openNotif = () => {
+    setShowUserMenu(false)
+    const next = !showNotif
+    setShowNotif(next)
+    if (next && unreadCount) {                 // mark everything currently shown as read
+      const merged = new Set(seen)
+      notifications.forEach((n, i) => merged.add(notifKey(n, i)))
+      setSeen(merged)
+      try { localStorage.setItem(seenStoreKey(user), JSON.stringify([...merged])) } catch { /* ignore */ }
+    }
+  }
 
   const handleLogout = () => { logout(); navigate('/login') }
 
@@ -210,14 +256,51 @@ export default function Layout({ children, navItems, role, roleColor = '#4d7c2f'
 
           {/* Bell */}
           <div className="relative">
-            <button className="w-9 h-9 rounded-xl border flex items-center justify-center transition-colors"
-              style={{ background: T.iconBg, borderColor: T.iconBdr, color: T.iconClr }}
+            <button onClick={openNotif}
+              className="w-9 h-9 rounded-xl border flex items-center justify-center transition-colors"
+              style={{ background: T.iconBg, borderColor: T.iconBdr, color: showNotif ? T.iconHover : T.iconClr }}
               onMouseOver={e => e.currentTarget.style.color = T.iconHover}
-              onMouseOut={e => e.currentTarget.style.color = T.iconClr}>
+              onMouseOut={e => e.currentTarget.style.color = showNotif ? T.iconHover : T.iconClr}
+              aria-label="Notifications">
               <Bell className="w-4 h-4" />
             </button>
-            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center"
-              style={{ background: T.badgePing, color: '#f5f7f2' }}>3</span>
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
+                style={{ background: T.badgePing, color: '#f5f7f2' }}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+            )}
+            <AnimatePresence>
+              {showNotif && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowNotif(false)} />
+                  <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
+                    className="absolute right-0 top-full mt-2 z-50 rounded-xl border shadow-lg overflow-hidden"
+                    style={{ width: 340, maxWidth: '90vw', background: T.menuBg, borderColor: T.menuBdr }}>
+                    <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: T.menuBdr }}>
+                      <span className="text-sm font-semibold" style={{ color: T.userText }}>Notifications</span>
+                      <span className="text-[11px]" style={{ color: T.userSub }}>{notifications.length} recent</span>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+                          <Bell className="w-6 h-6" style={{ color: T.userSub, opacity: 0.6 }} />
+                          <span className="text-sm" style={{ color: T.userSub }}>You're all caught up</span>
+                        </div>
+                      ) : notifications.slice(0, 30).map((n, i) => (
+                        <div key={notifKey(n, i)} className="flex gap-2.5 px-4 py-3 border-b last:border-b-0"
+                          style={{ borderColor: T.menuBdr }}>
+                          <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"
+                            style={{ background: NOTIF_DOT[n.type] || T.userSub }} />
+                          <div className="min-w-0">
+                            <p className="text-[13px] leading-snug" style={{ color: T.menuText }}>{n.action}</p>
+                            {n.time && <p className="text-[11px] mt-0.5" style={{ color: T.userSub }}>{n.time}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* User menu */}
