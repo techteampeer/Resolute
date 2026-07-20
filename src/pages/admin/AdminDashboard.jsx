@@ -158,6 +158,7 @@ const DETAIL_TABS = [
 const orderFiles = (order) => {
   const w = order.workflow || {}
   const out = []
+  ;(w.clientDocs || []).forEach(d => out.push({ ...d, stage: 'Client · Upload' }))
   if (w.screenerDoc) out.push({ ...w.screenerDoc, stage: 'Screening' })
   if (w.examinerDoc) out.push({ ...w.examinerDoc, stage: 'Examination' })
   if (w.commitmentDoc) out.push({ ...w.commitmentDoc, stage: 'Typing · Commitment' })
@@ -414,7 +415,7 @@ function OrderEditModal({ order, user, onClose, onSave }) {
           <div style={{ padding:'18px 22px' }}>
             {files.length === 0 ? (
               <div style={{ fontSize:13, color:Q.muted, textAlign:'center', padding:'24px 0' }}>
-                No documents attached yet. Files uploaded by the screener and examiner appear here.
+                No documents attached yet. Files uploaded by the client, screener, and examiner appear here.
               </div>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>

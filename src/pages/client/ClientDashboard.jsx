@@ -5,10 +5,12 @@ import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare,
-  Package, CheckCircle, Clock, ChevronRight, X, MapPin, Zap, Send, FileText, DollarSign, Search
+  Package, CheckCircle, Clock, ChevronRight, X, MapPin, Zap, Send, FileText, DollarSign, Search,
+  UploadCloud, Paperclip, Trash2, AlertCircle, Eye
 } from 'lucide-react'
 import { clientCode as codeByName, clientName } from '../../data/mockData'
-import { openDocument } from '../../lib/backend'
+import { isSupabaseConfigured, openDocument, uploadDocument } from '../../lib/backend'
+import { fileKind, uid } from '../../data/fulfillment'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
 import { DEMO_ORDERS } from '../../data/demoData'
@@ -144,12 +146,96 @@ function TrackOrder({ order, onOpen }) {
   )
 }
 
+// BUG_004: client-facing multi-file attach (light theme). Clients attach
+// reference material (deed scans, prior policies, payoff letters, etc.).
+// `value` is an array of doc refs { id, name, type, status, file?, url?, path? }.
+// When `orderId` is given (existing order) files upload immediately to Storage;
+// otherwise they're STAGED with the raw File (uploaded on order submit) and an
+// object URL so they preview in-session even in mock mode.
+const CLIENT_ATTACH_ACCEPT = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.tif,.tiff,application/pdf,image/*'
+const validAttach = (file) => /\.(pdf|docx?|jpe?g|png|tiff?)$/i.test(file.name || '')
+
+function ClientAttach({ orderId = null, value = [], onChange, accent = ROLE_COLOR }) {
+  const inputRef = React.useRef(null)
+  const [err, setErr] = useState('')
+  const [drag, setDrag] = useState(false)
+
+  const add = async (list) => {
+    const incoming = Array.from(list || [])
+    if (!incoming.length) return
+    if (incoming.some(f => !validAttach(f))) { setErr('PDF, Word, or image files only'); return }
+    setErr('')
+    for (const file of incoming) {
+      const ref = { id: uid(), name: file.name, type: fileKind(file.name), status: 'staged', file, url: URL.createObjectURL(file) }
+      if (orderId && isSupabaseConfigured) {
+        ref.status = 'uploading'; delete ref.file
+        onChange(v => [...v, ref])
+        try { const { url, path } = await uploadDocument(orderId, file); onChange(v => v.map(x => x.id === ref.id ? { ...x, status: 'done', url, path } : x)) }
+        catch { onChange(v => v.map(x => x.id === ref.id ? { ...x, status: 'error' } : x)) }
+      } else {
+        onChange(v => [...v, ref])
+      }
+    }
+  }
+  const remove = (id) => onChange(v => v.filter(x => x.id !== id))
+
+  return (
+    <div className="space-y-2">
+      <div role="button" tabIndex={0}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click() } }}
+        onDragOver={e => { e.preventDefault(); setDrag(true) }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={e => { e.preventDefault(); setDrag(false); add(e.dataTransfer.files) }}
+        className="rounded-xl flex flex-col items-center justify-center py-5 px-4 cursor-pointer transition-all"
+        style={{ border:`1.5px dashed ${drag ? accent : 'rgba(77,124,47,0.30)'}`, background: drag ? `${accent}10` : 'transparent' }}>
+        <UploadCloud className="w-6 h-6 mb-1.5" style={{ color: drag ? accent : '#64748b' }} />
+        <div className="text-sm font-medium" style={{ color:'#1e293b' }}>Drag &amp; drop or <span style={{ color:accent }}>browse</span></div>
+        <div className="text-[11px] mt-0.5" style={{ color:'#64748b' }}>PDF, Word, or image · up to 25 MB each</div>
+        <input ref={inputRef} type="file" accept={CLIENT_ATTACH_ACCEPT} multiple className="hidden"
+          onChange={e => { add(e.target.files); e.target.value = '' }} />
+      </div>
+      {err && <div className="flex items-center gap-1.5 text-[12px]" style={{ color:'#dc2626' }}><AlertCircle className="w-3.5 h-3.5" /> {err}</div>}
+      {value.length > 0 && (
+        <div className="space-y-1.5">
+          {value.map(f => (
+            <div key={f.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(30,41,59,0.10)' }}>
+              <FileText className="w-4 h-4 flex-shrink-0" style={{ color: f.type === 'pdf' ? '#dc2626' : f.type === 'word' ? '#2563eb' : '#64748b' }} />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-medium truncate" style={{ color:'#1e293b' }}>{f.name}</div>
+                <div className="text-[10px]" style={{ color:'#64748b' }}>
+                  {f.status === 'uploading' ? 'Uploading…' : f.status === 'error' ? 'Upload failed' : f.status === 'staged' ? 'Ready to send' : 'Uploaded'}
+                </div>
+              </div>
+              {(f.url || f.path) && f.status !== 'uploading' && (
+                <button type="button" onClick={() => openDocument(f)} title="Preview" className="p-1" style={{ color:'#64748b' }}><Eye className="w-4 h-4" /></button>
+              )}
+              <button type="button" onClick={() => remove(f.id)} title="Remove" className="p-1" style={{ color:'#dc2626' }}><Trash2 className="w-4 h-4" /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // BUG_007: client-facing order detail. Shows the tracking stage, everything the
 // client submitted (workflow.intake), milestone dates, clarification state, and
 // any documents delivered to the client (opened via the re-signing openDocument).
 function ClientOrderModal({ order, onClose }) {
+  const { user } = useAuth()
+  const { updateOrder } = useOrders()
   const stage = clientStage(order)
   const intake = order.workflow?.intake
+  // BUG_004: the client's own reference uploads travel on workflow.clientDocs.
+  // Local mirror so newly-added files show immediately (the prop is a snapshot).
+  const [clientDocs, setClientDocs] = useState(order.workflow?.clientDocs || [])
+  const canUpload = !user?.demo
+  const syncDocs = (updater) => setClientDocs(prev => {
+    const next = typeof updater === 'function' ? updater(prev) : updater
+    updateOrder({ ...order, workflow: { ...order.workflow, clientDocs: next } })
+    return next
+  })
   const docs = [
     order.workflow?.commitmentDoc && { ...order.workflow.commitmentDoc, label: 'Title Commitment' },
     ...(order.workflow?.supplementaryDocs || []).filter(d => d.sendToCustomer).map(d => ({ ...d.file, label: 'Supplementary' })),
@@ -174,8 +260,16 @@ function ClientOrderModal({ order, onClose }) {
         </div>
         <div className="px-5 pb-5 space-y-4">
           {order.clarification === 'pending' && (
-            <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background:'rgba(220,140,40,0.10)', border:'1px solid rgba(220,140,40,0.25)', color:'#b45309' }}>
-              Clarification requested — our team is waiting on additional information for this order.
+            <div className="space-y-2">
+              <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background:'rgba(220,140,40,0.10)', border:'1px solid rgba(220,140,40,0.25)', color:'#b45309' }}>
+                Clarification requested — our team is waiting on additional information for this order.
+              </div>
+              {canUpload && (
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Provide requested documents</div>
+                  <ClientAttach orderId={order.id} value={clientDocs} onChange={syncDocs} />
+                </div>
+              )}
             </div>
           )}
           <div className="rounded-xl p-4 space-y-1.5 text-sm" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
@@ -196,6 +290,20 @@ function ClientOrderModal({ order, onClose }) {
             <Row k="Delivered" v={order.completed} />
             <div className="pt-1"><span style={{ color:'#64748b' }}>Progress: </span><span className="font-medium" style={{ color:'#1e293b' }}>{order.progress}%</span></div>
           </div>
+          {clientDocs.length > 0 && order.clarification !== 'pending' && (
+            <div className="rounded-xl p-4 space-y-2" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#64748b' }}>Your attachments</div>
+              {clientDocs.map((d, i) => (
+                <div key={d.id || i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(30,41,59,0.08)' }}>
+                  <FileText className="w-4 h-4 flex-shrink-0" style={{ color: d.type === 'pdf' ? '#dc2626' : d.type === 'word' ? '#2563eb' : '#64748b' }} />
+                  <div className="flex-1 min-w-0"><div className="text-[13px] font-medium truncate" style={{ color:'#1e293b' }}>{d.name}</div></div>
+                  {(d.url || d.path) && (
+                    <button onClick={() => openDocument(d)} className="text-xs font-semibold underline" style={{ color:ROLE_COLOR, background:'none', border:'none', cursor:'pointer' }}>Open</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           {docs.length > 0 && (
             <div className="rounded-xl p-4 space-y-2" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
               <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#64748b' }}>Delivered documents</div>
@@ -239,9 +347,11 @@ const TURNAROUND = [
 function PlaceOrderPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { createOrder } = useOrders()
+  const { createOrder, updateOrder } = useOrders()
   const [step, setStep] = useState(1)
   const [createdId, setCreatedId] = useState(null)
+  const [attachments, setAttachments] = useState([])   // BUG_004: staged reference docs
+  const [busy, setBusy] = useState(false)
   // BUG_008: a registered client shouldn't retype contact details every order —
   // prefill from the signed-in profile (still editable per order).
   const [first = '', ...rest] = (user?.name || '').split(' ')
@@ -257,26 +367,48 @@ function PlaceOrderPage() {
   const [submitted, setSubmitted] = useState(false)
   const set = (k,v) => setForm(f => ({ ...f, [k]:v }))
   const submit = async () => {
-    const fullName = (a, b) => `${a || ''} ${b || ''}`.trim()
-    const buyer = fullName(form.buyerFirst, form.buyerLast)
-    const borrower = fullName(form.borrowerFirst, form.borrowerLast)
-    const seller = fullName(form.sellerFirst, form.sellerLast)
-    const order = await createOrder({
-      state: form.state, county: form.county, type: form.searchType || 'Full Search',
-      priority: form.priority,
-      // Attribute to the signed-in client so the order is trackable in My
-      // Orders and readable back under RLS (client_code = my_client_code()).
-      clientCode: user?.clientCode || null,
-      client: clientName(user?.clientCode) || user?.name || 'Web Order',
-      intake: {
-        source: 'web', propertyAddress: [form.address, form.city, form.state, form.zip].filter(Boolean).join(', '),
-        parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
-        orderType: form.searchType, from: `${form.firstName} ${form.lastName} <${form.email}>`.trim(),
-        company: form.company, role: form.role, specialInstructions: form.notes,
-      },
-    })
-    setCreatedId(order.id)
-    setSubmitted(true)
+    if (busy) return
+    setBusy(true)
+    try {
+      const fullName = (a, b) => `${a || ''} ${b || ''}`.trim()
+      const buyer = fullName(form.buyerFirst, form.buyerLast)
+      const borrower = fullName(form.borrowerFirst, form.borrowerLast)
+      const seller = fullName(form.sellerFirst, form.sellerLast)
+      const order = await createOrder({
+        state: form.state, county: form.county, type: form.searchType || 'Full Search',
+        priority: form.priority,
+        // Attribute to the signed-in client so the order is trackable in My
+        // Orders and readable back under RLS (client_code = my_client_code()).
+        clientCode: user?.clientCode || null,
+        client: clientName(user?.clientCode) || user?.name || 'Web Order',
+        intake: {
+          source: 'web', propertyAddress: [form.address, form.city, form.state, form.zip].filter(Boolean).join(', '),
+          parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
+          orderType: form.searchType, from: `${form.firstName} ${form.lastName} <${form.email}>`.trim(),
+          company: form.company, role: form.role, specialInstructions: form.notes,
+        },
+      })
+      // BUG_004: only now do we have an order id to key Storage uploads on.
+      // Upload staged files, then persist the doc refs onto the order so they
+      // travel with it to Admin and every downstream stage (orderFiles()).
+      if (attachments.length) {
+        const clientDocs = []
+        for (const a of attachments) {
+          if (isSupabaseConfigured && a.file) {
+            try { const { url, path } = await uploadDocument(order.id, a.file); clientDocs.push({ id: a.id, name: a.name, type: a.type, status: 'done', url, path }) }
+            catch { clientDocs.push({ id: a.id, name: a.name, type: a.type, status: 'error' }) }
+          } else {
+            // Mock mode — keep the in-session object URL so it still opens.
+            clientDocs.push({ id: a.id, name: a.name, type: a.type, status: 'done', url: a.url || null })
+          }
+        }
+        updateOrder({ ...order, workflow: { ...order.workflow, clientDocs } })
+      }
+      setCreatedId(order.id)
+      setSubmitted(true)
+    } finally {
+      setBusy(false)
+    }
   }
 
   // Demo is a read-only sandbox — no real orders created.
@@ -447,6 +579,11 @@ function PlaceOrderPage() {
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Special Instructions</label>
                   <textarea value={form.notes} onChange={e=>set('notes',e.target.value)} rows={3} className="input-field text-sm resize-none" placeholder="Any notes for the search team…"/>
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Attachments <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
+                  <p className="text-[11px] mb-2" style={{ color:'#64748b' }}>Deed scans, prior title policies, payoff letters, or anything else the search team should reference.</p>
+                  <ClientAttach value={attachments} onChange={setAttachments} />
+                </div>
               </div>
             )}
             {step===3 && (
@@ -484,6 +621,12 @@ function PlaceOrderPage() {
                     </div>
                   ))}
                 </div>
+                {attachments.length > 0 && (
+                  <div className="flex items-center gap-2 text-sm px-3 py-2.5 rounded-xl" style={{ background:'rgba(77,124,47,0.08)', border:'1px solid rgba(77,124,47,0.20)', color:'#3d7020' }}>
+                    <Paperclip className="w-4 h-4 flex-shrink-0" />
+                    {attachments.length} {attachments.length === 1 ? 'file' : 'files'} attached
+                  </div>
+                )}
                 {form.priority==='rush' && (
                   <div className="flex items-center gap-2 p-3 rounded-xl text-sm"
                     style={{ background:'rgba(220,80,60,0.10)', border:'1px solid rgba(220,80,60,0.22)', color:'#dc2626' }}>
@@ -497,8 +640,8 @@ function PlaceOrderPage() {
               {step>1 && <button type="button" onClick={() => setStep(s=>s-1)} className="btn-secondary px-6">Back</button>}
               {step<4
                 ? <button type="button" onClick={() => setStep(s=>s+1)} className="btn-primary flex-1">Continue</button>
-                : <button type="submit" className="btn-primary flex-1 flex items-center justify-center gap-2">
-                    <Send className="w-4 h-4" /> Submit Order
+                : <button type="submit" disabled={busy} className="btn-primary flex-1 flex items-center justify-center gap-2" style={busy ? { opacity:0.7, cursor:'wait' } : undefined}>
+                    <Send className="w-4 h-4" /> {busy ? 'Submitting…' : 'Submit Order'}
                   </button>
               }
             </div>
