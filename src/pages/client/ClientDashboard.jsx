@@ -5,7 +5,7 @@ import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare,
-  Package, CheckCircle, Clock, ChevronRight, X, MapPin, Zap, Send, FileText, DollarSign
+  Package, CheckCircle, Clock, ChevronRight, X, MapPin, Zap, Send, FileText, DollarSign, Search
 } from 'lucide-react'
 import { clientCode as codeByName, clientName } from '../../data/mockData'
 import { openDocument } from '../../lib/backend'
@@ -627,16 +627,40 @@ function SupportPage() {
 function MyOrdersPage() {
   const myOrders = useMyOrders()
   const [openOrder, setOpenOrder] = useState(null)
+  const [q, setQ] = useState('')
+  // BUG_006: search across order #, type, status/stage, and property details —
+  // works for both active and completed orders so users don't page-hunt.
+  const query = q.trim().toLowerCase()
+  const shown = !query ? myOrders : myOrders.filter(o => {
+    const hay = [
+      o.id, o.type, o.status, clientStage(o).label, o.state, o.county,
+      o.workflow?.intake?.propertyAddress, o.workflow?.intake?.parcelNumberAPN,
+    ].filter(Boolean).join(' ').toLowerCase()
+    return hay.includes(query)
+  })
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>My Orders</h1>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>My Orders</h1>
+        <div className="relative" style={{ minWidth: 260 }}>
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
+          <input value={q} onChange={e => setQ(e.target.value)}
+            placeholder="Search order #, property, status…"
+            className="input-field text-sm pl-9 w-full" />
+        </div>
+      </div>
       <div className="space-y-4">
-        {myOrders.map(o => (
+        {shown.map(o => (
           <React.Fragment key={o.id}>
             <TrackOrder order={o} onOpen={() => setOpenOrder(o)} />
             {o.workflow?.invoiceVisibleToClient && <InvoiceCard order={o} />}
           </React.Fragment>
         ))}
+        {shown.length === 0 && (
+          <div className="glass-card p-8 text-center text-sm" style={{ color: '#64748b' }}>
+            {myOrders.length === 0 ? 'No orders yet.' : `No orders match “${q}”.`}
+          </div>
+        )}
       </div>
       {openOrder && <ClientOrderModal order={openOrder} onClose={() => setOpenOrder(null)} />}
     </div>
