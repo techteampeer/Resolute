@@ -103,6 +103,32 @@ export function subscribeOrders(cb) {
   return () => supabase.removeChannel(channel)
 }
 
+// ── Support messages (client ⇄ admin inbox) ──────────────────────────────────
+const toSupportMsg = (r) => ({
+  id: r.id, clientCode: r.client_code, from: r.sender, author: r.author, body: r.body,
+  at: new Date(r.created_at).getTime(),
+  time: new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+})
+
+// RLS returns only the caller's own thread (client) or every thread (staff).
+export async function fetchSupportMessages() {
+  const { data, error } = await supabase.from('support_messages').select('*').order('created_at', { ascending: true })
+  if (error) { console.error('[fetchSupportMessages]', error.message); return null }
+  return data.map(toSupportMsg)
+}
+
+export async function insertSupportMessage({ clientCode, sender, author, body }) {
+  const { error } = await supabase.from('support_messages').insert({ client_code: clientCode, sender, author: author || null, body })
+  if (error) console.error('[insertSupportMessage]', error.message)
+}
+
+export function subscribeSupport(cb) {
+  const channel = supabase.channel('support-rt')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_messages' }, cb)
+    .subscribe()
+  return () => supabase.removeChannel(channel)
+}
+
 // ── Fulfillment (JSONB document) ─────────────────────────────────────────────
 export async function fetchFulfillment(orderId) {
   const { data, error } = await supabase.from('fulfillments').select('data').eq('order_id', orderId).maybeSingle()
