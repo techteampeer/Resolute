@@ -13,6 +13,7 @@ import { isSupabaseConfigured, openDocument, uploadDocument } from '../../lib/ba
 import { fileKind, uid } from '../../data/fulfillment'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
+import { useSupport } from '../../context/SupportContext'
 import { DEMO_ORDERS } from '../../data/demoData'
 import ClientBilling from './ClientBilling'
 import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '../../lib/billing'
@@ -747,18 +748,22 @@ function ClientHome() {
   )
 }
 
+// Support routes to an in-portal Admin inbox (SupportContext). The client sees
+// their own thread; Admin replies land here. Demo users get a local-only echo.
 function SupportPage() {
-  const [msg, setMsg]   = useState('')
-  const [msgs, setMsgs] = useState([
-    { from:'support', text:'Hi Taylor! How can we help you today?', time:'10:30 AM' }
-  ])
+  const { user } = useAuth()
+  const { getThread, sendMessage } = useSupport()
+  const [msg, setMsg] = useState('')
+  const clientCode = user?.clientCode || (user?.demo ? 'DEMO' : null)
+  const thread = clientCode ? getThread(clientCode) : null
+  const greeting = { from:'support', text:`Hi ${(user?.name || '').split(' ')[0] || 'there'}! How can we help you today?`, time:'' }
+  const messages = thread?.messages?.length ? thread.messages : [greeting]
+
   const send = () => {
-    if (!msg.trim()) return
-    setMsgs(m => [...m, { from:'user', text:msg, time:'Now' }])
+    const text = msg.trim()
+    if (!text || !clientCode) return
+    sendMessage({ clientCode, clientName: clientName(user?.clientCode) || user?.name, from:'client', text, author: user?.name })
     setMsg('')
-    setTimeout(() => setMsgs(m => [...m, {
-      from:'support', text:'Thanks for your message! A team member will respond shortly.', time:'Just now'
-    }]), 800)
   }
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -773,21 +778,19 @@ function SupportPage() {
             <div className="font-semibold text-sm" style={{ color:'#1e293b' }}>Resolute Support</div>
             <div className="flex items-center gap-1.5 text-xs" style={{ color:'#15803d' }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ background:'#15803d' }} />
-              Online · Avg reply under 2 min
+              We reply from the portal — you'll see responses here.
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {msgs.map((m,i) => (
-            <div key={i} className={`flex ${m.from==='user' ? 'justify-end' : 'justify-start'}`}>
+          {messages.map((m,i) => (
+            <div key={m.id || i} className={`flex ${m.from==='client' ? 'justify-end' : 'justify-start'}`}>
               <div className="max-w-xs px-4 py-2.5 rounded-2xl text-sm"
-                style={m.from==='user'
+                style={m.from==='client'
                   ? { background:'#3d7020', color:'#f5f7f2' }
                   : { background:'rgba(30,41,59,0.07)', color:'#1e293b', border:'1px solid rgba(138,194,104,0.12)' }}>
                 {m.text}
-                <div className="text-xs mt-1" style={{ color: m.from==='user' ? '#475569' : '#64748b' }}>
-                  {m.time}
-                </div>
+                {m.time && <div className="text-xs mt-1" style={{ color: m.from==='client' ? '#c7d9b8' : '#64748b' }}>{m.time}</div>}
               </div>
             </div>
           ))}
