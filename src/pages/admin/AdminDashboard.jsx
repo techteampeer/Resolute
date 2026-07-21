@@ -62,6 +62,7 @@ const STATUS_MAP = {
   typing:    { label:'Typing',    color:'#0e7490', bg:'#ecfeff' },
   delivery:  { label:'Out for Delivery', color:'#b45309', bg:'#fff7ed' },
   delivered: { label:'Delivered', color:'#15803d', bg:'#f0fdf4' },
+  cancelled: { label:'Cancelled', color:'#dc2626', bg:'#fef2f2' },
 }
 
 // Export the full order list to CSV (used on Dashboard + Orders — moved here
@@ -166,8 +167,11 @@ const orderFiles = (order) => {
 }
 
 function OrderEditModal({ order, user, onClose, onSave }) {
-  const { activityLog } = useOrders()
+  const { activityLog, resolveCancel } = useOrders()
   const cli = clientByName(order.client)
+  // BUG_003: a client requested cancellation of an in-progress order; Admin
+  // decides. (Orders cancelled while still queued never reach here.)
+  const cancelReq = order.status !== 'cancelled' ? order.workflow?.cancelRequested : null
   const [tab, setTab] = useState('overview')
   const [form, setForm] = useState({
     screener: order.screener, examiner: order.examiner, typer: order.typer,
@@ -216,6 +220,31 @@ function OrderEditModal({ order, user, onClose, onSave }) {
             <X style={{ width:18, height:18 }} />
           </button>
         </div>
+
+        {order.status === 'cancelled' && (
+          <div style={{ margin:'0 22px 14px', padding:'10px 14px', borderRadius:10, fontSize:13, fontWeight:600,
+            background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
+            This order has been cancelled.
+          </div>
+        )}
+        {cancelReq && (
+          <div style={{ margin:'0 22px 14px', padding:'12px 14px', borderRadius:10,
+            background:'rgba(220,140,40,0.10)', border:'1px solid rgba(220,140,40,0.28)' }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#b45309', marginBottom:8 }}>
+              Cancellation requested{cancelReq.by ? ` by ${cancelReq.by}` : ''}{cancelReq.at ? ` · ${cancelReq.at}` : ''}
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => { resolveCancel(order.id, true, user?.name || 'Admin'); onClose() }}
+                style={{ padding:'7px 14px', background:'#dc2626', border:'none', borderRadius:8, color:'#fff', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
+                Approve cancellation
+              </button>
+              <button onClick={() => { resolveCancel(order.id, false, user?.name || 'Admin'); onClose() }}
+                style={{ padding:'7px 14px', background:Q.bg, border:`1px solid ${Q.border}`, borderRadius:8, color:Q.muted, fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
+                Keep order active
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Detail tabs */}
         <div className="overflow-x-auto" style={{ display:'flex', gap:0, padding:'0 22px', borderBottom:`1px solid ${Q.border}` }}>
@@ -494,6 +523,7 @@ function OrdersPipeline() {
 
   // Lifecycle status (Qualia-style) derived from our pipeline + routing state.
   const lifecycleOf = (o) => {
+    if (o.status === 'cancelled') return 'cancelled'
     if (o.status === 'delivered') return 'complete'
     if (o.assignedTo)             return 'open'
     const anyDone = Object.values(o.completedDates || {}).some(Boolean)
@@ -807,9 +837,10 @@ function OrdersPipeline() {
 function AdminHome() {
   const { activityLog, orders } = useOrders()
   const { user } = useAuth()
-  const activeCount    = orders.filter(o => o.status !== 'delivered').length
+  const isClosed       = (o) => o.status === 'delivered' || o.status === 'cancelled'
+  const activeCount    = orders.filter(o => !isClosed(o)).length
   const deliveredCount = orders.filter(o => o.status === 'delivered').length
-  const rushCount      = orders.filter(o => o.priority === 'rush' && o.status !== 'delivered').length
+  const rushCount      = orders.filter(o => o.priority === 'rush' && !isClosed(o)).length
   const toAssignCount  = orders.filter(o => o.assignedTo == null && o.status !== 'delivered').length
   return (
     <div className="space-y-5">

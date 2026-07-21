@@ -80,13 +80,16 @@ const US_STATES = [
 ]
 
 // Client-facing stages — internal stages (screening/searching/examining/typing) collapse into "In Progress"
-const CLIENT_STEPS = ['Received','In Progress','Clarification Responded','Delivered']
+// BUG_005: a brand-new order reads "In Queue" (awaiting pickup) rather than the
+// internal "received" status, which testers read as already-being-worked.
+const CLIENT_STEPS = ['In Queue','In Progress','Clarification Responded','Delivered']
 function clientStage(order) {
+  if (order.status === 'cancelled')          return { idx: 0, label: 'Cancelled',               color: '#dc2626' }
   if (order.status === 'delivered')          return { idx: 3, label: 'Delivered',               color: '#15803d' }
   if (order.clarification === 'responded')   return { idx: 2, label: 'Clarification Responded',  color: '#2563eb' }
   if (['screening','searching','examining','typing'].includes(order.status))
                                              return { idx: 1, label: 'In Progress',              color: '#b45309' }
-  return { idx: 0, label: 'Received', color: '#4d7c2f' }
+  return { idx: 0, label: 'In Queue', color: '#4d7c2f' }
 }
 
 // BUG_007: clicking an order opens its detail view (see ClientOrderModal).
@@ -224,8 +227,23 @@ function ClientAttach({ orderId = null, value = [], onChange, accent = ROLE_COLO
 // any documents delivered to the client (opened via the re-signing openDocument).
 function ClientOrderModal({ order, onClose }) {
   const { user } = useAuth()
-  const { updateOrder } = useOrders()
+  const { updateOrder, cancelOrder } = useOrders()
   const stage = clientStage(order)
+  // BUG_003: cancellation. Free while still queued; a request needing Admin
+  // approval once work has started. Local mirror so the UI reflects it at once.
+  const [cancelState, setCancelState] = useState(
+    order.status === 'cancelled' ? 'cancelled'
+      : order.workflow?.cancelRequested ? 'requested' : 'none')
+  const isQueued = order.status === 'received'
+  const canCancel = !user?.demo && order.status !== 'delivered' && cancelState === 'none'
+  const doCancel = () => {
+    const msg = isQueued
+      ? 'Cancel this order? It hasn’t been started yet, so it will be cancelled immediately.'
+      : 'This order is already being worked on. Request cancellation? Our team will review and confirm.'
+    if (!window.confirm(msg)) return
+    const mode = cancelOrder(order.id, user?.name || 'Client')
+    setCancelState(mode)
+  }
   const intake = order.workflow?.intake
   // BUG_004: the client's own reference uploads travel on workflow.clientDocs.
   // Local mirror so newly-added files show immediately (the prop is a snapshot).
@@ -320,6 +338,26 @@ function ClientOrderModal({ order, onClose }) {
                 </div>
               ))}
             </div>
+          )}
+          {/* BUG_003: cancellation */}
+          {cancelState === 'cancelled' && (
+            <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
+              This order has been cancelled.
+            </div>
+          )}
+          {cancelState === 'requested' && (
+            <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background:'rgba(220,140,40,0.10)', border:'1px solid rgba(220,140,40,0.25)', color:'#b45309' }}>
+              Cancellation requested — our team is reviewing and will confirm shortly.
+            </div>
+          )}
+          {canCancel && (
+            <button onClick={doCancel}
+              className="w-full text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors"
+              style={{ background:'#fff', border:'1px solid rgba(220,38,38,0.35)', color:'#dc2626', cursor:'pointer' }}
+              onMouseOver={e => e.currentTarget.style.background = 'rgba(220,38,38,0.06)'}
+              onMouseOut={e => e.currentTarget.style.background = '#fff'}>
+              {isQueued ? 'Cancel order' : 'Request cancellation'}
+            </button>
           )}
         </div>
       </motion.div>

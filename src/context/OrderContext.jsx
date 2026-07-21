@@ -108,6 +108,44 @@ export function OrderProvider({ children }) {
     persist(updated)
   }
 
+  // BUG_003: client-initiated cancellation. Policy = free until screening starts.
+  // While the order is still 'received' (nothing worked yet) the client cancels
+  // outright; once any stage is underway it becomes a request parked for Admin.
+  const cancelOrder = (orderId, actor = 'Client') => {
+    let mode = 'requested'
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const fresh = o.status === 'received'
+      mode = fresh ? 'cancelled' : 'requested'
+      const next = fresh
+        ? { ...o, status: 'cancelled', assignedTo: null, progress: 0, workflow: { ...o.workflow, cancelRequested: null } }
+        : { ...o, workflow: { ...o.workflow, cancelRequested: { by: actor, at: todayISO() } } }
+      persist(next)
+      return next
+    }))
+    log({
+      id: Date.now(), orderId, actor,
+      action: mode === 'cancelled'
+        ? `${actor} cancelled ${orderId} before screening`
+        : `${actor} requested cancellation of ${orderId} — awaiting Admin approval`,
+      time: 'Just now', type: 'status',
+    })
+    return mode
+  }
+
+  // Admin resolves a pending cancellation request (approve = cancel the order).
+  const resolveCancel = (orderId, approve, actor = 'Admin') => {
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const next = approve
+        ? { ...o, status: 'cancelled', assignedTo: null, progress: 0, workflow: { ...o.workflow, cancelRequested: null } }
+        : { ...o, workflow: { ...o.workflow, cancelRequested: null } }
+      persist(next)
+      return next
+    }))
+    log({ id: Date.now(), orderId, actor, action: `${actor} ${approve ? 'approved' : 'declined'} cancellation of ${orderId}`, time: 'Just now', type: 'status' })
+  }
+
   // Create a new draft order (client "Place an Order"). Draft = 'received' in the
   // Screener intake queue. Prepends locally; best-effort persist when configured.
   // ID comes from the DB sequence when Supabase is on (two simultaneous orders
@@ -144,7 +182,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, createOrder, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )
