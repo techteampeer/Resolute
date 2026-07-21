@@ -8,6 +8,7 @@ import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
   Package, CheckCircle, Clock, Search, Plus, Filter, Eye, DollarSign,
   ChevronDown, ChevronUp, FileText, ArrowUpRight, X, Lock, ShieldCheck, UserPlus, Download,
+  MessageSquare, Send,
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
@@ -20,6 +21,7 @@ import {
 } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
+import { useSupport } from '../../context/SupportContext'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 const TEAM = {
@@ -37,6 +39,7 @@ const NAV = [
   { path: '/admin/orders',   label: 'Orders',       icon: ClipboardList, badge: 8 },
   { path: '/admin/users',    label: 'Users',        icon: Users,         badge: 9 },
   { path: '/admin/billing',  label: 'Billing',      icon: DollarSign },
+  { path: '/admin/support',  label: 'Support',      icon: MessageSquare },
   { path: '/admin/map',      label: 'Coverage Map', icon: MapPin },
   { path: '/admin/reports',  label: 'Reports',      icon: BarChart3 },
   { path: '/admin/settings', label: 'Settings',     icon: Settings },
@@ -62,6 +65,7 @@ const STATUS_MAP = {
   typing:    { label:'Typing',    color:'#0e7490', bg:'#ecfeff' },
   delivery:  { label:'Out for Delivery', color:'#b45309', bg:'#fff7ed' },
   delivered: { label:'Delivered', color:'#15803d', bg:'#f0fdf4' },
+  cancelled: { label:'Cancelled', color:'#dc2626', bg:'#fef2f2' },
 }
 
 // Export the full order list to CSV (used on Dashboard + Orders — moved here
@@ -158,6 +162,7 @@ const DETAIL_TABS = [
 const orderFiles = (order) => {
   const w = order.workflow || {}
   const out = []
+  ;(w.clientDocs || []).forEach(d => out.push({ ...d, stage: 'Client · Upload' }))
   if (w.screenerDoc) out.push({ ...w.screenerDoc, stage: 'Screening' })
   if (w.examinerDoc) out.push({ ...w.examinerDoc, stage: 'Examination' })
   if (w.commitmentDoc) out.push({ ...w.commitmentDoc, stage: 'Typing · Commitment' })
@@ -165,8 +170,11 @@ const orderFiles = (order) => {
 }
 
 function OrderEditModal({ order, user, onClose, onSave }) {
-  const { activityLog } = useOrders()
+  const { activityLog, resolveCancel } = useOrders()
   const cli = clientByName(order.client)
+  // BUG_003: a client requested cancellation of an in-progress order; Admin
+  // decides. (Orders cancelled while still queued never reach here.)
+  const cancelReq = order.status !== 'cancelled' ? order.workflow?.cancelRequested : null
   const [tab, setTab] = useState('overview')
   const [form, setForm] = useState({
     screener: order.screener, examiner: order.examiner, typer: order.typer,
@@ -215,6 +223,31 @@ function OrderEditModal({ order, user, onClose, onSave }) {
             <X style={{ width:18, height:18 }} />
           </button>
         </div>
+
+        {order.status === 'cancelled' && (
+          <div style={{ margin:'0 22px 14px', padding:'10px 14px', borderRadius:10, fontSize:13, fontWeight:600,
+            background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
+            This order has been cancelled.
+          </div>
+        )}
+        {cancelReq && (
+          <div style={{ margin:'0 22px 14px', padding:'12px 14px', borderRadius:10,
+            background:'rgba(220,140,40,0.10)', border:'1px solid rgba(220,140,40,0.28)' }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#b45309', marginBottom:8 }}>
+              Cancellation requested{cancelReq.by ? ` by ${cancelReq.by}` : ''}{cancelReq.at ? ` · ${cancelReq.at}` : ''}
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => { resolveCancel(order.id, true, user?.name || 'Admin'); onClose() }}
+                style={{ padding:'7px 14px', background:'#dc2626', border:'none', borderRadius:8, color:'#fff', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
+                Approve cancellation
+              </button>
+              <button onClick={() => { resolveCancel(order.id, false, user?.name || 'Admin'); onClose() }}
+                style={{ padding:'7px 14px', background:Q.bg, border:`1px solid ${Q.border}`, borderRadius:8, color:Q.muted, fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
+                Keep order active
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Detail tabs */}
         <div className="overflow-x-auto" style={{ display:'flex', gap:0, padding:'0 22px', borderBottom:`1px solid ${Q.border}` }}>
@@ -414,7 +447,7 @@ function OrderEditModal({ order, user, onClose, onSave }) {
           <div style={{ padding:'18px 22px' }}>
             {files.length === 0 ? (
               <div style={{ fontSize:13, color:Q.muted, textAlign:'center', padding:'24px 0' }}>
-                No documents attached yet. Files uploaded by the screener and examiner appear here.
+                No documents attached yet. Files uploaded by the client, screener, and examiner appear here.
               </div>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
@@ -493,6 +526,7 @@ function OrdersPipeline() {
 
   // Lifecycle status (Qualia-style) derived from our pipeline + routing state.
   const lifecycleOf = (o) => {
+    if (o.status === 'cancelled') return 'cancelled'
     if (o.status === 'delivered') return 'complete'
     if (o.assignedTo)             return 'open'
     const anyDone = Object.values(o.completedDates || {}).some(Boolean)
@@ -806,9 +840,10 @@ function OrdersPipeline() {
 function AdminHome() {
   const { activityLog, orders } = useOrders()
   const { user } = useAuth()
-  const activeCount    = orders.filter(o => o.status !== 'delivered').length
+  const isClosed       = (o) => o.status === 'delivered' || o.status === 'cancelled'
+  const activeCount    = orders.filter(o => !isClosed(o)).length
   const deliveredCount = orders.filter(o => o.status === 'delivered').length
-  const rushCount      = orders.filter(o => o.priority === 'rush' && o.status !== 'delivered').length
+  const rushCount      = orders.filter(o => o.priority === 'rush' && !isClosed(o)).length
   const toAssignCount  = orders.filter(o => o.assignedTo == null && o.status !== 'delivered').length
   return (
     <div className="space-y-5">
@@ -1183,14 +1218,111 @@ function AdminReports() {
   )
 }
 
-export default function AdminDashboard() {
+// In-portal support inbox: client messages land here; Admin replies from here.
+function AdminSupport() {
+  const { user } = useAuth()
+  const { threadList, sendMessage, awaitingReply } = useSupport()
+  const threads = threadList()
+  const [activeCode, setActiveCode] = useState(threads[0]?.clientCode || null)
+  const [reply, setReply] = useState('')
+  const active = threads.find(t => t.clientCode === activeCode) || null
+
+  const send = () => {
+    const text = reply.trim()
+    if (!text || !active) return
+    sendMessage({ clientCode: active.clientCode, clientName: active.clientName, from: 'support', text, author: user?.name || 'Support' })
+    setReply('')
+  }
+
   return (
-    <Layout navItems={NAV} role="admin" roleColor={ROLE_COLOR} lightTheme>
+    <div style={{ padding:'4px 2px' }}>
+      <h1 style={{ fontSize:22, fontWeight:700, color:Q.text, marginBottom:4 }}>Support Inbox</h1>
+      <p style={{ fontSize:13, color:Q.muted, marginBottom:18 }}>Messages clients send from their portal arrive here. Replies appear in their Support tab.</p>
+      {threads.length === 0 ? (
+        <div style={{ padding:'48px 0', textAlign:'center', color:Q.faint, fontSize:14 }}>
+          No support messages yet.
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'minmax(220px, 300px) 1fr', gap:16, alignItems:'start' }}>
+          {/* Thread list */}
+          <div style={{ background:Q.card, border:`1px solid ${Q.border}`, borderRadius:12, overflow:'hidden' }}>
+            {threads.map(t => {
+              const last = t.messages[t.messages.length - 1]
+              const isActive = t.clientCode === activeCode
+              return (
+                <button key={t.clientCode} onClick={() => setActiveCode(t.clientCode)}
+                  style={{ width:'100%', textAlign:'left', padding:'12px 14px', border:'none', cursor:'pointer',
+                    borderBottom:`1px solid ${Q.border}`, background: isActive ? `${ROLE_COLOR}0f` : 'transparent' }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                    <span style={{ fontSize:13, fontWeight:600, color:Q.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {displayClient(t.clientName, user)}
+                    </span>
+                    {awaitingReply(t) && <span style={{ width:8, height:8, borderRadius:99, background:'#dc2626', flexShrink:0 }} title="Awaiting reply" />}
+                  </div>
+                  <div style={{ fontSize:12, color:Q.faint, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginTop:2 }}>
+                    {last ? `${last.from === 'support' ? 'You: ' : ''}${last.text}` : '—'}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Conversation */}
+          <div style={{ background:Q.card, border:`1px solid ${Q.border}`, borderRadius:12, display:'flex', flexDirection:'column', height:520 }}>
+            {active ? (
+              <>
+                <div style={{ padding:'14px 16px', borderBottom:`1px solid ${Q.border}`, fontSize:14, fontWeight:600, color:Q.text }}>
+                  {displayClient(active.clientName, user)}
+                </div>
+                <div style={{ flex:1, overflowY:'auto', padding:16, display:'flex', flexDirection:'column', gap:10 }}>
+                  {active.messages.map((m, i) => (
+                    <div key={m.id || i} style={{ display:'flex', justifyContent: m.from === 'support' ? 'flex-end' : 'flex-start' }}>
+                      <div style={{ maxWidth:'75%', padding:'8px 12px', borderRadius:14, fontSize:13,
+                        background: m.from === 'support' ? ROLE_COLOR : '#f1f5f9',
+                        color: m.from === 'support' ? '#fff' : Q.text,
+                        border: m.from === 'support' ? 'none' : `1px solid ${Q.border}` }}>
+                        {m.text}
+                        {m.time && <div style={{ fontSize:10.5, marginTop:3, color: m.from === 'support' ? 'rgba(255,255,255,0.75)' : Q.faint }}>
+                          {m.author ? `${m.author} · ` : ''}{m.time}
+                        </div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ padding:12, borderTop:`1px solid ${Q.border}`, display:'flex', gap:8 }}>
+                  <input value={reply} onChange={e => setReply(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()}
+                    placeholder="Type a reply…"
+                    style={{ flex:1, padding:'9px 12px', border:`1px solid ${Q.border}`, borderRadius:8, fontSize:13, outline:'none', color:Q.text }} />
+                  <button onClick={send} style={{ padding:'9px 14px', background:ROLE_COLOR, border:'none', borderRadius:8, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:600 }}>
+                    <Send style={{ width:15, height:15 }} /> Send
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:Q.faint, fontSize:14 }}>
+                Select a conversation
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function AdminDashboard() {
+  const { pendingCount } = useSupport()
+  const pending = pendingCount ? pendingCount() : 0
+  // Inject a live "awaiting reply" badge on the Support nav item.
+  const navItems = NAV.map(n => n.path === '/admin/support' && pending ? { ...n, badge: pending } : n)
+  return (
+    <Layout navItems={navItems} role="admin" roleColor={ROLE_COLOR} lightTheme>
       <Routes>
         <Route index            element={<AdminHome />} />
         <Route path="orders"   element={<AdminOrders />} />
         <Route path="users"    element={<AdminUsers />} />
         <Route path="billing"  element={<AdminBilling />} />
+        <Route path="support"  element={<AdminSupport />} />
         <Route path="map"      element={<AdminMap />} />
         <Route path="reports"  element={<AdminReports />} />
         <Route path="settings" element={
