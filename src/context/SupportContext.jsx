@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { clientName as nameForCode } from '../data/mockData'
 import { isSupabaseConfigured, fetchSupportMessages, insertSupportMessage, subscribeSupport } from '../lib/backend'
+import { useAuth } from './AuthContext'
 
 // Client ⇄ Admin support messaging. Test-report clarification: client support
 // messages route to an in-portal Admin inbox (not email).
@@ -41,18 +42,20 @@ const appendLocal = (prev, { clientCode, clientName, from, text, author }) => {
 }
 
 export function SupportProvider({ children }) {
+  const { user } = useAuth()
   // threads: { [clientCode]: { clientCode, clientName, messages: [...], updatedAt } }
   const [threads, setThreads] = useState(() => (isSupabaseConfigured ? {} : load()))
 
-  // Supabase mode: hydrate + live updates. Mock mode: persist to localStorage.
+  // Supabase mode: hydrate + live updates once the user is authenticated (RLS
+  // returns nothing to anon). Mock mode: persist to localStorage. Demo skips.
   useEffect(() => {
-    if (!isSupabaseConfigured) return
+    if (!isSupabaseConfigured || !user || user.demo) return
     let unsub = () => {}
     const reload = () => fetchSupportMessages().then(msgs => { if (msgs) setThreads(buildThreads(msgs)) })
     reload()
     unsub = subscribeSupport(reload)
     return () => unsub()
-  }, [])
+  }, [user?.email, user?.demo])
 
   useEffect(() => { if (!isSupabaseConfigured) save(threads) }, [threads])
 

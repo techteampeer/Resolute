@@ -404,10 +404,22 @@ function PlaceOrderPage() {
     role:'', notes:''
   })
   const [submitted, setSubmitted] = useState(false)
+  const [stepErr, setStepErr] = useState(false)
+  const [submitErr, setSubmitErr] = useState('')
   const set = (k,v) => setForm(f => ({ ...f, [k]:v }))
+  // Required-field gate per step. The wizard unmounts prior steps, so relying on
+  // HTML5 `required` at final submit let empty State/County slip through — guard
+  // each step explicitly before advancing.
+  const stepValid = (s) => {
+    if (s === 1) return !!(form.state.trim() && form.county.trim())
+    if (s === 3) return !!(form.firstName.trim() && form.lastName.trim() && /\S+@\S+\.\S+/.test(form.email))
+    return true
+  }
+  const goNext = () => { if (!stepValid(step)) { setStepErr(true); return } setStepErr(false); setStep(s => s + 1) }
   const submit = async () => {
     if (busy) return
     setBusy(true)
+    setSubmitErr('')
     try {
       const fullName = (a, b) => `${a || ''} ${b || ''}`.trim()
       const buyer = fullName(form.buyerFirst, form.buyerLast)
@@ -445,6 +457,11 @@ function PlaceOrderPage() {
       }
       setCreatedId(order.id)
       setSubmitted(true)
+    } catch (e) {
+      // Surface a real failure instead of a phantom "submitted" (e.g. the order
+      // insert was rejected) so the client can retry rather than lose the order.
+      console.error('[placeOrder]', e?.message || e)
+      setSubmitErr('We couldn’t submit your order just now. Please try again.')
     } finally {
       setBusy(false)
     }
@@ -675,10 +692,20 @@ function PlaceOrderPage() {
                 )}
               </div>
             )}
+            {stepErr && !stepValid(step) && (
+              <div className="mt-4 text-[12px] px-3 py-2 rounded-lg" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
+                {step===1 ? 'Property State and County are required.' : 'First name, last name, and a valid email are required.'}
+              </div>
+            )}
+            {submitErr && (
+              <div className="mt-4 text-[12px] px-3 py-2 rounded-lg" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
+                {submitErr}
+              </div>
+            )}
             <div className="flex gap-3 mt-8">
-              {step>1 && <button type="button" onClick={() => setStep(s=>s-1)} className="btn-secondary px-6">Back</button>}
+              {step>1 && <button type="button" onClick={() => { setStepErr(false); setStep(s=>s-1) }} className="btn-secondary px-6">Back</button>}
               {step<4
-                ? <button type="button" onClick={() => setStep(s=>s+1)} className="btn-primary flex-1">Continue</button>
+                ? <button type="button" onClick={goNext} className="btn-primary flex-1">Continue</button>
                 : <button type="submit" disabled={busy} className="btn-primary flex-1 flex items-center justify-center gap-2" style={busy ? { opacity:0.7, cursor:'wait' } : undefined}>
                     <Send className="w-4 h-4" /> {busy ? 'Submitting…' : 'Submit Order'}
                   </button>

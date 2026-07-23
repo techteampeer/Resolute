@@ -25,11 +25,15 @@ const toAppOrder = (r) => ({
   workflow: r.workflow || {},
 })
 
+// Date columns (eta/completed/created) reject '' — an empty string is not valid
+// date syntax (Postgres 22007). Coerce blanks to null so client-placed orders
+// (which have no ETA yet) and admin edits persist instead of silently 400-ing.
+const dateOrNull = (v) => (v ? v : null)
 const toOrderRow = (o) => ({
   status: o.status, priority: o.priority, payment: o.payment, clarification: o.clarification,
   assigned_to: o.assignedTo,
   screener: o.screener, examiner: o.examiner, typer: o.typer, delivery: o.delivery,
-  progress: o.progress, eta: o.eta, completed: o.completed,
+  progress: o.progress, eta: dateOrNull(o.eta), completed: dateOrNull(o.completed),
   completed_dates: o.completedDates, completed_by: o.completedBy,
   workflow: o.workflow || {},
 })
@@ -84,16 +88,17 @@ export async function saveOrder(order) {
   if (error) console.error('[saveOrder]', error.message)
 }
 
-// Best-effort insert of a new order (client-placed). Note: RLS only lets staff
-// insert, so from a client session this may be rejected — the order still lives
-// in local state; wire a serverless endpoint for durable client-side creation.
+// Insert a new order (client-placed or staff). RLS: orders_insert_client lets a
+// client insert for their own client_code; staff/admin policies cover the rest.
+// Throws on failure so the caller (createOrder) can surface it rather than
+// leaving a phantom order that exists only in local state.
 export async function insertOrder(order) {
   const { error } = await supabase.from('orders').insert({
     id: order.id, client_code: order.clientCode || null,
     state: order.state, county: order.county, type: order.type,
-    created: order.created, ...toOrderRow(order),
+    created: dateOrNull(order.created), ...toOrderRow(order),
   })
-  if (error) console.error('[insertOrder]', error.message)
+  if (error) { console.error('[insertOrder]', error.message); throw error }
 }
 
 export function subscribeOrders(cb) {
