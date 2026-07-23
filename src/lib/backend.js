@@ -127,6 +127,13 @@ export async function insertSupportMessage({ clientCode, sender, author, body })
   if (error) console.error('[insertSupportMessage]', error.message)
 }
 
+// Client marks an invoice paid via the narrow SECURITY DEFINER RPC (clients
+// have no UPDATE on orders). Staff confirm/bounce through the normal saveOrder.
+export async function markOrderPayment(orderId, payment) {
+  const { error } = await supabase.rpc('client_mark_payment', { p_order_id: orderId, p_payment: payment })
+  if (error) { console.error('[markOrderPayment]', error.message); throw error }
+}
+
 export function subscribeSupport(cb) {
   const channel = supabase.channel('support-rt')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_messages' }, cb)

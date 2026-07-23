@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { ORDERS, ACTIVITY, nextRoleFor, statusForRole } from '../data/mockData'
-import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId } from '../lib/backend'
+import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment } from '../lib/backend'
 import { useAuth } from './AuthContext'
 
 const OrderContext = createContext(null)
@@ -114,6 +114,16 @@ export function OrderProvider({ children }) {
     persist(updated)
   }
 
+  // Client marks an invoice paid. Clients can't UPDATE orders directly (RLS), so
+  // persist through the client_mark_payment RPC; the row's other fields are
+  // untouched. Staff/admin confirmation still flows through updateOrder.
+  const markPayment = (order, payment) => {
+    const next = { ...order, workflow: { ...order.workflow, payment } }
+    setOrders(os => os.map(o => (o.id === order.id ? next : o)))
+    if (isSupabaseConfigured) markOrderPayment(order.id, payment).catch(() => {})
+    return next
+  }
+
   // BUG_003: client-initiated cancellation. Policy = free until screening starts.
   // While the order is still 'received' (nothing worked yet) the client cancels
   // outright; once any stage is underway it becomes a request parked for Admin.
@@ -191,7 +201,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )
