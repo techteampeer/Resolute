@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { ORDERS, ACTIVITY, nextRoleFor, statusForRole } from '../data/mockData'
-import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId } from '../lib/backend'
+import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment } from '../lib/backend'
+import { useAuth } from './AuthContext'
 
 const OrderContext = createContext(null)
 
@@ -14,19 +15,24 @@ const STAGE_BY_ROLE = { screener: 'screening', examiner: 'examination', typer: '
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
 export function OrderProvider({ children }) {
+  const { user } = useAuth()
   const [orders, setOrders]           = useState(ORDERS)
   const [activityLog, setActivityLog] = useState(ACTIVITY)
 
   // Hydrate from Supabase + live updates when configured; otherwise keep mock.
+  // Keyed on the signed-in identity: the provider mounts on the login page
+  // (before auth), so the first fetch would run as anon and RLS would return
+  // nothing. Re-running when the user resolves ensures the just-logged-in user
+  // actually sees their own rows. Demo users have no backend session — skip.
   useEffect(() => {
-    if (!isSupabaseConfigured) return
+    if (!isSupabaseConfigured || !user || user.demo) return
     let unsub = () => {}
     const load = () => fetchOrders().then(rows => { if (rows) setOrders(rows) })
     load()
     fetchActivity().then(rows => { if (rows) setActivityLog(rows) })
     unsub = subscribeOrders(load)
     return () => unsub()
-  }, [])
+  }, [user?.email, user?.demo])
 
   // Local activity feed + best-effort append to the durable order_events audit
   // trail (orderId/actor ride on the entry when the caller knows them).
@@ -108,6 +114,16 @@ export function OrderProvider({ children }) {
     persist(updated)
   }
 
+  // Client marks an invoice paid. Clients can't UPDATE orders directly (RLS), so
+  // persist through the client_mark_payment RPC; the row's other fields are
+  // untouched. Staff/admin confirmation still flows through updateOrder.
+  const markPayment = (order, payment) => {
+    const next = { ...order, workflow: { ...order.workflow, payment } }
+    setOrders(os => os.map(o => (o.id === order.id ? next : o)))
+    if (isSupabaseConfigured) markOrderPayment(order.id, payment).catch(() => {})
+    return next
+  }
+
   // BUG_003: client-initiated cancellation. Policy = free until screening starts.
   // While the order is still 'received' (nothing worked yet) the client cancels
   // outright; once any stage is underway it becomes a request parked for Admin.
@@ -174,7 +190,10 @@ export function OrderProvider({ children }) {
       workflow: { intake: { source: 'web', ...(data.intake || {}) } },
     }
     setOrders(os => [order, ...os])
-    if (isSupabaseConfigured) insertOrder(order)
+    // Await the insert so the row exists before the caller uploads any
+    // attachments — the documents storage policy authorizes a client upload by
+    // checking that the order (path orders/<id>/…) belongs to them.
+    if (isSupabaseConfigured) await insertOrder(order)
     log({ id: Date.now(), orderId: order.id, action: `New order ${order.id} placed (${order.type})`, time: 'Just now', type: 'new' })
     return order
   }
@@ -182,7 +201,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )

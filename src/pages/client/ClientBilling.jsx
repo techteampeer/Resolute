@@ -181,7 +181,7 @@ function InvoiceRow({ order, termKey, onPaid, demo }) {
 }
 
 export default function ClientBilling({ myOrders }) {
-  const { updateOrder } = useOrders()
+  const { updateOrder, markPayment } = useOrders()
   const { user } = useAuth()
   const isDemo = !!user?.demo
   const [, bump] = useState(0)
@@ -194,10 +194,12 @@ export default function ClientBilling({ myOrders }) {
   const stmt = openStatement(myOrders, clientCode, termKey)
   const [payStmt, setPayStmt] = useState(false)
 
-  const payOne = (order, pay) =>
-    updateOrder({ ...order, workflow: { ...order.workflow, payment: pay } })
+  // Client marks paid via markPayment (RPC-backed under Supabase; clients have
+  // no direct UPDATE on orders). Mock mode falls back to a local update inside
+  // markPayment as well.
+  const payOne = (order, pay) => markPayment(order, pay)
   const payStatement = (pay) => {
-    stmt.items.forEach(o => updateOrder({ ...o, workflow: { ...o.workflow, payment: { ...pay, statementId: stmt.id } } }))
+    stmt.items.forEach(o => markPayment(o, { ...pay, statementId: stmt.id }))
     setPayStmt(false)
   }
 

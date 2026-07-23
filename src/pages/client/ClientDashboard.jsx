@@ -9,6 +9,7 @@ import {
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye
 } from 'lucide-react'
 import { clientCode as codeByName, clientName } from '../../data/mockData'
+import { PRODUCTS } from '../../data/products'
 import { isSupabaseConfigured, openDocument, uploadDocument } from '../../lib/backend'
 import { fileKind, uid } from '../../data/fulfillment'
 import { useOrders } from '../../context/OrderContext'
@@ -366,18 +367,6 @@ function ClientOrderModal({ order, onClose }) {
   )
 }
 
-const PRODUCTS = [
-  { name:'Current Owner Search', price:75,  tat:'8–16 hr',  desc:'Current owner rundown forward from and including the current vesting document with all supporting documentation. Includes chain of title, legal description, requirements, and exceptions.' },
-  { name:'Two Owner Search',     price:100, tat:'16–24 hr', desc:'Current vesting deed and all deeds back to the deed prior to the out-of-family deed. Includes copies of open mortgages and assignments, any judgments and liens against those owners, and tax assessment and current tax info including delinquencies.' },
-  { name:'Full Search',          price:150, tat:'24–48 hr', desc:'Current vesting deed and all deeds back to state statute or a developer. Includes open mortgages and assignments, judgments and liens, and tax assessment and current tax information including delinquencies.' },
-  { name:'Update / Bringdown',   price:45,  tat:'8–16 hr',  desc:'An extension of a title search to verify no liens have been filed between the original search and the recording of the deed or mortgage. Update on tax info from last effective date; any newly recorded instruments.' },
-  { name:'Commercial Search',    price:250, desc:'Commitment-ready report for commercial properties.' },
-  { name:'Energy / Infrastructure', price:350, desc:'Solar, wind, pipelines, cell towers, EV infrastructure.' },
-  { name:'Tax Search',           desc:'Property tax assessment, current tax status, and delinquency information.' },
-  { name:'Patriot Name Search',  desc:'OFAC / Patriot Act compliance name search against government watch lists.' },
-  { name:'Bankruptcy Name Search', desc:'Federal bankruptcy court name search for all parties in the transaction.' },
-  { name:'Document Retrieval',   desc:'Retrieval of specific recorded documents from county and municipal records.' },
-]
 const TURNAROUND = [
   { key:'normal', label:'Standard — 48 hrs', fee:0,  desc:'Delivered within 2 business days' },
   { key:'rush',   label:'Rush — 24 hrs',     fee:50, desc:'Priority processing, next business day' },
@@ -404,10 +393,22 @@ function PlaceOrderPage() {
     role:'', notes:''
   })
   const [submitted, setSubmitted] = useState(false)
+  const [stepErr, setStepErr] = useState(false)
+  const [submitErr, setSubmitErr] = useState('')
   const set = (k,v) => setForm(f => ({ ...f, [k]:v }))
+  // Required-field gate per step. The wizard unmounts prior steps, so relying on
+  // HTML5 `required` at final submit let empty State/County slip through — guard
+  // each step explicitly before advancing.
+  const stepValid = (s) => {
+    if (s === 1) return !!(form.state.trim() && form.county.trim())
+    if (s === 3) return !!(form.firstName.trim() && form.lastName.trim() && /\S+@\S+\.\S+/.test(form.email))
+    return true
+  }
+  const goNext = () => { if (!stepValid(step)) { setStepErr(true); return } setStepErr(false); setStep(s => s + 1) }
   const submit = async () => {
     if (busy) return
     setBusy(true)
+    setSubmitErr('')
     try {
       const fullName = (a, b) => `${a || ''} ${b || ''}`.trim()
       const buyer = fullName(form.buyerFirst, form.buyerLast)
@@ -445,6 +446,11 @@ function PlaceOrderPage() {
       }
       setCreatedId(order.id)
       setSubmitted(true)
+    } catch (e) {
+      // Surface a real failure instead of a phantom "submitted" (e.g. the order
+      // insert was rejected) so the client can retry rather than lose the order.
+      console.error('[placeOrder]', e?.message || e)
+      setSubmitErr('We couldn’t submit your order just now. Please try again.')
     } finally {
       setBusy(false)
     }
@@ -675,10 +681,20 @@ function PlaceOrderPage() {
                 )}
               </div>
             )}
+            {stepErr && !stepValid(step) && (
+              <div className="mt-4 text-[12px] px-3 py-2 rounded-lg" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
+                {step===1 ? 'Property State and County are required.' : 'First name, last name, and a valid email are required.'}
+              </div>
+            )}
+            {submitErr && (
+              <div className="mt-4 text-[12px] px-3 py-2 rounded-lg" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
+                {submitErr}
+              </div>
+            )}
             <div className="flex gap-3 mt-8">
-              {step>1 && <button type="button" onClick={() => setStep(s=>s-1)} className="btn-secondary px-6">Back</button>}
+              {step>1 && <button type="button" onClick={() => { setStepErr(false); setStep(s=>s-1) }} className="btn-secondary px-6">Back</button>}
               {step<4
-                ? <button type="button" onClick={() => setStep(s=>s+1)} className="btn-primary flex-1">Continue</button>
+                ? <button type="button" onClick={goNext} className="btn-primary flex-1">Continue</button>
                 : <button type="submit" disabled={busy} className="btn-primary flex-1 flex items-center justify-center gap-2" style={busy ? { opacity:0.7, cursor:'wait' } : undefined}>
                     <Send className="w-4 h-4" /> {busy ? 'Submitting…' : 'Submit Order'}
                   </button>
