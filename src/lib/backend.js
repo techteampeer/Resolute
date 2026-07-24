@@ -134,6 +134,16 @@ export async function markOrderPayment(orderId, payment) {
   if (error) { console.error('[markOrderPayment]', error.message); throw error }
 }
 
+// Client cancels (or requests cancellation of) their own order via a SECURITY
+// DEFINER RPC — same reason as payments (no client UPDATE on orders). The RPC
+// also records the order_events row so Admin is notified. Returns the resulting
+// mode: 'cancelled' (was still queued) or 'requested' (needs Admin approval).
+export async function cancelOrderRpc(orderId) {
+  const { data, error } = await supabase.rpc('client_cancel_order', { p_order_id: orderId })
+  if (error) { console.error('[cancelOrderRpc]', error.message); throw error }
+  return data
+}
+
 export function subscribeSupport(cb) {
   const channel = supabase.channel('support-rt')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_messages' }, cb)

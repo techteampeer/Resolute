@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { ORDERS, ACTIVITY, nextRoleFor, statusForRole } from '../data/mockData'
-import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment } from '../lib/backend'
+import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc } from '../lib/backend'
 import { useAuth } from './AuthContext'
 
 const OrderContext = createContext(null)
@@ -128,24 +128,29 @@ export function OrderProvider({ children }) {
   // While the order is still 'received' (nothing worked yet) the client cancels
   // outright; once any stage is underway it becomes a request parked for Admin.
   const cancelOrder = (orderId, actor = 'Client') => {
-    let mode = 'requested'
+    const target = orders.find(o => o.id === orderId)
+    const fresh = target?.status === 'received'
+    const mode = fresh ? 'cancelled' : 'requested'
+    // Optimistic local update.
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
-      const fresh = o.status === 'received'
-      mode = fresh ? 'cancelled' : 'requested'
-      const next = fresh
+      return fresh
         ? { ...o, status: 'cancelled', assignedTo: null, progress: 0, workflow: { ...o.workflow, cancelRequested: null } }
         : { ...o, workflow: { ...o.workflow, cancelRequested: { by: actor, at: todayISO() } } }
-      persist(next)
-      return next
     }))
-    log({
+    // Durable persistence: clients can't UPDATE orders (RLS), so go through the
+    // SECURITY DEFINER RPC, which also records the order_events row that shows up
+    // in Admin's notifications. Mock mode just keeps the local update.
+    if (isSupabaseConfigured) cancelOrderRpc(orderId).catch(() => {})
+    // Local activity feed only — the RPC writes the durable event (a client
+    // logEvent insert would be denied by RLS).
+    setActivityLog(a => [{
       id: Date.now(), orderId, actor,
       action: mode === 'cancelled'
         ? `${actor} cancelled ${orderId} before screening`
         : `${actor} requested cancellation of ${orderId} — awaiting Admin approval`,
       time: 'Just now', type: 'status',
-    })
+    }, ...a])
     return mode
   }
 
