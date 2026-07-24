@@ -496,7 +496,7 @@ const routingState = (o) => {
   return { kind: anyDone ? 'ready' : 'new', next: nextRoleFor(o) }
 }
 
-function OrdersPipeline() {
+function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const { user } = useAuth()
   const { orders, updateOrder } = useOrders()
   const [editing, setEditing]   = useState(null)   // full edit/detail modal
@@ -510,7 +510,7 @@ function OrdersPipeline() {
   const [dateRange, setDateRange] = useState('365')   // "Ordered within" (days)
   const [rushOnly, setRushOnly] = useState(false)
   const [page, setPage]         = useState(1)
-  const PAGE_SIZE = 6
+  const PAGE_SIZE = pageSize
   const saveOrder = (updated) => updateOrder(updated)
 
   // Cascading geographic options: state list narrows by region, county by state.
@@ -678,7 +678,9 @@ function OrdersPipeline() {
 
       {/* Orders table */}
       <div style={{ background:Q.card, border:`1px solid ${Q.border}`, borderRadius:10, boxShadow:Q.shadow, overflow:'hidden' }}>
-        <div style={{ overflowX:'auto' }}>
+        {/* scrollable=true (Orders page): the body scrolls within a fixed height
+            with a sticky header, so all rows are reachable without paging away. */}
+        <div style={{ overflowX:'auto', ...(scrollable ? { maxHeight:560, overflowY:'auto' } : {}) }}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:920 }}>
           <thead>
             <tr style={{ background:'#f8fafc', borderBottom:`1px solid ${Q.border}` }}>
@@ -687,6 +689,7 @@ function OrdersPipeline() {
                   padding:'10px 16px', textAlign:'left', fontSize:11,
                   fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em',
                   color:Q.faint, whiteSpace:'nowrap',
+                  ...(scrollable ? { position:'sticky', top:0, background:'#f8fafc', zIndex:1 } : {}),
                 }}>{h}</th>
               ))}
             </tr>
@@ -933,7 +936,7 @@ function AdminOrders() {
           <Download style={{ width: 14, height: 14 }} /> Export Orders CSV
         </button>
       </div>
-      <OrdersPipeline />
+      <OrdersPipeline pageSize={15} scrollable />
     </div>
   )
 }
