@@ -3,83 +3,91 @@ import { clientName as nameForCode } from '../data/mockData'
 import { isSupabaseConfigured, fetchSupportMessages, insertSupportMessage, subscribeSupport } from '../lib/backend'
 import { useAuth } from './AuthContext'
 
-// Client ⇄ Admin support messaging. Test-report clarification: client support
-// messages route to an in-portal Admin inbox (not email).
+// Client ⇄ Admin messaging. Two flavours share one store (support_messages):
+//   • General Support thread   — message.orderId == null
+//   • Per-order "Client Inbox" — message.orderId == <order id>
 //
 // Persistence follows the app's isSupabaseConfigured seam:
-//   • Supabase on  → support_messages table (RLS-scoped, realtime), synced
-//     across devices; localStorage is untouched.
-//   • Supabase off → mock store persisted to localStorage (per-browser).
+//   • Supabase on  → support_messages table (RLS-scoped, realtime).
+//   • Supabase off → flat message list persisted to localStorage (per-browser).
 const SupportContext = createContext(null)
-const STORE_KEY = 'resolute:support'
+const STORE_KEY = 'resolute:support:v2'
 
 const load = () => {
-  try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}') } catch { return {} }
+  try { const v = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); return Array.isArray(v) ? v : [] } catch { return [] }
 }
-const save = (threads) => {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(threads)) } catch { /* ignore quota */ }
-}
+const save = (msgs) => { try { localStorage.setItem(STORE_KEY, JSON.stringify(msgs)) } catch { /* quota */ } }
 const nowLabel = () => new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 const mid = () => Math.random().toString(36).slice(2, 10)
 
-// Group a flat message list (from Supabase) into per-client threads.
-const buildThreads = (msgs = []) => {
+// Group messages (optionally filtered) into per-client threads, newest-active first.
+const threadsByClient = (msgs) => {
   const out = {}
   for (const m of msgs) {
     const code = m.clientCode
     if (!out[code]) out[code] = { clientCode: code, clientName: nameForCode(code) || code, messages: [] }
-    out[code].messages.push({ id: m.id, from: m.from, text: m.body, author: m.author, time: m.time, at: m.at })
+    out[code].messages.push(m)
     out[code].updatedAt = Math.max(out[code].updatedAt || 0, m.at || 0)
   }
-  return out
-}
-
-// Append a message to a thread locally (mock mode + optimistic Supabase echo).
-const appendLocal = (prev, { clientCode, clientName, from, text, author }) => {
-  const existing = prev[clientCode] || { clientCode, clientName: clientName || clientCode, messages: [] }
-  const msg = { id: mid(), from, text, author: author || null, time: nowLabel(), at: Date.now() }
-  return { ...prev, [clientCode]: { ...existing, clientName: clientName || existing.clientName, messages: [...existing.messages, msg], updatedAt: msg.at } }
+  return Object.values(out).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
 }
 
 export function SupportProvider({ children }) {
   const { user } = useAuth()
-  // threads: { [clientCode]: { clientCode, clientName, messages: [...], updatedAt } }
-  const [threads, setThreads] = useState(() => (isSupabaseConfigured ? {} : load()))
+  // Flat list: { id, clientCode, orderId, from, text, author, time, at }
+  const [messages, setMessages] = useState(() => (isSupabaseConfigured ? [] : load()))
 
-  // Supabase mode: hydrate + live updates once the user is authenticated (RLS
-  // returns nothing to anon). Mock mode: persist to localStorage. Demo skips.
+  // Supabase: hydrate + live updates once authenticated. Mock: persist locally.
   useEffect(() => {
     if (!isSupabaseConfigured || !user || user.demo) return
     let unsub = () => {}
-    const reload = () => fetchSupportMessages().then(msgs => { if (msgs) setThreads(buildThreads(msgs)) })
+    const reload = () => fetchSupportMessages().then(rows => {
+      if (rows) setMessages(rows.map(r => ({ id: r.id, clientCode: r.clientCode, orderId: r.orderId || null, from: r.from, text: r.body, author: r.author, time: r.time, at: r.at })))
+    })
     reload()
     unsub = subscribeSupport(reload)
     return () => unsub()
   }, [user?.email, user?.demo])
 
-  useEffect(() => { if (!isSupabaseConfigured) save(threads) }, [threads])
+  useEffect(() => { if (!isSupabaseConfigured) save(messages) }, [messages])
 
-  const sendMessage = ({ clientCode, clientName, from, text, author }) => {
+  // orderId null → general Support thread; set → that order's inbox.
+  const sendMessage = ({ clientCode, clientName, from, text, author, orderId = null }) => {
     const body = (text || '').trim()
     if (!clientCode || !body) return
-    // Optimistic local append so the sender sees it immediately in both modes.
-    setThreads(prev => appendLocal(prev, { clientCode, clientName, from, text: body, author }))
+    const optimistic = { id: mid(), clientCode, orderId: orderId || null, from, text: body, author: author || null, time: nowLabel(), at: Date.now() }
+    setMessages(prev => [...prev, optimistic])
     if (isSupabaseConfigured) {
-      // Write through; realtime will reconcile, but refetch too in case the
-      // table isn't in the realtime publication on this project.
-      insertSupportMessage({ clientCode, sender: from, author, body })
+      insertSupportMessage({ clientCode, sender: from, author, body, orderId })
         .then(() => fetchSupportMessages())
-        .then(msgs => { if (msgs) setThreads(buildThreads(msgs)) })
+        .then(rows => { if (rows) setMessages(rows.map(r => ({ id: r.id, clientCode: r.clientCode, orderId: r.orderId || null, from: r.from, text: r.body, author: r.author, time: r.time, at: r.at }))) })
     }
   }
 
-  const getThread = (clientCode) => threads[clientCode] || null
-  const threadList = () => Object.values(threads).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+  // ── General Support (untagged) ──────────────────────────────────────────────
+  const general = () => messages.filter(m => !m.orderId)
+  const getThread = (clientCode) => {
+    const msgs = general().filter(m => m.clientCode === clientCode).sort((a, b) => a.at - b.at)
+    return msgs.length ? { clientCode, clientName: nameForCode(clientCode) || clientCode, messages: msgs } : null
+  }
+  const threadList = () => threadsByClient(general())
   const awaitingReply = (t) => { const m = t.messages[t.messages.length - 1]; return m && m.from === 'client' }
   const pendingCount = () => threadList().filter(awaitingReply).length
 
+  // ── Per-order inbox ─────────────────────────────────────────────────────────
+  const getOrderThread = (orderId) =>
+    messages.filter(m => m.orderId === orderId).sort((a, b) => a.at - b.at)
+  // Orders (by id) that have a client message awaiting a staff reply.
+  const ordersAwaitingReply = () => {
+    const byOrder = {}
+    for (const m of messages.filter(m => m.orderId)) {
+      if (!byOrder[m.orderId] || m.at > byOrder[m.orderId].at) byOrder[m.orderId] = m
+    }
+    return Object.entries(byOrder).filter(([, m]) => m.from === 'client').map(([id]) => id)
+  }
+
   return (
-    <SupportContext.Provider value={{ threads, sendMessage, getThread, threadList, awaitingReply, pendingCount }}>
+    <SupportContext.Provider value={{ messages, sendMessage, getThread, threadList, awaitingReply, pendingCount, getOrderThread, ordersAwaitingReply }}>
       {children}
     </SupportContext.Provider>
   )

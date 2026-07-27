@@ -110,7 +110,7 @@ export function subscribeOrders(cb) {
 
 // ── Support messages (client ⇄ admin inbox) ──────────────────────────────────
 const toSupportMsg = (r) => ({
-  id: r.id, clientCode: r.client_code, from: r.sender, author: r.author, body: r.body,
+  id: r.id, clientCode: r.client_code, orderId: r.order_id || null, from: r.sender, author: r.author, body: r.body,
   at: new Date(r.created_at).getTime(),
   time: new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
 })
@@ -122,8 +122,8 @@ export async function fetchSupportMessages() {
   return data.map(toSupportMsg)
 }
 
-export async function insertSupportMessage({ clientCode, sender, author, body }) {
-  const { error } = await supabase.from('support_messages').insert({ client_code: clientCode, sender, author: author || null, body })
+export async function insertSupportMessage({ clientCode, sender, author, body, orderId = null }) {
+  const { error } = await supabase.from('support_messages').insert({ client_code: clientCode, sender, author: author || null, body, order_id: orderId })
   if (error) console.error('[insertSupportMessage]', error.message)
 }
 
