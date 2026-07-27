@@ -13,6 +13,7 @@ import {
 import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument } from '../../lib/backend'
+import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import AttachedDocs from '../../components/AttachedDocs'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS,
@@ -1009,100 +1010,196 @@ function AdminOrders() {
   )
 }
 
+// Admin User Management (CRUD) — live users via the service-role serverless
+// endpoint (/api/admin/users) when Supabase is configured; falls back to the
+// read-only mock roster otherwise (e.g. local mock mode / no serverless).
+const USER_ROLES = ['admin', 'screener', 'examiner', 'typer', 'delivery', 'client', 'operator']
+
+async function usersApi(method, body) {
+  const { data: { session } = {} } = await supabase.auth.getSession()
+  const res = await fetch('/api/admin/users', {
+    method,
+    headers: { 'content-type': 'application/json', ...(session ? { authorization: `Bearer ${session.access_token}` } : {}) },
+    body: method === 'POST' ? JSON.stringify(body) : undefined,
+  })
+  const j = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(j.error || `Request failed (HTTP ${res.status})`)
+  return j
+}
+
+function UserFormModal({ initial, onClose, onSave, busy }) {
+  const isEdit = !!initial?.id
+  const [f, setF] = useState({ name: initial?.name || '', email: initial?.email || '', role: initial?.role || 'client', clientCode: initial?.clientCode || '' })
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }))
+  const inputStyle = { width: '100%', padding: '9px 12px', border: `1px solid ${Q.border}`, borderRadius: 8, fontSize: 13, outline: 'none', color: Q.text, background: '#fff' }
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.45)' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: Q.card, borderRadius: 12, width: '100%', maxWidth: 420, padding: 22 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: Q.text, marginBottom: 14 }}>{isEdit ? 'Edit user' : 'Invite / add user'}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Name</label>
+            <input value={f.name} onChange={e => set('name', e.target.value)} style={inputStyle} placeholder="Full name" />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Email</label>
+            <input value={f.email} onChange={e => set('email', e.target.value)} disabled={isEdit} style={{ ...inputStyle, opacity: isEdit ? 0.6 : 1 }} placeholder="user@company.com" />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Role</label>
+            <select value={f.role} onChange={e => set('role', e.target.value)} style={inputStyle}>
+              {USER_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          {f.role === 'client' && (
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client code</label>
+              <input value={f.clientCode} onChange={e => set('clientCode', e.target.value.toUpperCase())} style={inputStyle} placeholder="e.g. CL08" />
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+          <button disabled={busy || !f.email || !f.role} onClick={() => onSave(f)}
+            style={{ flex: 1, padding: '10px', background: ROLE_COLOR, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 600, cursor: busy ? 'wait' : 'pointer', opacity: (!f.email || !f.role) ? 0.6 : 1 }}>
+            {busy ? 'Saving…' : isEdit ? 'Save changes' : 'Create user'}
+          </button>
+          <button onClick={onClose} style={{ padding: '10px 18px', background: Q.bg, border: `1px solid ${Q.border}`, borderRadius: 8, color: Q.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AdminUsers() {
+  const live = isSupabaseConfigured
+  const [users, setUsers] = useState(() => live ? [] : USERS.map(u => ({ ...u, active: u.status !== 'inactive' })))
+  const [loading, setLoading] = useState(live)
+  const [err, setErr] = useState('')
+  const [editing, setEditing] = useState(null)   // form initial, or {} for new
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')       // temp password / reset link
+
+  const load = () => {
+    if (!live) return
+    setLoading(true)
+    usersApi('GET').then(j => setUsers(j.users || [])).catch(e => setErr(e.message)).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const run = async (fn) => { setErr(''); setBusy(true); try { await fn(); load() } catch (e) { setErr(e.message) } finally { setBusy(false) } }
+  const toggleActive = (u) => run(() => usersApi('POST', { action: 'setActive', id: u.id, active: !u.active }))
+  const remove = (u) => { if (window.confirm(`Remove ${u.name || u.email}? This permanently deletes their account.`)) run(() => usersApi('POST', { action: 'remove', id: u.id })) }
+  const reset = (u) => run(async () => { const j = await usersApi('POST', { action: 'resetPassword', email: u.email }); setNotice(`Password reset link for ${u.email}:\n\n${j.link || '(recovery email sent)'}`) })
+  const save = (form) => run(async () => {
+    if (form.id) await usersApi('POST', { action: 'update', id: form.id, name: form.name, role: form.role, clientCode: form.clientCode })
+    else { const j = await usersApi('POST', { action: 'create', email: form.email, name: form.name, role: form.role, clientCode: form.clientCode }); setNotice(`User created. Temporary password for ${form.email}:\n\n${j.tempPassword}\n\nShare it securely; they can change it via a password reset.`) }
+    setEditing(null)
+  })
+
+  const counts = [
+    { role: 'Admins', count: users.filter(u => u.role === 'admin').length, color: '#3d7020' },
+    { role: 'Screeners', count: users.filter(u => u.role === 'screener').length, color: '#4d8c2a' },
+    { role: 'Examiners', count: users.filter(u => u.role === 'examiner').length, color: '#d97706' },
+    { role: 'Typers', count: users.filter(u => u.role === 'typer').length, color: '#0891b2' },
+    { role: 'Delivery', count: users.filter(u => u.role === 'delivery').length, color: '#7c3aed' },
+    { role: 'Clients', count: users.filter(u => u.role === 'client').length, color: '#2563eb' },
+  ]
+  const btn = (label, onClick, tone = 'muted', disabled = false) => (
+    <button onClick={onClick} disabled={disabled || busy}
+      style={{ padding: '5px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: (disabled || busy) ? 'not-allowed' : 'pointer',
+        background: '#fff', border: `1px solid ${Q.border}`, color: tone === 'danger' ? '#dc2626' : tone === 'accent' ? ROLE_COLOR : Q.muted, whiteSpace: 'nowrap' }}>
+      {label}
+    </button>
+  )
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold" style={{ color: Q.text }}>User Management</h1>
-          <p className="text-sm" style={{ color: Q.muted }}>Team members and client accounts</p>
+          <p className="text-sm" style={{ color: Q.muted }}>Team members and client accounts{live ? '' : ' · read-only (backend not configured)'}</p>
         </div>
-        <button style={{
-          display:'flex', alignItems:'center', gap:6, padding:'8px 16px',
-          background:ROLE_COLOR, border:'none', borderRadius:8,
-          color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer',
-        }}
-          onMouseOver={e => e.currentTarget.style.background = ROLE_HOVER}
-          onMouseOut={e => e.currentTarget.style.background = ROLE_COLOR}>
-          <Plus style={{ width:15, height:15 }} /> Invite User
-        </button>
+        {live && (
+          <button onClick={() => setEditing({})} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: ROLE_COLOR, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            onMouseOver={e => e.currentTarget.style.background = ROLE_HOVER} onMouseOut={e => e.currentTarget.style.background = ROLE_COLOR}>
+            <Plus style={{ width: 15, height: 15 }} /> Invite User
+          </button>
+        )}
       </div>
 
+      {err && <div style={{ padding: '10px 14px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: 13 }}>{err}</div>}
+      {notice && (
+        <div style={{ padding: '12px 14px', borderRadius: 8, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', fontSize: 13, whiteSpace: 'pre-wrap', position: 'relative' }}>
+          <button onClick={() => setNotice('')} style={{ position: 'absolute', top: 8, right: 10, background: 'none', border: 'none', cursor: 'pointer', color: '#166534', fontWeight: 700 }}>×</button>
+          {notice}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        {[
-          { role:'Super Admins', count: USERS.filter(u=>u.role==='admin').length,    color:'#3d7020' },
-          { role:'Screeners',    count: USERS.filter(u=>u.role==='screener').length, color:'#4d8c2a' },
-          { role:'Examiners',    count: USERS.filter(u=>u.role==='examiner').length, color:'#d97706' },
-          { role:'Typers',       count: USERS.filter(u=>u.role==='typer').length,    color:'#0891b2' },
-          { role:'Delivery',     count: USERS.filter(u=>u.role==='delivery').length, color:'#7c3aed' },
-          { role:'Clients',      count: USERS.filter(u=>u.role==='client').length,   color:'#2563eb' },
-        ].map(r => (
-          <div key={r.role}
-            style={{ background:Q.card, border:`1px solid ${Q.border}`, borderRadius:10, boxShadow:Q.shadow, padding:'16px 20px' }}>
-            <div style={{ fontSize:28, fontWeight:700, color:Q.text }}>{r.count}</div>
-            <div style={{ fontSize:13, color:Q.muted, marginTop:2 }}>{r.role}</div>
-            <div style={{ marginTop:10, height:3, borderRadius:99, background:r.color, opacity:0.5 }} />
+        {counts.map(r => (
+          <div key={r.role} style={{ background: Q.card, border: `1px solid ${Q.border}`, borderRadius: 10, boxShadow: Q.shadow, padding: '16px 20px' }}>
+            <div style={{ fontSize: 28, fontWeight: 700, color: Q.text }}>{r.count}</div>
+            <div style={{ fontSize: 13, color: Q.muted, marginTop: 2 }}>{r.role}</div>
+            <div style={{ marginTop: 10, height: 3, borderRadius: 99, background: r.color, opacity: 0.5 }} />
           </div>
         ))}
       </div>
 
-      <div style={{ background:Q.card, border:`1px solid ${Q.border}`, borderRadius:10, boxShadow:Q.shadow, overflow:'hidden' }}>
+      <div style={{ background: Q.card, border: `1px solid ${Q.border}`, borderRadius: 10, boxShadow: Q.shadow, overflow: 'hidden' }}>
         <div className="overflow-x-auto">
-        <table className="min-w-[720px]" style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-          <thead>
-            <tr style={{ background:'#f8fafc', borderBottom:`1px solid ${Q.border}` }}>
-              {['Name','Email','Role','Status','Orders','Joined'].map(h => (
-                <th key={h} style={{
-                  padding:'10px 16px', textAlign:'left', fontSize:11,
-                  fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', color:Q.faint,
-                }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {USERS.map((u, i) => (
-              <motion.tr key={u.id} initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:i*0.05 }}
-                style={{ borderBottom:`1px solid ${Q.border}`, cursor:'pointer' }}
-                onMouseOver={e => e.currentTarget.style.background = Q.rowHover}
-                onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
-                <td style={{ padding:'10px 16px' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                    <div style={{
-                      width:32, height:32, borderRadius:8, display:'flex', alignItems:'center',
-                      justifyContent:'center', fontSize:11, fontWeight:700,
-                      background:`${ROLE_COLOR}18`, color:ROLE_COLOR,
-                    }}>
-                      {u.name.split(' ').map(n=>n[0]).join('')}
-                    </div>
-                    <span style={{ fontWeight:500, color:Q.text }}>{u.name}</span>
-                  </div>
-                </td>
-                <td style={{ padding:'10px 16px', color:Q.muted, fontSize:12 }}>{u.email}</td>
-                <td style={{ padding:'10px 16px' }}>
-                  <span style={{
-                    padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:600,
-                    background:`${ROLE_COLOR}14`, color:ROLE_COLOR,
-                    textTransform:'capitalize',
-                  }}>{u.role}</span>
-                </td>
-                <td style={{ padding:'10px 16px' }}>
-                  <span style={{
-                    padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:600,
-                    ...(u.status === 'active'
-                      ? { background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0' }
-                      : { background:'#fef2f2', color:'#dc2626', border:'1px solid #fecaca' }),
-                  }}>
-                    {u.status}
-                  </span>
-                </td>
-                <td style={{ padding:'10px 16px', fontWeight:500, color:Q.text }}>{u.orders}</td>
-                <td style={{ padding:'10px 16px', fontSize:12, color:Q.faint }}>{u.joined}</td>
-              </motion.tr>
-            ))}
-          </tbody>
-        </table>
+          <table className="min-w-[760px]" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', borderBottom: `1px solid ${Q.border}` }}>
+                {['Name', 'Email', 'Role', 'Status', live ? 'Actions' : 'Joined'].map(h => (
+                  <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: Q.faint }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={5} style={{ padding: '28px 16px', textAlign: 'center', color: Q.faint, fontSize: 13 }}>Loading users…</td></tr>}
+              {!loading && users.length === 0 && <tr><td colSpan={5} style={{ padding: '28px 16px', textAlign: 'center', color: Q.faint, fontSize: 13 }}>No users.</td></tr>}
+              {!loading && users.map((u, i) => {
+                const active = live ? u.active : u.status !== 'inactive'
+                return (
+                  <tr key={u.id || u.email || i} style={{ borderBottom: `1px solid ${Q.border}` }}>
+                    <td style={{ padding: '10px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, background: `${ROLE_COLOR}18`, color: ROLE_COLOR }}>
+                          {(u.name || u.email || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </div>
+                        <span style={{ fontWeight: 500, color: Q.text }}>{u.name || '—'}{u.superAdmin && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#b45309' }}>SUPER</span>}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '10px 16px', color: Q.muted, fontSize: 12 }}>{u.email}</td>
+                    <td style={{ padding: '10px 16px' }}>
+                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: `${ROLE_COLOR}14`, color: ROLE_COLOR, textTransform: 'capitalize' }}>{u.role || '—'}{u.role === 'client' && u.clientCode ? ` · ${u.clientCode}` : ''}</span>
+                    </td>
+                    <td style={{ padding: '10px 16px' }}>
+                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, ...(active ? { background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' } : { background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }) }}>
+                        {active ? 'active' : 'inactive'}
+                      </span>
+                    </td>
+                    {live ? (
+                      <td style={{ padding: '10px 16px' }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {btn('Edit', () => setEditing({ id: u.id, name: u.name, email: u.email, role: u.role, clientCode: u.clientCode }), 'accent')}
+                          {btn(active ? 'Deactivate' : 'Activate', () => toggleActive(u))}
+                          {btn('Reset', () => reset(u))}
+                          {btn('Remove', () => remove(u), 'danger')}
+                        </div>
+                      </td>
+                    ) : (
+                      <td style={{ padding: '10px 16px', fontSize: 12, color: Q.faint }}>{u.joined || '—'}</td>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
+
+      {editing && <UserFormModal initial={editing} busy={busy} onClose={() => setEditing(null)} onSave={save} />}
     </div>
   )
 }
