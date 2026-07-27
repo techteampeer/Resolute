@@ -15,7 +15,7 @@ import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument } from '../../lib/backend'
 import AttachedDocs from '../../components/AttachedDocs'
 import {
-  USERS, MONTHLY_STATS, PAYMENT_METHODS, MESSAGES,
+  USERS, MONTHLY_STATS, PAYMENT_METHODS,
   STAGE_KEYS, STAGE_LABELS, displayClient, clientByName,
   REGIONS, regionOf, nextRoleFor,
 } from '../../data/mockData'
@@ -171,6 +171,8 @@ const orderFiles = (order) => {
 
 function OrderEditModal({ order, user, onClose, onSave }) {
   const { activityLog, resolveCancel } = useOrders()
+  const { getOrderThread, sendMessage } = useSupport()
+  const [reply, setReply] = useState('')
   const cli = clientByName(order.client)
   // BUG_003: a client requested cancellation of an in-progress order; Admin
   // decides. (Orders cancelled while still queued never reach here.)
@@ -199,7 +201,14 @@ function OrderEditModal({ order, user, onClose, onSave }) {
   const cd = order.completedDates || {}
   const cb = order.completedBy || {}
   const orderActivity = activityLog.filter(a => a.action && a.action.includes(order.id))
-  const orderMessages = MESSAGES.filter(m => m.orderId === order.id)
+  // Per-order inbox thread (client ⇄ staff), shared with the client's order view.
+  const orderMessages = getOrderThread(order.id)
+  const orderClientCode = order.clientCode || cli?.code || null
+  const sendReply = () => {
+    const t = reply.trim(); if (!t || !orderClientCode) return
+    sendMessage({ clientCode: orderClientCode, clientName: order.client, from: 'support', text: t, author: user?.name || 'Support', orderId: order.id })
+    setReply('')
+  }
   const files = orderFiles(order)
   // Order specifics the client submitted on the place-order form, carried on
   // order.workflow.intake (property, parties/owner names, APN, contact, notes).
@@ -424,21 +433,37 @@ function OrderEditModal({ order, user, onClose, onSave }) {
           </div>
         )}
 
-        {/* INBOX */}
+        {/* INBOX — per-order client ⇄ staff thread */}
         {tab === 'inbox' && (
           <div style={{ padding:'18px 22px' }}>
-            {orderMessages.length === 0 && <div style={{ fontSize:13, color:Q.faint }}>No messages on this order.</div>}
-            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              {orderMessages.map(m => (
-                <div key={m.id} style={{ border:`1px solid ${Q.border}`, borderRadius:10, padding:'12px 14px' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                    <span style={{ fontSize:13, fontWeight:600, color:Q.text }}>{m.from}</span>
-                    <span style={{ fontSize:11, color:Q.faint }}>{m.date}</span>
+            {orderMessages.length === 0 && <div style={{ fontSize:13, color:Q.faint, marginBottom:12 }}>No messages on this order yet.</div>}
+            <div style={{ display:'flex', flexDirection:'column', gap:10, maxHeight:320, overflowY:'auto', marginBottom:12 }}>
+              {orderMessages.map((m, i) => (
+                <div key={m.id ?? i} style={{ display:'flex', justifyContent: m.from === 'support' ? 'flex-end' : 'flex-start' }}>
+                  <div style={{ maxWidth:'78%', padding:'8px 12px', borderRadius:14, fontSize:13,
+                    background: m.from === 'support' ? ROLE_COLOR : '#f1f5f9',
+                    color: m.from === 'support' ? '#fff' : Q.text,
+                    border: m.from === 'support' ? 'none' : `1px solid ${Q.border}` }}>
+                    {m.text}
+                    {m.time && <div style={{ fontSize:10.5, marginTop:3, color: m.from === 'support' ? 'rgba(255,255,255,0.75)' : Q.faint }}>
+                      {m.author ? `${m.author} · ` : ''}{m.time}
+                    </div>}
                   </div>
-                  <p style={{ fontSize:13, color:Q.muted, lineHeight:'1.5' }}>{m.preview}</p>
                 </div>
               ))}
             </div>
+            {orderClientCode ? (
+              <div style={{ display:'flex', gap:8 }}>
+                <input value={reply} onChange={e => setReply(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendReply()}
+                  placeholder="Reply to the client…"
+                  style={{ flex:1, padding:'9px 12px', border:`1px solid ${Q.border}`, borderRadius:8, fontSize:13, outline:'none', color:Q.text }} />
+                <button onClick={sendReply} style={{ padding:'9px 14px', background:ROLE_COLOR, border:'none', borderRadius:8, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:600 }}>
+                  <Send style={{ width:15, height:15 }} /> Send
+                </button>
+              </div>
+            ) : (
+              <div style={{ fontSize:12, color:Q.faint }}>This order has no linked client account to message.</div>
+            )}
           </div>
         )}
 

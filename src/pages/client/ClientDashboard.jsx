@@ -230,7 +230,17 @@ function ClientAttach({ orderId = null, value = [], onChange, accent = ROLE_COLO
 function ClientOrderModal({ order, onClose }) {
   const { user } = useAuth()
   const { updateOrder, cancelOrder } = useOrders()
+  const { getOrderThread, sendMessage } = useSupport()
   const stage = clientStage(order)
+  // Per-order inbox (Client Inbox): secure order-specific messages to the team.
+  const [omsg, setOmsg] = useState('')
+  const orderThread = getOrderThread(order.id)
+  const canMessage = !user?.demo && !!user?.clientCode
+  const sendOrderMsg = () => {
+    const t = omsg.trim(); if (!t || !canMessage) return
+    sendMessage({ clientCode: user.clientCode, clientName: clientName(user.clientCode) || user?.name, from: 'client', text: t, author: user?.name, orderId: order.id })
+    setOmsg('')
+  }
   // BUG_003: cancellation. Free while still queued; a request needing Admin
   // approval once work has started. Local mirror so the UI reflects it at once.
   const [cancelState, setCancelState] = useState(
@@ -341,6 +351,35 @@ function ClientOrderModal({ order, onClose }) {
               ))}
             </div>
           )}
+          {/* Per-order inbox */}
+          <div className="rounded-xl p-4 space-y-3" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
+            <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#64748b' }}>Messages · this order</div>
+            <div className="space-y-2 max-h-52 overflow-y-auto">
+              {orderThread.length === 0 && (
+                <div className="text-xs" style={{ color:'#64748b' }}>No messages yet. Ask a question or send details about this order — our team replies here.</div>
+              )}
+              {orderThread.map((m, i) => (
+                <div key={m.id || i} className={`flex ${m.from === 'client' ? 'justify-end' : 'justify-start'}`}>
+                  <div className="max-w-[80%] px-3 py-2 rounded-2xl text-[13px]"
+                    style={m.from === 'client'
+                      ? { background:'#3d7020', color:'#f5f7f2' }
+                      : { background:'#fff', color:'#1e293b', border:'1px solid rgba(30,41,59,0.1)' }}>
+                    {m.text}
+                    {m.time && <div className="text-[10px] mt-1" style={{ color: m.from === 'client' ? '#c7d9b8' : '#64748b' }}>{m.author ? `${m.author} · ` : ''}{m.time}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {canMessage ? (
+              <div className="flex gap-2">
+                <input value={omsg} onChange={e => setOmsg(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendOrderMsg()}
+                  placeholder="Message about this order…" className="input-field text-sm flex-1 py-2" />
+                <button onClick={sendOrderMsg} className="btn-primary px-3 py-2 text-sm flex items-center gap-1.5"><Send className="w-4 h-4" /></button>
+              </div>
+            ) : (
+              <div className="text-[11px]" style={{ color:'#94a3b8' }}>Messaging is available on your own orders.</div>
+            )}
+          </div>
           {/* BUG_003: cancellation */}
           {cancelState === 'cancelled' && (
             <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
