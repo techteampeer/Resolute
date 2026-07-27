@@ -81,19 +81,21 @@ const US_STATES = [
   'Washington','West Virginia','Wisconsin','Wyoming',
 ]
 
-// Client-facing stages — internal stages (screening/searching/examining/typing) collapse into "In Progress"
-// BUG_005: a brand-new order reads "In Queue" (awaiting pickup) rather than the
-// internal "received" status, which testers read as already-being-worked.
-const CLIENT_STEPS = ['In Queue','In Progress','Clarification Responded','Delivered']
+// Client-facing stages: Placed (awaiting admin confirmation) → Received
+// (confirmed by admin) → In Progress (any internal stage) → Delivered. On-Hold
+// and Clarification are overlays that ride on top of the current step.
+const CLIENT_STEPS = ['Placed','Received','In Progress','Delivered']
 function clientStage(order) {
+  const confirmed = !!order.workflow?.confirmed
+  const working = ['screening','searching','examining','typing','delivery'].includes(order.status)
   if (order.status === 'cancelled')          return { idx: 0, label: 'Cancelled',               color: '#dc2626' }
   if (order.status === 'delivered')          return { idx: 3, label: 'Delivered',               color: '#15803d' }
-  if (order.workflow?.onHold)                return { idx: 1, label: 'On Hold',                 color: '#a16207' }
-  if (order.clarification === 'pending')     return { idx: 1, label: 'Clarification Required',  color: '#dc2626' }
+  if (order.workflow?.onHold)                return { idx: working ? 2 : 1, label: 'On Hold',    color: '#a16207' }
+  if (order.clarification === 'pending')     return { idx: 2, label: 'Clarification Required',  color: '#dc2626' }
   if (order.clarification === 'responded')   return { idx: 2, label: 'Clarification Responded',  color: '#2563eb' }
-  if (['screening','searching','examining','typing'].includes(order.status))
-                                             return { idx: 1, label: 'In Progress',              color: '#b45309' }
-  return { idx: 0, label: 'In Queue', color: '#4d7c2f' }
+  if (working)                               return { idx: 2, label: 'In Progress',              color: '#b45309' }
+  if (confirmed)                             return { idx: 1, label: 'Received',                 color: '#2563eb' }
+  return { idx: 0, label: 'Placed', color: '#4d7c2f' }
 }
 
 // BUG_007: clicking an order opens its detail view (see ClientOrderModal).

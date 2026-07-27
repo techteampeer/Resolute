@@ -173,8 +173,9 @@ export function OrderProvider({ children }) {
     log({ id: Date.now(), orderId, actor, action: `${actor} ${approve ? 'approved' : 'declined'} cancellation of ${orderId}`, time: 'Just now', type: 'status' })
   }
 
-  // Create a new draft order (client "Place an Order"). Draft = 'received' in the
-  // Screener intake queue. Prepends locally; best-effort persist when configured.
+  // Create a new order (client "Place an Order"). It parks with Admin for
+  // confirmation (assignedTo 'admin', unconfirmed) rather than going straight to
+  // the screener — Admin acknowledges/prices it, then forwards to a screener.
   // ID comes from the DB sequence when Supabase is on (two simultaneous orders
   // can't collide); the local max()+1 is the mock fallback.
   const createOrder = async (data = {}) => {
@@ -194,7 +195,7 @@ export function OrderProvider({ children }) {
       clientCode: data.clientCode || null,
       state: data.state || '', county: data.county || '', type: data.type || 'Full Search',
       status: 'received', priority: data.priority || 'normal', payment: data.payment || 'Check',
-      clarification: null, assignedTo: 'screener',
+      clarification: null, assignedTo: 'admin',
       screener: null, examiner: null, typer: null, delivery: null,
       progress: 5, created: todayISO(), eta: data.eta || '', completed: null,
       completedDates: {}, completedBy: {},
