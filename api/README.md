@@ -4,6 +4,46 @@ Vercel serverless functions. The SPA rewrite in `vercel.json` excludes `/api`,
 so these resolve to functions (not `index.html`). Files under `_lib/` are
 shared modules, not routes.
 
+## `POST /api/admin/users`
+
+Admin User Management (CRUD). Gated: the caller's bearer token must resolve to a
+profile with `role = 'admin'`. Uses the service-role client. Actions: `create`
+(invite), `update`, `setActive` (activate/deactivate via auth ban),
+`resetPassword` (recovery link), `remove` (hard delete). `GET` lists users.
+Requires `SUPABASE_SERVICE_ROLE_KEY`.
+
+## `POST /api/notify` — email notifications
+
+Sends templated emails for portal activity (new order, status change,
+clarification, new message). Driven by **Supabase Database Webhooks** on inserts
+into `public.order_events` and `public.support_messages`, so every event already
+written to those tables produces an email — no client wiring, full coverage of
+server-side events.
+
+Routing: placement + client-sent messages + cancellations → admins; status
+updates + staff messages → the order's client.
+
+### Environment variables
+| Var | Purpose |
+|---|---|
+| `SMTP_HOST` | e.g. `smtp.gmail.com`. **If unset, emails are composed but not sent** (dev/test). |
+| `SMTP_PORT` | e.g. `465` |
+| `SMTP_USER` | the Gmail address (also the default From) |
+| `SMTP_PASS` | the Gmail **app password** (the same one the IMAP ingest uses) |
+| `MAIL_FROM` | optional From override |
+| `NOTIFY_SECRET` | shared secret; the webhook must send it as header `x-notify-secret` |
+| `NOTIFY_ADMIN_EMAIL` | optional; comma-separated admin recipients (else all `admin` profiles) |
+
+### Configure the two webhooks (Supabase → Database → Webhooks → *Create*)
+For **each** table `public.order_events` and `public.support_messages`:
+- Events: **Insert**
+- Type: **HTTP Request** → `POST https://<your-app>.vercel.app/api/notify`
+- HTTP Headers: add `x-notify-secret: <your NOTIFY_SECRET>`
+
+The webhook body Supabase sends (`{ type, table, record, ... }`) is exactly what
+`/api/notify` expects. To send via SMTP you must set the `SMTP_*` vars; without
+them the endpoint returns `sent:true, live:false` (composed only).
+
 ## `POST /api/webhooks/inbound-email`
 
 Inbound email → draft order pipeline:
