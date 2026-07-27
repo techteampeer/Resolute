@@ -25,7 +25,7 @@ export async function createInboundOrder(fields, meta = {}) {
     type: fields.orderType || 'Full Search',
     status: 'received',                       // draft / PENDING_REVIEW equivalent
     priority: 'normal',
-    assigned_to: 'screener',
+    assigned_to: 'admin',                     // park with Admin to confirm/price, then forward
     progress: 5,
     created: new Date().toISOString().slice(0, 10),
     completed_dates: {},

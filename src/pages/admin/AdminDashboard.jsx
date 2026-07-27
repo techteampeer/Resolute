@@ -228,6 +228,22 @@ function OrderEditModal({ order, user, onClose, onSave }) {
     notify(`Clarification needed: ${note}`)
     onClose()
   }
+  // Confirm step: portal orders (source 'web') are a one-click acknowledgment;
+  // website/email orders need a negotiated price entered before confirming.
+  const confirmed = !!order.workflow?.confirmed
+  const needsPrice = (order.workflow?.intake?.source || 'web') !== 'web'
+  const confirmOrder = () => {
+    let price = null
+    if (needsPrice) {
+      const raw = window.prompt('Enter the agreed price for this order (USD):', order.workflow?.invoiceAmount ?? '')
+      if (raw == null) return
+      price = Number(raw)
+      if (Number.isNaN(price) || price < 0) { window.alert('Please enter a valid price.'); return }
+    }
+    updateOrder({ ...order, workflow: { ...order.workflow, confirmed: true, confirmedAt: new Date().toISOString().slice(0, 10), confirmedBy: user?.name || 'Admin', ...(price != null ? { invoiceAmount: price } : {}) } })
+    notify(`Your order ${order.id} has been received and confirmed${price != null ? ` — total $${price}` : ''}. We'll begin work shortly.`)
+    onClose()
+  }
   const files = orderFiles(order)
   // Order specifics the client submitted on the place-order form, carried on
   // order.workflow.intake (property, parties/owner names, APN, contact, notes).
@@ -420,9 +436,20 @@ function OrderEditModal({ order, user, onClose, onSave }) {
             <div style={{ padding:'0 22px 18px' }}><AttachedDocs workflow={order.workflow} /></div>
           )}
 
-          {/* Order actions — on-hold + clarification (only for live orders) */}
+          {/* Order actions — confirm + on-hold + clarification (live orders) */}
           {order.status !== 'delivered' && order.status !== 'cancelled' && (
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', padding:'0 22px 14px' }}>
+              {!confirmed && (
+                <button onClick={confirmOrder} style={{ padding:'8px 14px', borderRadius:8, fontSize:12.5, fontWeight:700, cursor:'pointer',
+                  background:ROLE_COLOR, border:'none', color:'#fff' }}>
+                  {needsPrice ? 'Confirm & set price' : 'Confirm order'}
+                </button>
+              )}
+              {confirmed && (
+                <span style={{ padding:'8px 12px', borderRadius:8, fontSize:12.5, fontWeight:600, background:'#eff6ff', color:'#2563eb', border:'1px solid #bfdbfe' }}>
+                  Confirmed{order.workflow?.confirmedBy ? ` · ${order.workflow.confirmedBy}` : ''}
+                </span>
+              )}
               <button onClick={toggleHold} style={{ padding:'8px 14px', borderRadius:8, fontSize:12.5, fontWeight:600, cursor:'pointer',
                 background: onHold ? '#fffbeb' : Q.bg, border:`1px solid ${onHold ? '#fde68a' : Q.border}`, color: onHold ? '#a16207' : Q.muted }}>
                 {onHold ? 'Resume order' : 'Put on hold'}
@@ -797,6 +824,10 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       {r.kind === 'inprogress' && (
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
                           background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0' }}>Assigned</span>
+                      )}
+                      {!o.workflow?.confirmed && o.status === 'received' && (
+                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
+                          background:'#eff6ff', color:'#2563eb', border:'1px solid #bfdbfe' }}>Awaiting confirm</span>
                       )}
                       {o.workflow?.onHold && (
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
