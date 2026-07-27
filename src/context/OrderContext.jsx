@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { ORDERS, ACTIVITY, nextRoleFor, statusForRole } from '../data/mockData'
-import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc } from '../lib/backend'
+import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
 import { useAuth } from './AuthContext'
 
 const OrderContext = createContext(null)
@@ -154,6 +154,12 @@ export function OrderProvider({ children }) {
     return mode
   }
 
+  // Client responds to a pending clarification (RLS-safe RPC; own order only).
+  const respondClarification = (orderId) => {
+    setOrders(os => os.map(o => (o.id === orderId ? { ...o, clarification: 'responded' } : o)))
+    if (isSupabaseConfigured) respondClarificationRpc(orderId).catch(() => {})
+  }
+
   // Admin resolves a pending cancellation request (approve = cancel the order).
   const resolveCancel = (orderId, approve, actor = 'Admin') => {
     setOrders(os => os.map(o => {
@@ -206,7 +212,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )
