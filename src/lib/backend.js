@@ -144,6 +144,12 @@ export async function cancelOrderRpc(orderId) {
   return data
 }
 
+// Client marks a pending clarification as responded (own order; RLS-safe RPC).
+export async function respondClarificationRpc(orderId) {
+  const { error } = await supabase.rpc('client_respond_clarification', { p_order_id: orderId })
+  if (error) { console.error('[respondClarificationRpc]', error.message); throw error }
+}
+
 export function subscribeSupport(cb) {
   const channel = supabase.channel('support-rt')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_messages' }, cb)

@@ -88,6 +88,8 @@ const CLIENT_STEPS = ['In Queue','In Progress','Clarification Responded','Delive
 function clientStage(order) {
   if (order.status === 'cancelled')          return { idx: 0, label: 'Cancelled',               color: '#dc2626' }
   if (order.status === 'delivered')          return { idx: 3, label: 'Delivered',               color: '#15803d' }
+  if (order.workflow?.onHold)                return { idx: 1, label: 'On Hold',                 color: '#a16207' }
+  if (order.clarification === 'pending')     return { idx: 1, label: 'Clarification Required',  color: '#dc2626' }
   if (order.clarification === 'responded')   return { idx: 2, label: 'Clarification Responded',  color: '#2563eb' }
   if (['screening','searching','examining','typing'].includes(order.status))
                                              return { idx: 1, label: 'In Progress',              color: '#b45309' }
@@ -229,9 +231,11 @@ function ClientAttach({ orderId = null, value = [], onChange, accent = ROLE_COLO
 // any documents delivered to the client (opened via the re-signing openDocument).
 function ClientOrderModal({ order, onClose }) {
   const { user } = useAuth()
-  const { updateOrder, cancelOrder } = useOrders()
+  const { updateOrder, cancelOrder, respondClarification } = useOrders()
   const { getOrderThread, sendMessage } = useSupport()
-  const stage = clientStage(order)
+  // Local mirror of clarification so the stage badge/prompt update on reply.
+  const [clar, setClar] = useState(order.clarification)
+  const stage = clientStage({ ...order, clarification: clar })
   // Per-order inbox (Client Inbox): secure order-specific messages to the team.
   const [omsg, setOmsg] = useState('')
   const orderThread = getOrderThread(order.id)
@@ -240,6 +244,8 @@ function ClientOrderModal({ order, onClose }) {
     const t = omsg.trim(); if (!t || !canMessage) return
     sendMessage({ clientCode: user.clientCode, clientName: clientName(user.clientCode) || user?.name, from: 'client', text: t, author: user?.name, orderId: order.id })
     setOmsg('')
+    // Replying to a pending clarification marks it responded.
+    if (clar === 'pending') { respondClarification(order.id); setClar('responded') }
   }
   // BUG_003: cancellation. Free while still queued; a request needing Admin
   // approval once work has started. Local mirror so the UI reflects it at once.
@@ -289,10 +295,15 @@ function ClientOrderModal({ order, onClose }) {
           </div>
         </div>
         <div className="px-5 pb-5 space-y-4">
-          {order.clarification === 'pending' && (
+          {order.workflow?.onHold && (
+            <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background:'rgba(161,98,7,0.10)', border:'1px solid rgba(161,98,7,0.28)', color:'#a16207' }}>
+              This order is <strong>On Hold</strong>{order.workflow.holdReason ? ` — ${order.workflow.holdReason}` : ''}. Work is paused; we'll resume and let you know.
+            </div>
+          )}
+          {clar === 'pending' && (
             <div className="space-y-2">
-              <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background:'rgba(220,140,40,0.10)', border:'1px solid rgba(220,140,40,0.25)', color:'#b45309' }}>
-                Clarification requested — our team is waiting on additional information for this order.
+              <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.25)', color:'#dc2626' }}>
+                <strong>Action needed:</strong> our team requested a clarification. Reply in <strong>Messages</strong> below (or attach a document) to keep this order moving.
               </div>
               {canUpload && (
                 <div>

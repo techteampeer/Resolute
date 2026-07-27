@@ -170,7 +170,7 @@ const orderFiles = (order) => {
 }
 
 function OrderEditModal({ order, user, onClose, onSave }) {
-  const { activityLog, resolveCancel } = useOrders()
+  const { activityLog, resolveCancel, updateOrder } = useOrders()
   const { getOrderThread, sendMessage } = useSupport()
   const [reply, setReply] = useState('')
   const cli = clientByName(order.client)
@@ -208,6 +208,24 @@ function OrderEditModal({ order, user, onClose, onSave }) {
     const t = reply.trim(); if (!t || !orderClientCode) return
     sendMessage({ clientCode: orderClientCode, clientName: order.client, from: 'support', text: t, author: user?.name || 'Support', orderId: order.id })
     setReply('')
+  }
+  // Order actions: On-Hold (pauses; client sees "On Hold") and Request
+  // clarification (client sees "Clarification Required" + a prompt to reply).
+  const onHold = !!order.workflow?.onHold
+  const notify = (text) => { if (orderClientCode) sendMessage({ clientCode: orderClientCode, clientName: order.client, from: 'support', text, author: user?.name || 'Admin', orderId: order.id }) }
+  const toggleHold = () => {
+    const on = !onHold
+    const reason = on ? (window.prompt('Reason for holding this order (optional):', '') ?? null) : null
+    updateOrder({ ...order, workflow: { ...order.workflow, onHold: on, holdReason: on ? (reason || null) : null } })
+    notify(on ? `Your order was placed on hold${reason ? `: ${reason}` : ''}.` : 'Your order has resumed.')
+    onClose()
+  }
+  const requestClarification = () => {
+    const note = window.prompt('What clarification do you need from the client?', '')
+    if (note == null) return
+    updateOrder({ ...order, clarification: 'pending' })
+    notify(`Clarification needed: ${note}`)
+    onClose()
   }
   const files = orderFiles(order)
   // Order specifics the client submitted on the place-order form, carried on
@@ -399,6 +417,23 @@ function OrderEditModal({ order, user, onClose, onSave }) {
 
           {order.workflow && (order.workflow.screenerDoc || order.workflow.examinerDoc) && (
             <div style={{ padding:'0 22px 18px' }}><AttachedDocs workflow={order.workflow} /></div>
+          )}
+
+          {/* Order actions — on-hold + clarification (only for live orders) */}
+          {order.status !== 'delivered' && order.status !== 'cancelled' && (
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap', padding:'0 22px 14px' }}>
+              <button onClick={toggleHold} style={{ padding:'8px 14px', borderRadius:8, fontSize:12.5, fontWeight:600, cursor:'pointer',
+                background: onHold ? '#fffbeb' : Q.bg, border:`1px solid ${onHold ? '#fde68a' : Q.border}`, color: onHold ? '#a16207' : Q.muted }}>
+                {onHold ? 'Resume order' : 'Put on hold'}
+              </button>
+              <button onClick={requestClarification} disabled={!orderClientCode || order.clarification === 'pending'}
+                title={!orderClientCode ? 'No linked client account' : ''}
+                style={{ padding:'8px 14px', borderRadius:8, fontSize:12.5, fontWeight:600,
+                  cursor: (!orderClientCode || order.clarification === 'pending') ? 'not-allowed' : 'pointer',
+                  background: Q.bg, border:`1px solid ${Q.border}`, color: (!orderClientCode || order.clarification === 'pending') ? Q.faint : Q.muted }}>
+                {order.clarification === 'pending' ? 'Clarification pending…' : 'Request clarification'}
+              </button>
+            </div>
           )}
 
           <div style={{ display:'flex', gap:10, padding:'0 22px 20px' }}>
@@ -761,6 +796,14 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       {r.kind === 'inprogress' && (
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
                           background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0' }}>Assigned</span>
+                      )}
+                      {o.workflow?.onHold && (
+                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
+                          background:'#fffbeb', color:'#a16207', border:'1px solid #fde68a' }}>On Hold</span>
+                      )}
+                      {o.clarification === 'pending' && (
+                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
+                          background:'#fef2f2', color:'#dc2626', border:'1px solid #fecaca' }}>Clarification</span>
                       )}
                     </div>
                   </td>
