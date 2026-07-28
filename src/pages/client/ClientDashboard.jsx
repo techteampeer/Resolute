@@ -1,12 +1,12 @@
 import React, { useState } from 'react'
-import { Routes, Route, useNavigate, useSearchParams } from 'react-router-dom'
+import { Routes, Route, useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
 import OrderThread from '../../components/OrderThread'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox,
-  Package, CheckCircle, Clock, ChevronRight, X, MapPin, Zap, Send, FileText, DollarSign, Search,
+  Package, CheckCircle, Clock, ChevronRight, MapPin, Zap, Send, FileText, DollarSign, Search,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye
 } from 'lucide-react'
 import { clientCode as codeByName, clientName } from '../../data/mockData'
@@ -230,24 +230,50 @@ function ClientAttach({ orderId = null, value = [], onChange, accent = ROLE_COLO
   )
 }
 
-// BUG_007: client-facing order detail. Shows the tracking stage, everything the
-// client submitted (workflow.intake), milestone dates, clarification state, and
-// any documents delivered to the client (opened via the re-signing openDocument).
-function ClientOrderModal({ order, onClose }) {
-  const { user } = useAuth()
-  const { updateOrder, cancelOrder } = useOrders()
-  const { getOrderThread } = useSupport()
+// Colour per activity type — mirrors the notification bell (Layout.jsx) so the
+// Activity tab reads the same visual language as the bell feed.
+const ACTIVITY_DOT = { new: '#4d7c2f', delivered: '#16a34a', progress: '#d97706', status: '#7c3aed', user: '#2563eb', payment: '#0891b2' }
+
+// BUG_007 → full order page. Clicking an order opens /client/orders/:id, a
+// dedicated page with three tabs:
+//   • Overview  — everything the client submitted, documents, billing, actions
+//   • Activity  — the order's own slice of the notification feed (status,
+//                 clarifications, payments — one chronological stream)
+//   • Inbox     — the per-order message thread (shared OrderThread component)
+function OrderDetailPage() {
+  const { id } = useParams()
   const navigate = useNavigate()
-  // Local mirror of clarification so the stage badge/prompt update on reply.
-  const [clar] = useState(order.clarification)
-  const stage = clientStage({ ...order, clarification: clar })
-  const orderThread = getOrderThread(order.id)
-  const canMessage = !user?.demo && !!user?.clientCode
-  // BUG_003: cancellation. Free while still queued; a request needing Admin
-  // approval once work has started. Local mirror so the UI reflects it at once.
+  const { user } = useAuth()
+  const { updateOrder, cancelOrder, respondClarification, activityLog = [] } = useOrders()
+  const { getOrderThread, sendMessage } = useSupport()
+  const orders = useMyOrders()
+  const order = orders.find(o => o.id === id) || null
+  const [tab, setTab] = useState('overview')
+
+  // Hooks must run unconditionally — declare state before the not-found guard.
   const [cancelState, setCancelState] = useState(
-    order.status === 'cancelled' ? 'cancelled'
-      : order.workflow?.cancelRequested ? 'requested' : 'none')
+    order?.status === 'cancelled' ? 'cancelled'
+      : order?.workflow?.cancelRequested ? 'requested' : 'none')
+  const [clientDocs, setClientDocs] = useState(order?.workflow?.clientDocs || [])
+
+  if (!order) return (
+    <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
+      <div className="text-sm" style={{ color:'#64748b' }}>Order not found, or it isn’t one of yours.</div>
+      <button onClick={() => navigate('/client/orders')} className="btn-primary text-sm px-5 py-2.5">Back to My Orders</button>
+    </div>
+  )
+
+  const stage = clientStage(order)
+  const intake = order.workflow?.intake
+  const canMessage = !user?.demo && !!user?.clientCode
+  const canUpload = !user?.demo
+  const thread = getOrderThread(order.id)
+  // This order's slice of the activity feed (entries tagged by id, or seed
+  // entries that only mention it in their text).
+  const activity = activityLog.filter(n =>
+    n.orderId === order.id || (String(n.action || '').match(/RTS-\d+/)?.[0] === order.id))
+
+  // BUG_003: cancellation — immediate while queued, else a review request.
   const isQueued = order.status === 'received'
   const canCancel = !user?.demo && order.status !== 'delivered' && cancelState === 'none'
   const doCancel = () => {
@@ -255,14 +281,8 @@ function ClientOrderModal({ order, onClose }) {
       ? 'Cancel this order? It hasn’t been started yet, so it will be cancelled immediately.'
       : 'This order is already being worked on. Request cancellation? Our team will review and confirm.'
     if (!window.confirm(msg)) return
-    const mode = cancelOrder(order.id, user?.name || 'Client')
-    setCancelState(mode)
+    setCancelState(cancelOrder(order.id, user?.name || 'Client'))
   }
-  const intake = order.workflow?.intake
-  // BUG_004: the client's own reference uploads travel on workflow.clientDocs.
-  // Local mirror so newly-added files show immediately (the prop is a snapshot).
-  const [clientDocs, setClientDocs] = useState(order.workflow?.clientDocs || [])
-  const canUpload = !user?.demo
   const syncDocs = (updater) => setClientDocs(prev => {
     const next = typeof updater === 'function' ? updater(prev) : updater
     updateOrder({ ...order, workflow: { ...order.workflow, clientDocs: next } })
@@ -272,34 +292,65 @@ function ClientOrderModal({ order, onClose }) {
     order.workflow?.commitmentDoc && { ...order.workflow.commitmentDoc, label: 'Title Commitment' },
     ...(order.workflow?.supplementaryDocs || []).filter(d => d.sendToCustomer).map(d => ({ ...d.file, label: 'Supplementary' })),
   ].filter(Boolean)
+  const onSend = ({ text, attachment }) => {
+    if (!canMessage) return
+    sendMessage({ clientCode: user.clientCode, clientName: clientName(user.clientCode) || user?.name, from: 'client', text, author: user?.name, orderId: order.id, attachment })
+    if (order.clarification === 'pending') respondClarification(order.id)   // replying resolves a clarification
+  }
+
   const Row = ({ k, v }) => v ? (
     <div><span style={{ color:'#64748b' }}>{k}: </span><span className="font-medium" style={{ color:'#1e293b' }}>{v}</span></div>
   ) : null
+  const TABS = [
+    { key:'overview', label:'Overview', icon:FileText },
+    { key:'activity', label:'Activity', icon:Clock, badge: activity.length || null },
+    { key:'inbox',    label:'Inbox',    icon:Inbox, badge: thread.length || null },
+  ]
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(15,23,42,0.45)' }} onClick={onClose}>
-      <motion.div initial={{ scale:0.96, opacity:0 }} animate={{ scale:1, opacity:1 }} onClick={e => e.stopPropagation()}
-        className="glass-card w-full overflow-y-auto" style={{ maxWidth:560, maxHeight:'90vh', background:'#fff', borderRadius:14 }}>
-        <div className="flex items-start justify-between p-5 pb-3">
+    <div className="max-w-3xl mx-auto space-y-5">
+      {/* Header */}
+      <div>
+        <button onClick={() => navigate('/client/orders')} className="flex items-center gap-1.5 text-sm mb-3" style={{ color:'#64748b', background:'none', border:'none', padding:0, cursor:'pointer' }}>
+          <ChevronRight className="w-4 h-4" style={{ transform:'rotate(180deg)' }} /> Back to My Orders
+        </button>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <div className="font-mono font-semibold text-sm" style={{ color:ROLE_COLOR }}>{order.id}</div>
-            <div className="font-bold text-lg" style={{ color:'#1e293b' }}>{order.type}</div>
+            <div className="font-bold text-xl" style={{ color:'#1e293b' }}>{order.type}</div>
             <div className="text-xs" style={{ color:'#64748b' }}>{order.county}, {order.state} · placed {order.created}</div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background:`${stage.color}1e`, color:stage.color }}>{stage.label}</span>
-            <button onClick={onClose} className="p-1" style={{ color:'#64748b' }}><X className="w-4 h-4" /></button>
-          </div>
+          <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background:`${stage.color}1e`, color:stage.color }}>{stage.label}</span>
         </div>
-        <div className="px-5 pb-5 space-y-4">
+      </div>
+
+      {/* Tab strip */}
+      <div className="flex items-center gap-1 border-b" style={{ borderColor:'rgba(30,41,59,0.10)' }}>
+        {TABS.map(t => {
+          const active = tab === t.key
+          return (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors"
+              style={{ color: active ? ROLE_COLOR : '#64748b', borderBottom: `2px solid ${active ? ROLE_COLOR : 'transparent'}`, marginBottom:-1, background:'none', cursor:'pointer' }}>
+              <t.icon className="w-4 h-4" /> {t.label}
+              {t.badge ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background:`${ROLE_COLOR}1a`, color:ROLE_COLOR }}>{t.badge}</span> : null}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ── Overview ─────────────────────────────────────────────────────── */}
+      {tab === 'overview' && (
+        <div className="space-y-4">
           {order.workflow?.onHold && (
             <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background:'rgba(161,98,7,0.10)', border:'1px solid rgba(161,98,7,0.28)', color:'#a16207' }}>
               This order is <strong>On Hold</strong>{order.workflow.holdReason ? ` — ${order.workflow.holdReason}` : ''}. Work is paused; we'll resume and let you know.
             </div>
           )}
-          {clar === 'pending' && (
+          {order.clarification === 'pending' && (
             <div className="space-y-2">
               <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.25)', color:'#dc2626' }}>
-                <strong>Action needed:</strong> our team requested a clarification. Reply in <strong>Messages</strong> below (or attach a document) to keep this order moving.
+                <strong>Action needed:</strong> our team requested a clarification. Reply in the <strong>Inbox</strong> tab (or attach a document below) to keep this order moving.
               </div>
               {canUpload && (
                 <div>
@@ -309,7 +360,7 @@ function ClientOrderModal({ order, onClose }) {
               )}
             </div>
           )}
-          <div className="rounded-xl p-4 space-y-1.5 text-sm" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
+          <div className="glass-card p-4 space-y-1.5 text-sm">
             <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#64748b' }}>Order details</div>
             <Row k="Property" v={intake?.propertyAddress} />
             <Row k="Parcel / APN" v={intake?.parcelNumberAPN} />
@@ -320,7 +371,7 @@ function ClientOrderModal({ order, onClose }) {
             <Row k="Special instructions" v={intake?.specialInstructions} />
             {!intake && <div className="text-xs" style={{ color:'#64748b' }}>Submitted before detailed intake was captured.</div>}
           </div>
-          <div className="rounded-xl p-4 text-sm space-y-1.5" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
+          <div className="glass-card p-4 text-sm space-y-1.5">
             <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#64748b' }}>Timeline</div>
             <Row k="Placed" v={order.created} />
             <Row k="Estimated delivery" v={order.eta} />
@@ -328,7 +379,7 @@ function ClientOrderModal({ order, onClose }) {
             <div className="pt-1"><span style={{ color:'#64748b' }}>Progress: </span><span className="font-medium" style={{ color:'#1e293b' }}>{order.progress}%</span></div>
           </div>
           {clientDocs.length > 0 && order.clarification !== 'pending' && (
-            <div className="rounded-xl p-4 space-y-2" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
+            <div className="glass-card p-4 space-y-2">
               <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#64748b' }}>Your attachments</div>
               {clientDocs.map((d, i) => (
                 <div key={d.id || i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(30,41,59,0.08)' }}>
@@ -342,7 +393,7 @@ function ClientOrderModal({ order, onClose }) {
             </div>
           )}
           {docs.length > 0 && (
-            <div className="rounded-xl p-4 space-y-2" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
+            <div className="glass-card p-4 space-y-2">
               <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#64748b' }}>Delivered documents</div>
               {docs.map((d, i) => (
                 <div key={d.id || i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(30,41,59,0.08)' }}>
@@ -358,28 +409,16 @@ function ClientOrderModal({ order, onClose }) {
               ))}
             </div>
           )}
-          {/* Per-order inbox — preview; full conversation lives in the Messages tab */}
-          <div className="rounded-xl p-4 space-y-2" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#64748b' }}>Messages · this order</div>
-              {orderThread.length > 0 && <span className="text-[11px]" style={{ color:'#94a3b8' }}>{orderThread.length} message{orderThread.length===1?'':'s'}</span>}
+          {/* Billing summary — the invoice card the client already knows. */}
+          {order.workflow?.invoiceVisibleToClient ? (
+            <InvoiceCard order={order} />
+          ) : (
+            <div className="glass-card p-4 text-sm" style={{ color:'#64748b' }}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#64748b' }}>Billing</div>
+              No invoice yet — it becomes available once the order is delivered.
             </div>
-            {orderThread.length === 0 ? (
-              <div className="text-xs" style={{ color:'#64748b' }}>No messages yet on this order.</div>
-            ) : (
-              <div className="text-[13px]" style={{ color:'#334155' }}>
-                <span className="font-semibold">{orderThread[orderThread.length-1].author || (orderThread[orderThread.length-1].from==='client'?'You':'Customer Service')}:</span>{' '}
-                {orderThread[orderThread.length-1].text || (orderThread[orderThread.length-1].attachment ? `📎 ${orderThread[orderThread.length-1].attachment.name}` : '')}
-              </div>
-            )}
-            {canMessage && (
-              <button onClick={() => { onClose(); navigate(`/client/messages?order=${order.id}`) }}
-                className="text-sm font-semibold" style={{ color:ROLE_COLOR, background:'none', border:'none', padding:0, cursor:'pointer' }}>
-                Open conversation →
-              </button>
-            )}
-          </div>
-          {/* BUG_003: cancellation */}
+          )}
+          {/* Actions */}
           {cancelState === 'cancelled' && (
             <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
               This order has been cancelled.
@@ -400,7 +439,36 @@ function ClientOrderModal({ order, onClose }) {
             </button>
           )}
         </div>
-      </motion.div>
+      )}
+
+      {/* ── Activity ─────────────────────────────────────────────────────── */}
+      {tab === 'activity' && (
+        <div className="glass-card p-4">
+          {activity.length === 0 ? (
+            <div className="text-sm text-center py-8" style={{ color:'#64748b' }}>No activity on this order yet.</div>
+          ) : (
+            <div className="space-y-0">
+              {activity.map((n, i) => (
+                <div key={n.id || i} className="flex gap-3 py-3 border-b last:border-b-0" style={{ borderColor:'rgba(30,41,59,0.07)' }}>
+                  <span className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: ACTIVITY_DOT[n.type] || '#64748b' }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px]" style={{ color:'#1e293b' }}>{n.action}</div>
+                    {n.time && <div className="text-[11px] mt-0.5" style={{ color:'#94a3b8' }}>{n.time}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Inbox ────────────────────────────────────────────────────────── */}
+      {tab === 'inbox' && (
+        <div className="glass-card p-4">
+          <OrderThread orderId={order.id} messages={thread} viewerSide="client" canSend={canMessage} onSend={onSend}
+            emptyText="No messages yet on this order. Send a question or a document to the team." />
+        </div>
+      )}
     </div>
   )
 }
@@ -748,7 +816,6 @@ function PlaceOrderPage() {
 function ClientHome() {
   const myOrders = useMyOrders()
   const navigate = useNavigate()
-  const [openOrder, setOpenOrder] = useState(null)
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -782,11 +849,10 @@ function ClientHome() {
           <h2 className="font-semibold" style={{ color:'#1e293b' }}>Order Tracking</h2>
           {myOrders.map(o => (
             <React.Fragment key={o.id}>
-              <TrackOrder order={o} onOpen={() => setOpenOrder(o)} />
+              <TrackOrder order={o} onOpen={() => navigate(`/client/orders/${o.id}`)} />
               {o.workflow?.invoiceVisibleToClient && <InvoiceCard order={o} />}
             </React.Fragment>
           ))}
-          {openOrder && <ClientOrderModal order={openOrder} onClose={() => setOpenOrder(null)} />}
         </div>
         <div className="glass-card p-5">
           <h2 className="font-semibold mb-1" style={{ color:'#1e293b' }}>Coverage Map</h2>
@@ -934,7 +1000,7 @@ function SupportPage() {
 
 function MyOrdersPage() {
   const myOrders = useMyOrders()
-  const [openOrder, setOpenOrder] = useState(null)
+  const navigate = useNavigate()
   const [q, setQ] = useState('')
   // BUG_006: search across order #, type, status/stage, and property details —
   // works for both active and completed orders so users don't page-hunt.
@@ -960,7 +1026,7 @@ function MyOrdersPage() {
       <div className="space-y-4">
         {shown.map(o => (
           <React.Fragment key={o.id}>
-            <TrackOrder order={o} onOpen={() => setOpenOrder(o)} />
+            <TrackOrder order={o} onOpen={() => navigate(`/client/orders/${o.id}`)} />
             {o.workflow?.invoiceVisibleToClient && <InvoiceCard order={o} />}
           </React.Fragment>
         ))}
@@ -970,7 +1036,6 @@ function MyOrdersPage() {
           </div>
         )}
       </div>
-      {openOrder && <ClientOrderModal order={openOrder} onClose={() => setOpenOrder(null)} />}
     </div>
   )
 }
@@ -995,6 +1060,7 @@ export default function ClientDashboard() {
         <Route index         element={<ClientHome />} />
         <Route path="order"  element={<PlaceOrderPage />} />
         <Route path="orders" element={<MyOrdersPage />} />
+        <Route path="orders/:id" element={<OrderDetailPage />} />
         <Route path="messages" element={<MessagesPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="support" element={<SupportPage />} />
