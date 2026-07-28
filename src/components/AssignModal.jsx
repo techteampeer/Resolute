@@ -24,8 +24,8 @@ const QUEUES = [...STAGES, { key:'operator', label:'Single Seating' }]
 // Pre-select the queue that naturally owns the order's current status.
 const defaultStageFor = (status) => ({
   received:  'screener', screening: 'screener',
-  searching: 'examiner', examining: 'examiner',
-  typing:    'typer',    delivered: 'delivery',
+  examining: 'examiner',
+  typing:    'typer',    delivery: 'delivery', delivered: 'delivery',
 }[status] || '')
 
 export default function AssignModal({ order, user, onClose }) {

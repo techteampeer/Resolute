@@ -132,7 +132,6 @@ export const MONTHLY_STATS = [
 export const STATUS_COLORS = {
   received:  { bg: 'bg-blue-500/20',   text: 'text-blue-300',   dot: 'bg-blue-400'   },
   screening: { bg: 'bg-yellow-500/20', text: 'text-yellow-300', dot: 'bg-yellow-400' },
-  searching: { bg: 'bg-purple-500/20', text: 'text-purple-300', dot: 'bg-purple-400' },
   examining: { bg: 'bg-orange-500/20', text: 'text-orange-300', dot: 'bg-orange-400' },
   typing:    { bg: 'bg-cyan-500/20',   text: 'text-cyan-300',   dot: 'bg-cyan-400'   },
   delivery:  { bg: 'bg-amber-500/20',  text: 'text-amber-300',  dot: 'bg-amber-400'  },

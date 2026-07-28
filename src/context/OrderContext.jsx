@@ -46,12 +46,21 @@ export function OrderProvider({ children }) {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
       const next = { ...o, assignedTo: queue }
-      // Routing to the Single Seating desk claims the order for that desk
-      // end-to-end; routing to a stage role releases it back to the pipeline.
-      if (queue === 'operator') next.workflow = { ...o.workflow, singleSeating: true }
-      else if (['screener', 'examiner', 'typer', 'delivery'].includes(queue)) next.workflow = { ...o.workflow, singleSeating: false }
+      // Status follows the owning role (lockstep) — routing to a stage role
+      // advances status to that role's status; the Single Seating desk works
+      // whichever stage is next, so its status derives from nextRoleFor.
+      if (queue === 'operator') {
+        next.workflow = { ...o.workflow, singleSeating: true }
+        const status = statusForRole(nextRoleFor(o) || 'screener')
+        next.status = status
+        next.progress = progressFor(status)
+      } else if (['screener', 'examiner', 'typer', 'delivery'].includes(queue)) {
+        next.workflow = { ...o.workflow, singleSeating: false }
+        const status = statusForRole(queue)
+        next.status = status
+        next.progress = progressFor(status)
+      }
       if (personName) next[queue] = personName
-      if (o.status == null || o.status === 'received') next.status = 'received'
       persist(next)
       return next
     }))
