@@ -2,11 +2,10 @@ import React, { useState } from 'react'
 import { Routes, Route, useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Layout from '../../components/Layout'
-import USAMap from '../../components/USAMap'
 import OrderThread from '../../components/OrderThread'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox,
-  Package, CheckCircle, Clock, ChevronRight, MapPin, Zap, Send, FileText, DollarSign, Search,
+  Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign, Search,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye
 } from 'lucide-react'
 import { clientCode as codeByName, clientName } from '../../data/mockData'
@@ -844,25 +843,14 @@ function ClientHome() {
           </motion.div>
         ))}
       </div>
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <h2 className="font-semibold" style={{ color:'#1e293b' }}>Order Tracking</h2>
-          {myOrders.map(o => (
-            <React.Fragment key={o.id}>
-              <TrackOrder order={o} onOpen={() => navigate(`/client/orders/${o.id}`)} />
-              {o.workflow?.invoiceVisibleToClient && <InvoiceCard order={o} />}
-            </React.Fragment>
-          ))}
-        </div>
-        <div className="glass-card p-5">
-          <h2 className="font-semibold mb-1" style={{ color:'#1e293b' }}>Coverage Map</h2>
-          <p className="text-xs mb-3" style={{ color:'#64748b' }}>3,140+ counties · All 50 states</p>
-          <USAMap compact />
-          <div className="mt-4 flex items-center gap-2 text-xs" style={{ color:'#64748b' }}>
-            <MapPin className="w-3.5 h-3.5" style={{ color:ROLE_COLOR }} />
-            Your searches are in FL, CA, NY
-          </div>
-        </div>
+      <div className="space-y-4">
+        <h2 className="font-semibold" style={{ color:'#1e293b' }}>Order Tracking</h2>
+        {myOrders.map(o => (
+          <React.Fragment key={o.id}>
+            <TrackOrder order={o} onOpen={() => navigate(`/client/orders/${o.id}`)} />
+            {o.workflow?.invoiceVisibleToClient && <InvoiceCard order={o} />}
+          </React.Fragment>
+        ))}
       </div>
     </div>
   )
