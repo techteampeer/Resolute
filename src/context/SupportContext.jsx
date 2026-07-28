@@ -42,7 +42,7 @@ export function SupportProvider({ children }) {
     if (!isSupabaseConfigured || !user || user.demo) return
     let unsub = () => {}
     const reload = () => fetchSupportMessages().then(rows => {
-      if (rows) setMessages(rows.map(r => ({ id: r.id, clientCode: r.clientCode, orderId: r.orderId || null, from: r.from, text: r.body, author: r.author, time: r.time, at: r.at })))
+      if (rows) setMessages(rows.map(r => ({ id: r.id, clientCode: r.clientCode, orderId: r.orderId || null, from: r.from, text: r.body, author: r.author, attachment: r.attachment || null, time: r.time, at: r.at })))
     })
     reload()
     unsub = subscribeSupport(reload)
@@ -52,15 +52,17 @@ export function SupportProvider({ children }) {
   useEffect(() => { if (!isSupabaseConfigured) save(messages) }, [messages])
 
   // orderId null → general Support thread; set → that order's inbox.
-  const sendMessage = ({ clientCode, clientName, from, text, author, orderId = null }) => {
+  // A message may carry a single `attachment` ({ name, type, path }); a body OR
+  // an attachment is enough to send.
+  const sendMessage = ({ clientCode, clientName, from, text, author, orderId = null, attachment = null }) => {
     const body = (text || '').trim()
-    if (!clientCode || !body) return
-    const optimistic = { id: mid(), clientCode, orderId: orderId || null, from, text: body, author: author || null, time: nowLabel(), at: Date.now() }
+    if (!clientCode || (!body && !attachment)) return
+    const optimistic = { id: mid(), clientCode, orderId: orderId || null, from, text: body, author: author || null, attachment: attachment || null, time: nowLabel(), at: Date.now() }
     setMessages(prev => [...prev, optimistic])
     if (isSupabaseConfigured) {
-      insertSupportMessage({ clientCode, sender: from, author, body, orderId })
+      insertSupportMessage({ clientCode, sender: from, author, body, orderId, attachment })
         .then(() => fetchSupportMessages())
-        .then(rows => { if (rows) setMessages(rows.map(r => ({ id: r.id, clientCode: r.clientCode, orderId: r.orderId || null, from: r.from, text: r.body, author: r.author, time: r.time, at: r.at }))) })
+        .then(rows => { if (rows) setMessages(rows.map(r => ({ id: r.id, clientCode: r.clientCode, orderId: r.orderId || null, from: r.from, text: r.body, author: r.author, attachment: r.attachment || null, time: r.time, at: r.at }))) })
     }
   }
 

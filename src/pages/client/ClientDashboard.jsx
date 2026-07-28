@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
-import { Routes, Route, useNavigate } from 'react-router-dom'
+import { Routes, Route, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
+import OrderThread from '../../components/OrderThread'
 import {
-  LayoutDashboard, PlusCircle, ClipboardList, MessageSquare,
+  LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox,
   Package, CheckCircle, Clock, ChevronRight, X, MapPin, Zap, Send, FileText, DollarSign, Search,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye
 } from 'lucide-react'
@@ -24,6 +25,7 @@ const NAV = [
   { path: '/client',         label: 'Dashboard',   icon: LayoutDashboard },
   { path: '/client/order',   label: 'Place Order', icon: PlusCircle },
   { path: '/client/orders',  label: 'My Orders',   icon: ClipboardList },
+  { path: '/client/messages',label: 'Messages',    icon: Inbox },
   { path: '/client/billing', label: 'Billing',     icon: DollarSign },
   { path: '/client/support', label: 'Support',     icon: MessageSquare },
 ]
@@ -233,22 +235,14 @@ function ClientAttach({ orderId = null, value = [], onChange, accent = ROLE_COLO
 // any documents delivered to the client (opened via the re-signing openDocument).
 function ClientOrderModal({ order, onClose }) {
   const { user } = useAuth()
-  const { updateOrder, cancelOrder, respondClarification } = useOrders()
-  const { getOrderThread, sendMessage } = useSupport()
+  const { updateOrder, cancelOrder } = useOrders()
+  const { getOrderThread } = useSupport()
+  const navigate = useNavigate()
   // Local mirror of clarification so the stage badge/prompt update on reply.
-  const [clar, setClar] = useState(order.clarification)
+  const [clar] = useState(order.clarification)
   const stage = clientStage({ ...order, clarification: clar })
-  // Per-order inbox (Client Inbox): secure order-specific messages to the team.
-  const [omsg, setOmsg] = useState('')
   const orderThread = getOrderThread(order.id)
   const canMessage = !user?.demo && !!user?.clientCode
-  const sendOrderMsg = () => {
-    const t = omsg.trim(); if (!t || !canMessage) return
-    sendMessage({ clientCode: user.clientCode, clientName: clientName(user.clientCode) || user?.name, from: 'client', text: t, author: user?.name, orderId: order.id })
-    setOmsg('')
-    // Replying to a pending clarification marks it responded.
-    if (clar === 'pending') { respondClarification(order.id); setClar('responded') }
-  }
   // BUG_003: cancellation. Free while still queued; a request needing Admin
   // approval once work has started. Local mirror so the UI reflects it at once.
   const [cancelState, setCancelState] = useState(
@@ -364,33 +358,25 @@ function ClientOrderModal({ order, onClose }) {
               ))}
             </div>
           )}
-          {/* Per-order inbox */}
-          <div className="rounded-xl p-4 space-y-3" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
-            <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#64748b' }}>Messages · this order</div>
-            <div className="space-y-2 max-h-52 overflow-y-auto">
-              {orderThread.length === 0 && (
-                <div className="text-xs" style={{ color:'#64748b' }}>No messages yet. Ask a question or send details about this order — our team replies here.</div>
-              )}
-              {orderThread.map((m, i) => (
-                <div key={m.id || i} className={`flex ${m.from === 'client' ? 'justify-end' : 'justify-start'}`}>
-                  <div className="max-w-[80%] px-3 py-2 rounded-2xl text-[13px]"
-                    style={m.from === 'client'
-                      ? { background:'#3d7020', color:'#f5f7f2' }
-                      : { background:'#fff', color:'#1e293b', border:'1px solid rgba(30,41,59,0.1)' }}>
-                    {m.text}
-                    {m.time && <div className="text-[10px] mt-1" style={{ color: m.from === 'client' ? '#c7d9b8' : '#64748b' }}>{m.author ? `${m.author} · ` : ''}{m.time}</div>}
-                  </div>
-                </div>
-              ))}
+          {/* Per-order inbox — preview; full conversation lives in the Messages tab */}
+          <div className="rounded-xl p-4 space-y-2" style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(30,41,59,0.07)' }}>
+            <div className="flex items-center justify-between">
+              <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#64748b' }}>Messages · this order</div>
+              {orderThread.length > 0 && <span className="text-[11px]" style={{ color:'#94a3b8' }}>{orderThread.length} message{orderThread.length===1?'':'s'}</span>}
             </div>
-            {canMessage ? (
-              <div className="flex gap-2">
-                <input value={omsg} onChange={e => setOmsg(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendOrderMsg()}
-                  placeholder="Message about this order…" className="input-field text-sm flex-1 py-2" />
-                <button onClick={sendOrderMsg} className="btn-primary px-3 py-2 text-sm flex items-center gap-1.5"><Send className="w-4 h-4" /></button>
-              </div>
+            {orderThread.length === 0 ? (
+              <div className="text-xs" style={{ color:'#64748b' }}>No messages yet on this order.</div>
             ) : (
-              <div className="text-[11px]" style={{ color:'#94a3b8' }}>Messaging is available on your own orders.</div>
+              <div className="text-[13px]" style={{ color:'#334155' }}>
+                <span className="font-semibold">{orderThread[orderThread.length-1].author || (orderThread[orderThread.length-1].from==='client'?'You':'Customer Service')}:</span>{' '}
+                {orderThread[orderThread.length-1].text || (orderThread[orderThread.length-1].attachment ? `📎 ${orderThread[orderThread.length-1].attachment.name}` : '')}
+              </div>
+            )}
+            {canMessage && (
+              <button onClick={() => { onClose(); navigate(`/client/messages?order=${order.id}`) }}
+                className="text-sm font-semibold" style={{ color:ROLE_COLOR, background:'none', border:'none', padding:0, cursor:'pointer' }}>
+                Open conversation →
+              </button>
             )}
           </div>
           {/* BUG_003: cancellation */}
@@ -818,6 +804,76 @@ function ClientHome() {
 
 // Support routes to an in-portal Admin inbox (SupportContext). The client sees
 // their own thread; Admin replies land here. Demo users get a local-only echo.
+// Dedicated per-order Messages inbox (Qualia-style): order list on the left,
+// the selected order's full thread (cards + attachments) on the right.
+function MessagesPage() {
+  const { user } = useAuth()
+  const { getOrderThread, sendMessage } = useSupport()
+  const { respondClarification } = useOrders()
+  const orders = useMyOrders()
+  const [params] = useSearchParams()
+  const [activeId, setActiveId] = useState(null)
+  const active = orders.find(o => o.id === activeId) || orders[0] || null
+  // Preselect from ?order= (deep link from an order's "Open conversation").
+  React.useEffect(() => {
+    const q = params.get('order')
+    if (q && orders.some(o => o.id === q)) setActiveId(q)
+  }, [params, orders])
+
+  const canMessage = !user?.demo && !!user?.clientCode
+  const thread = active ? getOrderThread(active.id) : []
+  const lastOf = (o) => { const t = getOrderThread(o.id); return t[t.length - 1] || null }
+  const onSend = ({ text, attachment }) => {
+    if (!active || !canMessage) return
+    sendMessage({ clientCode: user.clientCode, clientName: clientName(user.clientCode) || user?.name, from: 'client', text, author: user?.name, orderId: active.id, attachment })
+    if (active.clarification === 'pending') respondClarification(active.id)   // replying resolves a clarification
+  }
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-2xl font-bold" style={{ color:'#1e293b' }}>Messages</h1>
+      {orders.length === 0 ? (
+        <div className="glass-card p-8 text-center text-sm" style={{ color:'#64748b' }}>No orders yet — messages are tied to an order.</div>
+      ) : (
+        <div className="grid gap-4" style={{ gridTemplateColumns:'minmax(220px, 300px) 1fr' }}>
+          {/* order list */}
+          <div className="glass-card overflow-hidden" style={{ padding:0 }}>
+            {orders.map(o => {
+              const last = lastOf(o); const isActive = active && o.id === active.id
+              return (
+                <button key={o.id} onClick={() => setActiveId(o.id)}
+                  className="w-full text-left p-3 border-b" style={{ borderColor:'rgba(30,41,59,0.08)', background: isActive ? 'rgba(77,124,47,0.08)' : 'transparent', cursor:'pointer' }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs font-semibold" style={{ color:ROLE_COLOR }}>{o.id}</span>
+                    {last && last.from === 'support' && <span className="w-2 h-2 rounded-full" style={{ background:'#dc2626' }} title="New reply" />}
+                  </div>
+                  <div className="text-[13px] font-medium truncate" style={{ color:'#1e293b' }}>{o.type}</div>
+                  <div className="text-[11px] truncate" style={{ color:'#94a3b8' }}>
+                    {last ? `${last.from === 'client' ? 'You: ' : ''}${last.text || (last.attachment ? '📎 ' + last.attachment.name : '')}` : 'No messages yet'}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          {/* thread */}
+          <div className="glass-card p-4">
+            {active && (
+              <div className="mb-3 pb-3" style={{ borderBottom:'1px solid #e2e8f0' }}>
+                <div className="font-mono text-xs font-semibold" style={{ color:ROLE_COLOR }}>{active.id}</div>
+                <div className="font-bold" style={{ color:'#1e293b' }}>{active.type} · {active.county}, {active.state}</div>
+              </div>
+            )}
+            {active && (
+              <OrderThread orderId={active.id} messages={thread} viewerSide="client" canSend={canMessage} onSend={onSend}
+                emptyText="No messages yet on this order. Send a question or a document to the team." />
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SupportPage() {
   const { user } = useAuth()
   const { getThread, sendMessage } = useSupport()
@@ -939,6 +995,7 @@ export default function ClientDashboard() {
         <Route index         element={<ClientHome />} />
         <Route path="order"  element={<PlaceOrderPage />} />
         <Route path="orders" element={<MyOrdersPage />} />
+        <Route path="messages" element={<MessagesPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="support" element={<SupportPage />} />
       </Routes>

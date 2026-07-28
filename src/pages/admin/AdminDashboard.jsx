@@ -15,6 +15,7 @@ import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument } from '../../lib/backend'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import AttachedDocs from '../../components/AttachedDocs'
+import OrderThread from '../../components/OrderThread'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS,
   STAGE_KEYS, STAGE_LABELS, displayClient, clientByName,
@@ -173,7 +174,6 @@ const orderFiles = (order) => {
 function OrderEditModal({ order, user, onClose, onSave }) {
   const { activityLog, resolveCancel, updateOrder } = useOrders()
   const { getOrderThread, sendMessage } = useSupport()
-  const [reply, setReply] = useState('')
   const cli = clientByName(order.client)
   // BUG_003: a client requested cancellation of an in-progress order; Admin
   // decides. (Orders cancelled while still queued never reach here.)
@@ -205,10 +205,9 @@ function OrderEditModal({ order, user, onClose, onSave }) {
   // Per-order inbox thread (client ⇄ staff), shared with the client's order view.
   const orderMessages = getOrderThread(order.id)
   const orderClientCode = order.clientCode || cli?.code || null
-  const sendReply = () => {
-    const t = reply.trim(); if (!t || !orderClientCode) return
-    sendMessage({ clientCode: orderClientCode, clientName: order.client, from: 'support', text: t, author: user?.name || 'Support', orderId: order.id })
-    setReply('')
+  const sendThread = ({ text, attachment }) => {
+    if ((!text?.trim() && !attachment) || !orderClientCode) return
+    sendMessage({ clientCode: orderClientCode, clientName: order.client, from: 'support', text, author: user?.name || 'Support', orderId: order.id, attachment })
   }
   // Order actions: On-Hold (pauses; client sees "On Hold") and Request
   // clarification (client sees "Clarification Required" + a prompt to reply).
@@ -496,37 +495,12 @@ function OrderEditModal({ order, user, onClose, onSave }) {
           </div>
         )}
 
-        {/* INBOX — per-order client ⇄ staff thread */}
+        {/* INBOX — per-order client ⇄ staff thread (shared OrderThread) */}
         {tab === 'inbox' && (
           <div style={{ padding:'18px 22px' }}>
-            {orderMessages.length === 0 && <div style={{ fontSize:13, color:Q.faint, marginBottom:12 }}>No messages on this order yet.</div>}
-            <div style={{ display:'flex', flexDirection:'column', gap:10, maxHeight:320, overflowY:'auto', marginBottom:12 }}>
-              {orderMessages.map((m, i) => (
-                <div key={m.id ?? i} style={{ display:'flex', justifyContent: m.from === 'support' ? 'flex-end' : 'flex-start' }}>
-                  <div style={{ maxWidth:'78%', padding:'8px 12px', borderRadius:14, fontSize:13,
-                    background: m.from === 'support' ? ROLE_COLOR : '#f1f5f9',
-                    color: m.from === 'support' ? '#fff' : Q.text,
-                    border: m.from === 'support' ? 'none' : `1px solid ${Q.border}` }}>
-                    {m.text}
-                    {m.time && <div style={{ fontSize:10.5, marginTop:3, color: m.from === 'support' ? 'rgba(255,255,255,0.75)' : Q.faint }}>
-                      {m.author ? `${m.author} · ` : ''}{m.time}
-                    </div>}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {orderClientCode ? (
-              <div style={{ display:'flex', gap:8 }}>
-                <input value={reply} onChange={e => setReply(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendReply()}
-                  placeholder="Reply to the client…"
-                  style={{ flex:1, padding:'9px 12px', border:`1px solid ${Q.border}`, borderRadius:8, fontSize:13, outline:'none', color:Q.text }} />
-                <button onClick={sendReply} style={{ padding:'9px 14px', background:ROLE_COLOR, border:'none', borderRadius:8, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:600 }}>
-                  <Send style={{ width:15, height:15 }} /> Send
-                </button>
-              </div>
-            ) : (
-              <div style={{ fontSize:12, color:Q.faint }}>This order has no linked client account to message.</div>
-            )}
+            <OrderThread orderId={order.id} messages={orderMessages} viewerSide="support"
+              canSend={!!orderClientCode} onSend={sendThread} height={420}
+              emptyText={orderClientCode ? 'No messages on this order yet.' : 'This order has no linked client account to message.'} />
           </div>
         )}
 
