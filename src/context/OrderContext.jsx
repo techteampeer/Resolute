@@ -115,7 +115,11 @@ export function OrderProvider({ children }) {
       persist(next)
       return next
     }))
-    log({ id: Date.now(), orderId, actor: userName, action: `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId} → returned to Admin for assignment` + (notes ? ` (${notes})` : ''), time: 'Just now', type: 'status' })
+    log({ id: Date.now(), orderId, actor: userName, action:
+      role === 'delivery'
+        ? `${userName} delivered ${orderId} → awaiting Admin close-out` + (notes ? ` (${notes})` : '')
+        : `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId} → returned to Admin for assignment` + (notes ? ` (${notes})` : ''),
+      time: 'Just now', type: role === 'delivery' ? 'delivered' : 'status' })
   }
 
   const updateOrder = (updated) => {
@@ -167,6 +171,19 @@ export function OrderProvider({ children }) {
   const respondClarification = (orderId) => {
     setOrders(os => os.map(o => (o.id === orderId ? { ...o, clarification: 'responded' } : o)))
     if (isSupabaseConfigured) respondClarificationRpc(orderId).catch(() => {})
+  }
+
+  // Admin close-out: Delivery hands a finished order back to Admin (status stays
+  // 'delivered', assignedTo 'admin', workflow.deliveredPendingAck true). The
+  // admin acknowledges to fully close it — clears the owner + the pending flag.
+  const acknowledgeDelivery = (orderId, actor = 'Admin') => {
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const next = { ...o, assignedTo: null, workflow: { ...o.workflow, deliveredPendingAck: false } }
+      persist(next)
+      return next
+    }))
+    log({ id: Date.now(), orderId, actor, action: `${actor} acknowledged delivery of ${orderId} — order closed`, time: 'Just now', type: 'delivered' })
   }
 
   // Admin resolves a pending cancellation request (approve = cancel the order).
@@ -222,7 +239,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, acknowledgeDelivery, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )

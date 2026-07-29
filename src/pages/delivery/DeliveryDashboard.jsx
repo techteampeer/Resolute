@@ -18,14 +18,19 @@ const NAV = [
 
 function DeliveryModal({ order, onClose }) {
   const { user } = useAuth()
-  const { completeStep, updateOrder } = useOrders()
+  const { returnToAdmin } = useOrders()
   const cli = clientByName(order.client)
   const [method, setMethod] = useState(order.workflow?.deliveryMethod || 'email')
   const [recipient, setRecipient] = useState(user?.superAdmin && cli ? cli.email : '')
   const [note, setNote] = useState('')
+  // Delivery completes the pipeline, then hands the order back to Admin for a
+  // final close-out (status stays 'delivered', parked with admin + a pending
+  // flag) so a finished order is never closed without Admin being informed.
   const submit = () => {
-    updateOrder({ ...order, workflow: { ...order.workflow, deliveryMethod: method, deliveryRecipient: recipient, invoiceVisibleToClient: method === 'portal' } })
-    completeStep(order.id, 'delivery', user?.name, `via ${method}${note ? ' · ' + note : ''}`)
+    returnToAdmin(order.id, 'delivery', user?.name, `via ${method}${note ? ' · ' + note : ''}`, {
+      deliveryMethod: method, deliveryRecipient: recipient,
+      invoiceVisibleToClient: method === 'portal', deliveredPendingAck: true,
+    })
     onClose()
   }
   return (

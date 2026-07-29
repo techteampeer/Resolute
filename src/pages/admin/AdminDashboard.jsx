@@ -563,7 +563,11 @@ const cap = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s
 //   new         – never assigned, nothing completed yet
 //   ready       – between stages, unassigned, waiting for admin to route next
 const routingState = (o) => {
-  if (o.status === 'delivered') return { kind: 'delivered' }
+  if (o.status === 'delivered') {
+    // Delivered but handed back to Admin for a final close-out acknowledgment.
+    if (o.assignedTo === 'admin' && o.workflow?.deliveredPendingAck) return { kind: 'delivered-review' }
+    return { kind: 'delivered' }
+  }
   if (o.assignedTo === 'admin') {
     const anyDone = Object.values(o.completedDates || {}).some(Boolean)
     // A brand-new, still-unconfirmed order shows "Awaiting confirm" instead.
@@ -641,7 +645,7 @@ function AdminNewOrderModal({ user, onClose, onCreate }) {
 
 function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const { user } = useAuth()
-  const { orders, updateOrder, createOrder } = useOrders()
+  const { orders, updateOrder, createOrder, acknowledgeDelivery } = useOrders()
   const [editing, setEditing]   = useState(null)   // full edit/detail modal
   const [assigning, setAssigning] = useState(null)  // focused assign modal
   const [creating, setCreating] = useState(false)   // new-order modal
@@ -888,6 +892,10 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
                           background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0' }}>Assigned</span>
                       )}
+                      {r.kind === 'delivered-review' && (
+                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
+                          background:'#fffbeb', color:'#a16207', border:'1px solid #fde68a' }}>Needs close-out</span>
+                      )}
                       {!o.workflow?.confirmed && o.status === 'received' && (
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
                           background:'#eff6ff', color:'#2563eb', border:'1px solid #bfdbfe' }}>Awaiting confirm</span>
@@ -905,7 +913,9 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                   <td style={{ padding:'10px 16px', color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{o.payment}</td>
                   <td style={{ padding:'10px 16px', fontSize:12, whiteSpace:'nowrap',
                     color: (o.assignedTo && o.assignedTo !== 'admin') ? Q.text : Q.faint, textTransform:'capitalize' }}>
-                    {o.assignedTo === 'admin'
+                    {r.kind === 'delivered-review'
+                      ? 'Awaiting close-out'
+                      : o.assignedTo === 'admin'
                       ? 'Awaiting admin'
                       : o.assignedTo
                       ? `${o.assignedTo === 'operator' ? 'single seating' : o.assignedTo}${o[o.assignedTo] ? ` · ${o[o.assignedTo]}` : ''}`
@@ -921,7 +931,17 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                   </td>
                   <td style={{ padding:'10px 16px' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                      {r.kind !== 'delivered' && (
+                      {r.kind === 'delivered-review' && (
+                        <button onClick={e => { e.stopPropagation(); acknowledgeDelivery(o.id, user?.name || 'Admin') }}
+                          style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:7,
+                            background:'#f0fdf4', border:'1px solid #bbf7d0', cursor:'pointer',
+                            color:'#15803d', fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}
+                          onMouseOver={e => e.currentTarget.style.background = '#dcfce7'}
+                          onMouseOut={e => e.currentTarget.style.background = '#f0fdf4'}>
+                          <CheckCircle style={{ width:13, height:13 }} /> Acknowledge
+                        </button>
+                      )}
+                      {r.kind !== 'delivered' && r.kind !== 'delivered-review' && (
                         <button onClick={e => { e.stopPropagation(); setAssigning(o) }}
                           style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:7,
                             background:`${ROLE_COLOR}12`, border:`1px solid ${ROLE_COLOR}40`, cursor:'pointer',
@@ -1017,6 +1037,7 @@ function AdminHome() {
   const rushCount      = orders.filter(o => o.priority === 'rush' && !isClosed(o)).length
   const toAssignCount  = orders.filter(o => o.assignedTo == null && o.status !== 'delivered').length
   const activeClients  = new Set(orders.map(o => o.clientCode || clientCode(o.client)).filter(Boolean)).size
+  const toCloseCount   = orders.filter(o => o.status === 'delivered' && o.assignedTo === 'admin' && o.workflow?.deliveredPendingAck).length
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -1026,6 +1047,14 @@ function AdminHome() {
           <p className="text-sm mt-0.5" style={{ color: Q.muted }}>Resolute Title Services — June 2026</p>
         </div>
         <div className="flex items-center gap-2">
+          {toCloseCount > 0 && (
+            <span className="text-xs px-3 py-1.5 rounded-full font-semibold inline-flex items-center gap-1.5"
+              style={{ background:'#fffbeb', color:'#a16207', border:'1px solid #fde68a' }}
+              title="Delivered orders awaiting your close-out (Orders → look for “Needs close-out”)">
+              <CheckCircle style={{ width: 13, height: 13 }} />
+              {toCloseCount} delivered · needs close-out
+            </span>
+          )}
           <button onClick={() => exportOrdersCsv(orders, user)} style={csvBtnStyle} title="Download all orders as CSV">
             <Download style={{ width: 14, height: 14 }} /> Export Orders CSV
           </button>
