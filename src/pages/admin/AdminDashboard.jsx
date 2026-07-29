@@ -172,7 +172,7 @@ const orderFiles = (order) => {
 }
 
 function OrderEditModal({ order, user, onClose, onSave }) {
-  const { activityLog, resolveCancel, updateOrder } = useOrders()
+  const { activityLog, resolveCancel, updateOrder, logClientEvent } = useOrders()
   const { getOrderThread, sendMessage } = useSupport()
   const cli = clientByName(order.client)
   // BUG_003: a client requested cancellation of an in-progress order; Admin
@@ -226,6 +226,7 @@ function OrderEditModal({ order, user, onClose, onSave }) {
     const reason = on ? (window.prompt('Reason for holding this order (optional):', '') ?? null) : null
     updateOrder({ ...order, workflow: { ...order.workflow, onHold: on, holdReason: on ? (reason || null) : null } })
     notify(on ? `Your order was placed on hold${reason ? `: ${reason}` : ''}.` : 'Your order has resumed.')
+    logClientEvent(order.id, on ? `Your order ${order.id} was placed on hold.` : `Your order ${order.id} has resumed.`, 'status')
     onClose()
   }
   const requestClarification = () => {
@@ -233,6 +234,7 @@ function OrderEditModal({ order, user, onClose, onSave }) {
     if (note == null) return
     updateOrder({ ...order, clarification: 'pending' })
     notify(`Clarification needed: ${note}`)
+    logClientEvent(order.id, `We need a clarification on ${order.id} — please reply in Messages.`, 'status')
     onClose()
   }
   // Confirm step: portal orders (source 'web') are a one-click acknowledgment;
@@ -249,6 +251,7 @@ function OrderEditModal({ order, user, onClose, onSave }) {
     }
     updateOrder({ ...order, workflow: { ...order.workflow, confirmed: true, confirmedAt: new Date().toISOString().slice(0, 10), confirmedBy: user?.name || 'Admin', ...(price != null ? { invoiceAmount: price } : {}) } })
     notify(`Your order ${order.id} has been received and confirmed${price != null ? ` — total $${price}` : ''}. We'll begin work shortly.`)
+    logClientEvent(order.id, `Your order ${order.id} has been received${price != null ? ` — total $${price}` : ''}.`, 'status')
     onClose()
   }
   const files = orderFiles(order)

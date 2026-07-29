@@ -31,7 +31,7 @@ const Chip = ({ status }) => {
 }
 
 export default function AdminBilling() {
-  const { orders, updateOrder } = useOrders()
+  const { orders, updateOrder, logClientEvent } = useOrders()
   const { user } = useAuth()
   const vivek = canConfirmPayments(user)
   const superAdmin = !!user?.superAdmin
@@ -54,8 +54,8 @@ export default function AdminBilling() {
   }, [billable])
 
   const setPay = (o, p) => updateOrder({ ...o, workflow: { ...o.workflow, payment: p } })
-  const confirmOne = (o) => setPay(o, confirmPayment(paymentOf(o), user?.name))
-  const bounceOne = (o) => setPay(o, bouncePayment(paymentOf(o), user?.name))
+  const confirmOne = (o) => { setPay(o, confirmPayment(paymentOf(o), user?.name)); logClientEvent?.(o.id, `Payment received for ${invoiceNumber(o)} — thank you.`, 'delivered') }
+  const bounceOne = (o) => { setPay(o, bouncePayment(paymentOf(o), user?.name)); logClientEvent?.(o.id, `There was an issue with your payment for ${invoiceNumber(o)}. Please review in Billing.`, 'status') }
   // Confirming a statement payment settles every order paid under that statementId.
   const confirmStatement = (stmtId) => billable
     .filter(o => paymentOf(o)?.statementId === stmtId && payStatusOf(o) === 'marked')

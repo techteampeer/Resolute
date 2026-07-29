@@ -37,9 +37,15 @@ export function OrderProvider({ children }) {
   // Local activity feed + best-effort append to the durable order_events audit
   // trail (orderId/actor ride on the entry when the caller knows them).
   const log = (entry) => {
-    setActivityLog(a => [entry, ...a])
-    if (isSupabaseConfigured) logEvent({ orderId: entry.orderId, action: entry.action, type: entry.type, actor: entry.actor })
+    const audience = entry.audience || 'staff'
+    setActivityLog(a => [{ ...entry, audience }, ...a])
+    if (isSupabaseConfigured) logEvent({ orderId: entry.orderId, action: entry.action, type: entry.type, actor: entry.actor, audience })
   }
+  // Client-facing milestone notification (bell + per-order Activity). Everything
+  // NOT emitted through here stays 'staff' — internal pipeline steps, admin
+  // routing/approvals, delivery close-out, payouts never reach the client.
+  const logClientEvent = (orderId, action, type = 'status') =>
+    log({ id: Date.now(), orderId, action, time: 'Just now', type, audience: 'client' })
   const persist = (order) => { if (isSupabaseConfigured) saveOrder(order) }
 
   const assignOrder = (orderId, { queue, personName } = {}) => {
@@ -64,7 +70,15 @@ export function OrderProvider({ children }) {
       persist(next)
       return next
     }))
+    // Internal routing — staff-only.
     log({ id: Date.now(), orderId, action: `Admin assigned ${orderId} to ${queue}${personName ? ` · ${personName}` : ''}`, time: 'Just now', type: 'status' })
+    // Client-facing: the first time work is routed to a pipeline stage, tell the
+    // client their order is now in progress (once — not on every internal hop).
+    const prev = orders.find(o => o.id === orderId)
+    const wasWorking = ['screening', 'examining', 'typing', 'delivery'].includes(prev?.status)
+    if (!wasWorking && ['screener', 'examiner', 'typer', 'delivery', 'operator'].includes(queue)) {
+      logClientEvent(orderId, `Your order ${orderId} is now in progress.`, 'progress')
+    }
   }
 
   let advancedTo = null
@@ -115,11 +129,15 @@ export function OrderProvider({ children }) {
       persist(next)
       return next
     }))
+    // Internal hand-back — staff-only (screening/examining/typing/delivery
+    // close-out are never surfaced to the client).
     log({ id: Date.now(), orderId, actor: userName, action:
       role === 'delivery'
         ? `${userName} delivered ${orderId} → awaiting Admin close-out` + (notes ? ` (${notes})` : '')
         : `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId} → returned to Admin for assignment` + (notes ? ` (${notes})` : ''),
       time: 'Just now', type: role === 'delivery' ? 'delivered' : 'status' })
+    // Client-facing: the delivery itself is a milestone the client should see.
+    if (role === 'delivery') logClientEvent(orderId, `Your order ${orderId} has been delivered.`, 'delivered')
   }
 
   const updateOrder = (updated) => {
@@ -197,6 +215,10 @@ export function OrderProvider({ children }) {
       return next
     }))
     log({ id: Date.now(), orderId, actor, action: `${actor} ${approve ? 'approved' : 'declined'} cancellation of ${orderId}`, time: 'Just now', type: 'status' })
+    // Client-facing: the outcome of their cancellation request.
+    logClientEvent(orderId, approve
+      ? `Your cancellation of ${orderId} has been confirmed.`
+      : `Your cancellation request for ${orderId} was declined — the order remains active.`, 'status')
   }
 
   // Create a new order (client "Place an Order"). It parks with Admin for
@@ -232,14 +254,17 @@ export function OrderProvider({ children }) {
     // attachments — the documents storage policy authorizes a client upload by
     // checking that the order (path orders/<id>/…) belongs to them.
     if (isSupabaseConfigured) await insertOrder(order)
-    log({ id: Date.now(), orderId: order.id, action: `New order ${order.id} placed (${order.type})`, time: 'Just now', type: 'new' })
+    // The durable client-facing "placed" receipt is written by the
+    // log_order_created trigger (Supabase); here we only add the optimistic
+    // local entry (client audience) so the bell updates instantly / covers mock.
+    setActivityLog(a => [{ id: Date.now(), orderId: order.id, action: `Order ${order.id} placed (${order.type})`, time: 'Just now', type: 'new', audience: 'client' }, ...a])
     return order
   }
 
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, acknowledgeDelivery, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, acknowledgeDelivery, logClientEvent, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )

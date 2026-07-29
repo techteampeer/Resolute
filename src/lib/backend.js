@@ -227,13 +227,13 @@ export async function fetchActivity(limit = 50) {
     .select('*').order('created_at', { ascending: false }).limit(limit)
   if (error) { console.error('[activity]', error.message); return null }
   return data.map(r => ({
-    id: r.id, action: r.action, type: r.type,
+    id: r.id, action: r.action, type: r.type, orderId: r.order_id || null, audience: r.audience || 'staff',
     time: new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
   }))
 }
 
-export async function logEvent({ orderId = null, action, type = 'status', actor = null }) {
-  const { error } = await supabase.from('order_events').insert({ order_id: orderId, action, type, actor })
+export async function logEvent({ orderId = null, action, type = 'status', actor = null, audience = 'staff' }) {
+  const { error } = await supabase.from('order_events').insert({ order_id: orderId, action, type, actor, audience })
   if (error) console.error('[logEvent]', error.message)
 }
 

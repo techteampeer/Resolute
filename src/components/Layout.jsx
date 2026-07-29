@@ -38,6 +38,9 @@ export default function Layout({ children, navItems, role, roleColor = '#4d7c2f'
     const codeOf = (o) => o.clientCode || codeByName(o.client)
     const myIds = new Set(orders.filter(o => codeOf(o) === myCode).map(o => o.id))
     return activityLog.filter(n => {
+      // Client-facing milestones only — internal pipeline steps stay hidden.
+      // (Supabase enforces this via RLS; this also covers mock mode.)
+      if (n.audience !== 'client' && n.audience !== 'all') return false
       if (n.orderId) return myIds.has(n.orderId)
       const m = String(n.action || '').match(/RTS-\d+/)   // seed entries carry the id only in text
       return m ? myIds.has(m[0]) : false

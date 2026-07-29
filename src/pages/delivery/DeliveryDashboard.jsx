@@ -18,7 +18,7 @@ const NAV = [
 
 function DeliveryModal({ order, onClose }) {
   const { user } = useAuth()
-  const { returnToAdmin } = useOrders()
+  const { returnToAdmin, logClientEvent } = useOrders()
   const cli = clientByName(order.client)
   const [method, setMethod] = useState(order.workflow?.deliveryMethod || 'email')
   const [recipient, setRecipient] = useState(user?.superAdmin && cli ? cli.email : '')
@@ -31,6 +31,8 @@ function DeliveryModal({ order, onClose }) {
       deliveryMethod: method, deliveryRecipient: recipient,
       invoiceVisibleToClient: method === 'portal', deliveredPendingAck: true,
     })
+    // Portal delivery makes the invoice visible — tell the client it's ready.
+    if (method === 'portal') logClientEvent?.(order.id, `Your invoice for ${order.id} is available to view and pay.`, 'status')
     onClose()
   }
   return (

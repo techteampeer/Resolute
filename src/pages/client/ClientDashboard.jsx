@@ -267,10 +267,12 @@ function OrderDetailPage() {
   const canMessage = !user?.demo && !!user?.clientCode
   const canUpload = !user?.demo
   const thread = getOrderThread(order.id)
-  // This order's slice of the activity feed (entries tagged by id, or seed
-  // entries that only mention it in their text).
+  // This order's slice of the activity feed — client-facing milestones only
+  // (internal pipeline steps are hidden; Supabase enforces this via RLS, this
+  // also covers mock mode).
   const activity = activityLog.filter(n =>
-    n.orderId === order.id || (String(n.action || '').match(/RTS-\d+/)?.[0] === order.id))
+    (n.audience === 'client' || n.audience === 'all') &&
+    (n.orderId === order.id || (String(n.action || '').match(/RTS-\d+/)?.[0] === order.id)))
 
   // BUG_003: cancellation — immediate while queued, else a review request.
   const isQueued = order.status === 'received'
