@@ -1,14 +1,17 @@
 import React, { useState } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrdersTable from '../../components/OrdersTable'
-import { LayoutDashboard, ClipboardList, CheckCircle, Clock, AlertTriangle, Search, ChevronRight, X, Send } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, CheckCircle, Clock, AlertTriangle, Search, ChevronRight, Send, FileText, Inbox, Files } from 'lucide-react'
 import { displayClient } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
+import { useSupport } from '../../context/SupportContext'
 import DocUpload from '../../components/DocUpload'
 import OrderMessages from '../../components/OrderMessages'
+import AttachedDocs from '../../components/AttachedDocs'
+import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
 
 const ROLE_COLOR = '#4d7c2f'
 const ASSIGN_OPTS = [['in_house', 'In-House'], ['abs', 'ABS (Abstract)'], ['both', 'Both']]
@@ -23,41 +26,39 @@ const STATUS_DOT = {
   examining: '#a16207', typing: '#0e7490', delivered: '#15803d',
 }
 
-function OrderModal({ order, onClose }) {
+// Full-page order detail (replaces the old modal). Route: /screener/order/:id
+function ScreenerOrderPage() {
+  const { id } = useParams()
+  const navigate = useNavigate()
   const { user } = useAuth()
-  const { returnToAdmin } = useOrders()
-  const [assignment, setAssignment] = useState(order.workflow?.searchAssignment || null)
-  const [doc, setDoc]       = useState(order.workflow?.screenerDoc || null)
-  const [notes, setNotes]   = useState('')
+  const { orders, returnToAdmin, activityLog = [] } = useOrders()
+  const { getOrderThread, getOrderNotes } = useSupport()
+  const order = orders.find(o => o.id === id)
+
+  const [assignment, setAssignment] = useState(order?.workflow?.searchAssignment || null)
+  const [doc, setDoc]     = useState(order?.workflow?.screenerDoc || null)
+  const [notes, setNotes] = useState('')
+
+  if (!order) return (
+    <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
+      <div className="text-sm" style={{ color:'#64748b' }}>Order not found, or it isn’t in your queue.</div>
+      <button onClick={() => navigate('/screener/queue')} className="btn-primary text-sm px-5 py-2.5">Back to Screening Queue</button>
+    </div>
+  )
+
   const submit = () => {
     if (!assignment) return
     returnToAdmin(order.id, 'screener', user?.name, notes, { searchAssignment: assignment, screenerDoc: doc })
-    onClose()
+    navigate('/screener/queue')
   }
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.65)' }} onClick={onClose}>
-      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        className="glass-card p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <div className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{order.id}</div>
-            <div className="text-xl font-bold mt-0.5" style={{ color: '#1e293b' }}>{displayClient(order.client, user)}</div>
-          </div>
-          <button onClick={onClose} style={{ color: '#64748b' }}><X className="w-5 h-5" /></button>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-          {[['State/County',`${order.state} · ${order.county}`],['Search Type',order.type],
-            ['Priority',order.priority.toUpperCase()],['ETA',order.eta]].map(([k,v]) => (
-            <div key={k} className="glass p-3 rounded-xl">
-              <div className="text-xs mb-1" style={{ color: '#64748b' }}>{k}</div>
-              <div className="font-medium text-sm" style={{ color: '#1e293b' }}>{v}</div>
-            </div>
-          ))}
-        </div>
-        <div className="mb-4">
-          <label className="block text-xs font-semibold uppercase tracking-wider mb-2"
-            style={{ color: '#64748b' }}>Assign Search To</label>
+
+  const intake = order.workflow?.intake
+  const msgCount = getOrderThread(order.id).length + getOrderNotes(order.id).length
+
+  const TABS = [
+    { key:'screening', label:'Screening', icon:Search, render: () => (
+      <div className="space-y-4">
+        <Panel title="Assign Search To" hint="Routing to ABS or Both owes the abstractor vendor a fee.">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {ASSIGN_OPTS.map(([k, l]) => (
               <button key={k} onClick={() => setAssignment(k)}
@@ -69,39 +70,81 @@ function OrderModal({ order, onClose }) {
               </button>
             ))}
           </div>
-        </div>
-        <div className="mb-4">
-          <label className="block text-xs font-semibold uppercase tracking-wider mb-2"
-            style={{ color: '#64748b' }}>Search Document <span style={{ textTransform: 'none', opacity: 0.6 }}>(optional)</span></label>
+        </Panel>
+        <Panel title="Search Document" hint="Optional at this stage.">
           <DocUpload orderId={order.id} value={doc} onChange={setDoc} accent={ROLE_COLOR} />
-        </div>
-        <div className="mb-4 pt-4" style={{ borderTop: '1px solid rgba(30,41,59,0.08)' }}>
-          <OrderMessages order={order} accent={ROLE_COLOR} />
-        </div>
-        <textarea value={notes} onChange={e => setNotes(e.target.value)}
-          placeholder="Add screening notes…" rows={2} className="input-field text-sm mb-4 resize-none" />
+        </Panel>
+        <Panel title="Screening Notes">
+          <textarea value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="Add screening notes…" rows={3} className="input-field text-sm resize-none" />
+        </Panel>
         <div className="flex gap-3">
           <button disabled={!assignment} onClick={submit}
             className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2"
             style={{ opacity: assignment ? 1 : 0.5, cursor: assignment ? 'pointer' : 'not-allowed' }}>
             <Send className="w-4 h-4" /> Confirm &amp; Send to Admin
           </button>
-          <button className="btn-secondary text-sm py-2.5 px-4" onClick={onClose}>Hold</button>
+          <button className="btn-secondary text-sm py-2.5 px-4" onClick={() => navigate('/screener/queue')}>Hold</button>
         </div>
-        {!assignment && <p className="text-[11px] mt-2" style={{ color: '#64748b' }}>Choose who conducts the search to continue.</p>}
-      </motion.div>
-    </div>
+        {!assignment && <p className="text-[11px]" style={{ color:'#64748b' }}>Choose who conducts the search to continue.</p>}
+      </div>
+    )},
+    { key:'overview', label:'Overview', icon:FileText, render: () => (
+      <div className="space-y-4">
+        <DetailGrid items={[
+          ['State / County', `${order.state} · ${order.county}`],
+          ['Search Type', order.type],
+          ['Priority', order.priority?.toUpperCase()],
+          ['ETA', order.eta],
+          ['Placed', order.created],
+          ['Status', order.status],
+        ]} />
+        {intake && (
+          <Panel title="Client intake">
+            <div className="text-sm space-y-1.5">
+              {[['Property', intake.propertyAddress], ['Parcel / APN', intake.parcelNumberAPN],
+                ['Borrower', intake.borrowerName], ['Buyer', intake.buyer], ['Seller', intake.seller],
+                ['Special instructions', intake.specialInstructions]]
+                .filter(([, v]) => v).map(([k, v]) => (
+                <div key={k}><span style={{ color:'#64748b' }}>{k}: </span>
+                  <span className="font-medium" style={{ color:'#1e293b' }}>{v}</span></div>
+              ))}
+            </div>
+          </Panel>
+        )}
+      </div>
+    )},
+    { key:'files', label:'Files', icon:Files, render: () => (
+      <Panel title="Attached documents"><AttachedDocs workflow={order.workflow} /></Panel>
+    )},
+    { key:'messages', label:'Messages', icon:Inbox, badge: msgCount || null, render: () => (
+      <Panel><OrderMessages order={order} accent={ROLE_COLOR} /></Panel>
+    )},
+    { key:'activity', label:'Activity', icon:Clock, render: () => (
+      <ActivityTab order={order} activityLog={activityLog} accent={ROLE_COLOR} />
+    )},
+  ]
+
+  return (
+    <OrderDetailLayout order={order} user={user} accent={ROLE_COLOR}
+      backTo="/screener/queue" backLabel="Back to Screening Queue" tabs={TABS}
+      statusPill={
+        <span className="text-xs font-semibold px-3 py-1.5 rounded-full"
+          style={{ background:`${ROLE_COLOR}1e`, color:ROLE_COLOR }}>
+          {STATUS_DOT[order.status] ? order.status : 'screening'}
+        </span>
+      } />
   )
 }
 
 function ScreenerHome() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const { getOrdersForRole } = useOrders()
   const myOrders = getOrdersForRole('screener')
-  const [selected, setSelected] = useState(null)
+  const openOrder = (o) => navigate(`/screener/order/${o.id}`)
   return (
     <div className="space-y-6">
-      {selected && <OrderModal order={selected} onClose={() => setSelected(null)} />}
       <div>
         <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>Screening Dashboard</h1>
         <p className="text-sm" style={{ color: '#475569' }}>Review and validate incoming title search requests</p>
@@ -132,7 +175,7 @@ function ScreenerHome() {
               style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(138,194,104,0.08)' }}
               onMouseOver={e => e.currentTarget.style.borderColor = 'rgba(138,194,104,0.25)'}
               onMouseOut={e => e.currentTarget.style.borderColor = 'rgba(138,194,104,0.08)'}
-              onClick={() => setSelected(o)}>
+              onClick={() => openOrder(o)}>
               <div className="w-2 h-10 rounded-full flex-shrink-0" style={{ background: STATUS_DOT[o.status] || ROLE_COLOR }} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -162,12 +205,13 @@ function ScreenerHome() {
 }
 
 function ScreenerQueue({ orders, title }) {
-  const [selected, setSelected] = useState(null)
+  const navigate = useNavigate()
   return (
     <div className="space-y-6">
-      {selected && <OrderModal order={selected} onClose={() => setSelected(null)} />}
       <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>{title}</h1>
-      <div className="glass-card p-5"><OrdersTable orders={orders} onOrderClick={setSelected} /></div>
+      <div className="glass-card p-5">
+        <OrdersTable orders={orders} onOrderClick={o => navigate(`/screener/order/${o.id}`)} />
+      </div>
     </div>
   )
 }
@@ -182,6 +226,7 @@ export default function ScreenerDashboard() {
         <Route index element={<ScreenerHome />} />
         <Route path="queue" element={<ScreenerQueue orders={myOrders} title="Screening Queue" />} />
         <Route path="completed" element={<ScreenerQueue orders={completed} title="Completed Screenings" />} />
+        <Route path="order/:id" element={<ScreenerOrderPage />} />
       </Routes>
     </Layout>
   )

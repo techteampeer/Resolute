@@ -1,15 +1,17 @@
 import React, { useState } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrdersTable from '../../components/OrdersTable'
-import { LayoutDashboard, FileSearch, CheckCircle, Clock, AlertCircle, ChevronRight, X, Send } from 'lucide-react'
+import { LayoutDashboard, FileSearch, CheckCircle, Clock, AlertCircle, ChevronRight, Send, FileText, Inbox, Files } from 'lucide-react'
 import { displayClient } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
+import { useSupport } from '../../context/SupportContext'
 import DocUpload from '../../components/DocUpload'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
+import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
 
 const ROLE_COLOR = '#a16207'
 const NAV = [
@@ -18,98 +20,107 @@ const NAV = [
   { path: '/examiner/completed', label: 'Completed',  icon: CheckCircle },
 ]
 
-function ExamineModal({ order, onClose }) {
+const CHECKLIST = ['Chain of title verified', 'Tax status confirmed', 'Lien search completed',
+  'HOA status checked', 'Easements/encumbrances noted']
+
+// Full-page order detail (replaces the old modal). Route: /examiner/order/:id
+function ExaminerOrderPage() {
+  const { id } = useParams()
+  const navigate = useNavigate()
   const { user } = useAuth()
-  const { returnToAdmin } = useOrders()
+  const { orders, returnToAdmin, activityLog = [] } = useOrders()
+  const { getOrderThread, getOrderNotes } = useSupport()
+  const order = orders.find(o => o.id === id)
+
   const [findings, setFindings] = useState('')
   const [liens, setLiens] = useState(false)
   const [encumbrances, setEncumbrances] = useState(false)
-  const [doc, setDoc] = useState(order.workflow?.examinerDoc || null)
+  const [checks, setChecks] = useState({})
+  const [doc, setDoc] = useState(order?.workflow?.examinerDoc || null)
+
+  if (!order) return (
+    <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
+      <div className="text-sm" style={{ color:'#64748b' }}>Order not found, or it isn’t in your queue.</div>
+      <button onClick={() => navigate('/examiner/examine')} className="btn-primary text-sm px-5 py-2.5">Back to To Examine</button>
+    </div>
+  )
+
+  const ready = doc && doc.status === 'done'
   const submit = () => {
-    if (!doc || doc.status !== 'done') return
+    if (!ready) return
     returnToAdmin(order.id, 'examiner', user?.name, findings, { examinerDoc: doc })
-    onClose()
+    navigate('/examiner/examine')
   }
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.65)' }} onClick={onClose}>
-      <motion.div initial={{ scale:0.95, opacity:0 }} animate={{ scale:1, opacity:1 }}
-        className="glass-card p-6 w-full max-w-2xl max-h-[88vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <div className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{order.id}</div>
-            <div className="text-xl font-bold" style={{ color:'#1e293b' }}>{displayClient(order.client, user)}</div>
-            <div className="text-sm" style={{ color:'#64748b' }}>{order.type} · {order.state}, {order.county} County</div>
+  const msgCount = getOrderThread(order.id).length + getOrderNotes(order.id).length
+
+  const TABS = [
+    { key:'examination', label:'Examination', icon:FileSearch, render: () => (
+      <div className="space-y-4">
+        <Panel title="Examination checklist">
+          <div className="space-y-1">
+            {CHECKLIST.map(item => (
+              <label key={item} className="flex items-center gap-3 cursor-pointer p-2.5 rounded-lg transition-colors"
+                onMouseOver={e=>e.currentTarget.style.background='rgba(30,41,59,0.05)'}
+                onMouseOut={e=>e.currentTarget.style.background='transparent'}>
+                <input type="checkbox" className="w-4 h-4 rounded" style={{ accentColor: ROLE_COLOR }}
+                  checked={!!checks[item]} onChange={e => setChecks(c => ({ ...c, [item]: e.target.checked }))} />
+                <span className="text-sm" style={{ color:'#334155' }}>{item}</span>
+              </label>
+            ))}
           </div>
-          <button onClick={onClose} style={{ color:'#64748b' }}><X className="w-5 h-5" /></button>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-          {[['Search Type',order.type],['County',order.county],['State',order.state],['Priority',order.priority.toUpperCase()]].map(([k,v]) => (
-            <div key={k} className="glass p-3 rounded-xl">
-              <div className="text-xs mb-1" style={{ color:'#64748b' }}>{k}</div>
-              <div className="font-medium text-sm" style={{ color:'#1e293b' }}>{v}</div>
-            </div>
-          ))}
-        </div>
-        <div className="space-y-4 mb-5">
-          <AttachedDocs workflow={order.workflow} />
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider mb-2"
-              style={{ color:'#64748b' }}>Examination Checklist</label>
-            <div className="space-y-2">
-              {['Chain of title verified','Tax status confirmed','Lien search completed',
-                'HOA status checked','Easements/encumbrances noted'].map(item => (
-                <label key={item} className="flex items-center gap-3 cursor-pointer p-2.5 rounded-lg transition-colors"
-                  onMouseOver={e=>e.currentTarget.style.background='rgba(30,41,59,0.05)'}
-                  onMouseOut={e=>e.currentTarget.style.background='transparent'}>
-                  <input type="checkbox" className="w-4 h-4 rounded" style={{ accentColor: ROLE_COLOR }} />
-                  <span className="text-sm" style={{ color:'#334155' }}>{item}</span>
-                </label>
-              ))}
-            </div>
+        </Panel>
+        <Panel title="Issues found">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[['Open Liens',liens,setLiens],['Encumbrances',encumbrances,setEncumbrances]].map(([l,v,set]) => (
+              <button key={l} onClick={() => set(!v)}
+                className="p-3 rounded-xl text-sm font-medium transition-all border"
+                style={v
+                  ? { border:'1px solid rgba(220,80,60,0.40)', background:'rgba(220,80,60,0.14)', color:'#dc2626' }
+                  : { border:'1px solid rgba(30,41,59,0.08)', color:'#64748b' }}>
+                {l}: {v ? 'YES' : 'NO'}
+              </button>
+            ))}
           </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider mb-2"
-              style={{ color:'#64748b' }}>Issues Found</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {[['Open Liens',liens,setLiens],['Encumbrances',encumbrances,setEncumbrances]].map(([l,v,s]) => (
-                <button key={l} onClick={() => s(!v)}
-                  className="p-3 rounded-xl text-sm font-medium transition-all border"
-                  style={v
-                    ? { border:'1px solid rgba(220,80,60,0.40)', background:'rgba(220,80,60,0.14)', color:'#dc2626' }
-                    : { border:'1px solid rgba(30,41,59,0.08)', color:'#64748b' }}>
-                  {l}: {v ? 'YES' : 'NO'}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider mb-2"
-              style={{ color:'#64748b' }}>Researched Document <span style={{ textTransform:'none', color:'#dc2626' }}>*required</span></label>
-            <DocUpload orderId={order.id} value={doc} onChange={setDoc} accent={ROLE_COLOR} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider mb-2"
-              style={{ color:'#64748b' }}>Examination Notes</label>
-        <div className="mb-4 pt-4" style={{ borderTop: '1px solid rgba(30,41,59,0.08)' }}>
-          <OrderMessages order={order} accent={ROLE_COLOR} />
-        </div>
-            <textarea value={findings} onChange={e=>setFindings(e.target.value)}
-              placeholder="Document findings, chain of title issues, liens, easements…"
-              rows={3} className="input-field text-sm resize-none" />
-          </div>
-        </div>
+        </Panel>
+        <Panel title="Researched document" hint="Required before this order can go back to Admin.">
+          <DocUpload orderId={order.id} value={doc} onChange={setDoc} accent={ROLE_COLOR} />
+        </Panel>
+        <Panel title="Examination notes">
+          <textarea value={findings} onChange={e=>setFindings(e.target.value)}
+            placeholder="Document findings, chain of title issues, liens, easements…"
+            rows={4} className="input-field text-sm resize-none" />
+        </Panel>
         <div className="flex gap-3">
-          <button disabled={!doc || doc.status !== 'done'} onClick={submit}
+          <button disabled={!ready} onClick={submit}
             className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2"
-            style={{ opacity: (doc && doc.status === 'done') ? 1 : 0.5, cursor: (doc && doc.status === 'done') ? 'pointer' : 'not-allowed' }}>
+            style={{ opacity: ready ? 1 : 0.5, cursor: ready ? 'pointer' : 'not-allowed' }}>
             <Send className="w-4 h-4" /> Confirm &amp; Send to Admin
           </button>
-          <button className="btn-secondary text-sm py-2.5 px-4" onClick={onClose}>Save Draft</button>
+          <button className="btn-secondary text-sm py-2.5 px-4" onClick={() => navigate('/examiner/examine')}>Save Draft</button>
         </div>
-        {(!doc || doc.status !== 'done') && <p className="text-[11px] mt-2" style={{ color:'#64748b' }}>Upload the researched document to continue.</p>}
-      </motion.div>
-    </div>
+        {!ready && <p className="text-[11px]" style={{ color:'#64748b' }}>Upload the researched document to continue.</p>}
+      </div>
+    )},
+    { key:'overview', label:'Overview', icon:FileText, render: () => (
+      <DetailGrid items={[
+        ['Search Type', order.type], ['County', order.county], ['State', order.state],
+        ['Priority', order.priority?.toUpperCase()], ['ETA', order.eta], ['Placed', order.created],
+      ]} />
+    )},
+    { key:'files', label:'Files', icon:Files, render: () => (
+      <Panel title="Attached documents"><AttachedDocs workflow={order.workflow} /></Panel>
+    )},
+    { key:'messages', label:'Messages', icon:Inbox, badge: msgCount || null, render: () => (
+      <Panel><OrderMessages order={order} accent={ROLE_COLOR} /></Panel>
+    )},
+    { key:'activity', label:'Activity', icon:Clock, render: () => (
+      <ActivityTab order={order} activityLog={activityLog} accent={ROLE_COLOR} />
+    )},
+  ]
+
+  return (
+    <OrderDetailLayout order={order} user={user} accent={ROLE_COLOR}
+      backTo="/examiner/examine" backLabel="Back to To Examine" tabs={TABS} />
   )
 }
 
@@ -117,10 +128,10 @@ function ExaminerHome() {
   const { user } = useAuth()
   const { getOrdersForRole } = useOrders()
   const myOrders = getOrdersForRole('examiner')
-  const [selected, setSelected] = useState(null)
+  const navigate = useNavigate()
+  const openOrder = (o) => navigate(`/examiner/order/${o.id}`)
   return (
     <div className="space-y-6">
-      {selected && <ExamineModal order={selected} onClose={() => setSelected(null)} />}
       <div>
         <h1 className="text-2xl font-bold" style={{ color:'#1e293b' }}>Examiner Dashboard</h1>
         <p className="text-sm" style={{ color:'#475569' }}>Examine title documents and verify chain of title</p>
@@ -151,7 +162,7 @@ function ExaminerHome() {
               style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(138,194,104,0.08)' }}
               onMouseOver={e=>e.currentTarget.style.borderColor='rgba(196,164,78,0.30)'}
               onMouseOut={e=>e.currentTarget.style.borderColor='rgba(138,194,104,0.08)'}
-              onClick={() => setSelected(o)}>
+              onClick={() => openOrder(o)}>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="font-mono font-semibold text-sm" style={{ color:ROLE_COLOR }}>{o.id}</span>
@@ -182,12 +193,13 @@ function ExaminerHome() {
 }
 
 function ExaminerQueue({ orders, title }) {
-  const [selected, setSelected] = useState(null)
+  const navigate = useNavigate()
   return (
     <div className="space-y-6">
-      {selected && <ExamineModal order={selected} onClose={() => setSelected(null)} />}
       <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>{title}</h1>
-      <div className="glass-card p-5"><OrdersTable orders={orders} onOrderClick={setSelected} /></div>
+      <div className="glass-card p-5">
+        <OrdersTable orders={orders} onOrderClick={o => navigate(`/examiner/order/${o.id}`)} />
+      </div>
     </div>
   )
 }
@@ -202,6 +214,7 @@ export default function ExaminerDashboard() {
         <Route index element={<ExaminerHome />} />
         <Route path="examine" element={<ExaminerQueue orders={myOrders} title="To Examine" />} />
         <Route path="completed" element={<ExaminerQueue orders={completed} title="Completed" />} />
+        <Route path="order/:id" element={<ExaminerOrderPage />} />
       </Routes>
     </Layout>
   )

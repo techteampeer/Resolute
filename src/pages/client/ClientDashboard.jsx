@@ -99,7 +99,7 @@ function clientStage(order) {
   return { idx: 0, label: 'Placed', color: '#4d7c2f' }
 }
 
-// BUG_007: clicking an order opens its detail view (see ClientOrderModal).
+// BUG_007: clicking an order opens its detail view (see OrderDetailPage).
 function TrackOrder({ order, onOpen }) {
   const stage = clientStage(order)
   const idx = stage.idx
