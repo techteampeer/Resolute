@@ -8,6 +8,7 @@ import { displayClient, clientByName } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import AttachedDocs from '../../components/AttachedDocs'
+import OrderMessages from '../../components/OrderMessages'
 
 const ROLE_COLOR = '#b45309'
 const NAV = [
@@ -81,6 +82,9 @@ function DeliveryModal({ order, onClose }) {
         <div className="mb-5">
           <label className="block text-xs font-semibold uppercase tracking-wider mb-2"
             style={{ color:'#64748b' }}>Delivery Note</label>
+        <div className="mb-4 pt-4" style={{ borderTop: '1px solid rgba(30,41,59,0.08)' }}>
+          <OrderMessages order={order} accent={ROLE_COLOR} />
+        </div>
           <textarea value={note} onChange={e=>setNote(e.target.value)}
             placeholder="Notes for the client…" rows={3} className="input-field text-sm resize-none" />
         </div>

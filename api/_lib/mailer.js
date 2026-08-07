@@ -30,10 +30,40 @@ export function transport() {
 export const mailFrom = () =>
   process.env.MAIL_FROM || `Resolute Title Services <${process.env.SMTP_USER || 'no-reply@resolute.local'}>`
 
+// Portal-only communication policy: outbound mail is NOTIFICATION ONLY. Replies
+// must never land in a human (or ingest-monitored) mailbox, so every message
+// carries a Reply-To pointing at an unmonitored address. Set MAIL_REPLY_TO to a
+// real no-reply@yourdomain once DNS is configured.
+export const replyTo = () =>
+  process.env.MAIL_REPLY_TO || `no-reply@${(process.env.MAIL_DOMAIN || 'resolute.local')}`
+
+export const PORTAL_URL = () => process.env.PORTAL_URL || 'https://portal.resolute.local'
+
+const FOOTER = (link) => [
+  '',
+  '—',
+  'This mailbox is not monitored — please do not reply to this email.',
+  `All correspondence happens in the portal: ${link}`,
+].join('\n')
+
 export const isSmtpLive = () => Boolean(process.env.SMTP_HOST)
 
-export async function sendMail({ to, subject, text }) {
+// `link` deep-links to the relevant thread; falls back to the portal root.
+export async function sendMail({ to, subject, text, link }) {
   if (!to) return { skipped: 'no recipient' }
-  const info = await transport().sendMail({ from: mailFrom(), to, subject, text })
+  const info = await transport().sendMail({
+    from: mailFrom(),
+    replyTo: replyTo(),
+    to,
+    subject,
+    text: `${text}${FOOTER(link || PORTAL_URL())}`,
+    headers: {
+      // Marks this as machine-generated so well-behaved clients and mailing
+      // systems don't auto-reply, and our own ingest can detect it.
+      'Auto-Submitted': 'auto-generated',
+      'X-Auto-Response-Suppress': 'All',
+      'X-Resolute-Notification': '1',
+    },
+  })
   return { messageId: info.messageId, envelope: info.envelope, message: info.message?.toString?.() }
 }

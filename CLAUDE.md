@@ -55,6 +55,22 @@ Verify every new feature against these constraints before implementing.
 - Client identities: non-super-admins see client codes, not names
   (`displayClient`).
 
+## Client communication policy
+
+- **Portal-only.** Every client reply happens in the portal
+  (`support_messages`). Email is NOTIFICATION ONLY: `api/notify.js` sends on
+  insert, `api/_lib/mailer.js` stamps `Reply-To: no-reply@…`, an
+  "unmonitored mailbox" footer, and a deep link back to the thread.
+  `api/webhooks/inbound-email.js` drops replies to our own notifications
+  (`isReplyToNotification`) so correspondence never becomes a draft order.
+- **Only ADMINS reply to clients.** Screener / examiner / typer / delivery /
+  Single Seating see every thread read-only and may write `visibility:
+  'internal'` notes, which RLS hides from clients entirely.
+  Enforced in `20260807000000_message_access_control.sql`
+  (`support_admin_reply` vs `support_staff_note`) — never weaken this to
+  `is_staff()`. UI mirror: `canReplyToClient` / `canAddInternalNote` in
+  `SupportContext`, rendered by `components/OrderMessages.jsx`.
+
 ## Coding standards
 
 - Concise, performance-optimized React/Node patterns; minimize boilerplate.

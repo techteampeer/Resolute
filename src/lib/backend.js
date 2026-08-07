@@ -112,6 +112,9 @@ export function subscribeOrders(cb) {
 const toSupportMsg = (r) => ({
   id: r.id, clientCode: r.client_code, orderId: r.order_id || null, from: r.sender, author: r.author, body: r.body,
   attachment: r.attachment || null,
+  // 'client' = part of the client conversation; 'internal' = staff-only note
+  // (RLS hides these from clients entirely).
+  visibility: r.visibility || 'client',
   at: new Date(r.created_at).getTime(),
   time: new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
 })
@@ -123,9 +126,12 @@ export async function fetchSupportMessages() {
   return data.map(toSupportMsg)
 }
 
-export async function insertSupportMessage({ clientCode, sender, author, body, orderId = null, attachment = null }) {
-  const { error } = await supabase.from('support_messages').insert({ client_code: clientCode, sender, author: author || null, body, order_id: orderId, attachment })
-  if (error) console.error('[insertSupportMessage]', error.message)
+// RLS gates this: clients may only write sender='client'/visibility='client';
+// admins may reply to clients; every other staff role may write internal notes
+// only. A rejected insert throws so the caller can surface it.
+export async function insertSupportMessage({ clientCode, sender, author, body, orderId = null, attachment = null, visibility = 'client' }) {
+  const { error } = await supabase.from('support_messages').insert({ client_code: clientCode, sender, author: author || null, body, order_id: orderId, attachment, visibility })
+  if (error) { console.error('[insertSupportMessage]', error.message); throw error }
 }
 
 // Client marks an invoice paid via the narrow SECURITY DEFINER RPC (clients

@@ -8,6 +8,7 @@ import { displayClient } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import DocUpload from '../../components/DocUpload'
+import OrderMessages from '../../components/OrderMessages'
 
 const ROLE_COLOR = '#4d7c2f'
 const ASSIGN_OPTS = [['in_house', 'In-House'], ['abs', 'ABS (Abstract)'], ['both', 'Both']]
@@ -73,6 +74,9 @@ function OrderModal({ order, onClose }) {
           <label className="block text-xs font-semibold uppercase tracking-wider mb-2"
             style={{ color: '#64748b' }}>Search Document <span style={{ textTransform: 'none', opacity: 0.6 }}>(optional)</span></label>
           <DocUpload orderId={order.id} value={doc} onChange={setDoc} accent={ROLE_COLOR} />
+        </div>
+        <div className="mb-4 pt-4" style={{ borderTop: '1px solid rgba(30,41,59,0.08)' }}>
+          <OrderMessages order={order} accent={ROLE_COLOR} />
         </div>
         <textarea value={notes} onChange={e => setNotes(e.target.value)}
           placeholder="Add screening notes…" rows={2} className="input-field text-sm mb-4 resize-none" />
