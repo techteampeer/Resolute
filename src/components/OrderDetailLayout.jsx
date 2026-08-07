@@ -4,6 +4,14 @@ import { motion } from 'framer-motion'
 import { ChevronRight } from 'lucide-react'
 import { displayClient } from '../data/mockData'
 
+// Subtitle from whatever the order actually has. Email-ingested orders often
+// arrive without county/state, and naively interpolating them renders a stray
+// "Full Search · ," — so drop the empty parts instead.
+export const orderSubtitle = (order) => {
+  const place = [order.county && `${order.county} County`, order.state].filter(Boolean).join(', ')
+  return [order.type, place, order.eta && `ETA ${order.eta}`].filter(Boolean).join(' · ')
+}
+
 // Shared full-page order detail shell for every portal.
 //
 // Replaces the old per-portal modal popups: clicking an order navigates to a
@@ -34,10 +42,7 @@ export default function OrderDetailLayout({
           <div className="font-bold text-xl truncate" style={{ color: '#1e293b' }}>
             {headline || displayClient(order.client, user)}
           </div>
-          <div className="text-xs" style={{ color: '#64748b' }}>
-            {order.type} · {order.county} County, {order.state}
-            {order.eta ? ` · ETA ${order.eta}` : ''}
-          </div>
+          <div className="text-xs" style={{ color: '#64748b' }}>{orderSubtitle(order)}</div>
         </div>
         <div className="flex items-center gap-2">
           {order.priority === 'rush' && (

@@ -15,6 +15,7 @@ import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument } from '../../lib/backend'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import AttachedDocs from '../../components/AttachedDocs'
+import { orderSubtitle } from '../../components/OrderDetailLayout'
 import OrderThread from '../../components/OrderThread'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS,
@@ -354,7 +355,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
           <div>
             <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:ROLE_COLOR }}>{order.id}</div>
             <div style={{ fontSize:20, fontWeight:700, color:Q.text }}>{displayClient(order.client, user)}</div>
-            <div style={{ fontSize:12, color:Q.muted }}>{order.type} · {order.county}, {order.state}{order.eta ? ` · ETA ${order.eta}` : ''}</div>
+            <div style={{ fontSize:12, color:Q.muted }}>{orderSubtitle(order)}</div>
           </div>
           {order.priority === 'rush' && (
             <span style={{ fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:99,
