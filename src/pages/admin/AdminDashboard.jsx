@@ -8,7 +8,7 @@ import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
   Package, CheckCircle, Clock, Search, Plus, Filter, Eye, DollarSign,
   ChevronDown, ChevronUp, FileText, ArrowUpRight, X, Lock, ShieldCheck, UserPlus, Download,
-  MessageSquare, Send,
+  MessageSquare, Send, StickyNote,
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
@@ -171,9 +171,74 @@ const orderFiles = (order) => {
   return out
 }
 
+// Internal notes on an order — written by any staff member (screener, examiner,
+// typer, delivery, Single Seating) to flag something for Admin. RLS keeps these
+// invisible to clients; this is where Admin reads them, and can reply in kind.
+function InternalNotes({ order, notes, user, clientCode }) {
+  const { sendMessage } = useSupport()
+  const [draft, setDraft] = useState('')
+  const add = () => {
+    const body = draft.trim()
+    if (!body || !clientCode) return
+    sendMessage({
+      clientCode, clientName: order.client, from: 'support', text: body,
+      author: user?.name || 'Admin', orderId: order.id, visibility: 'internal',
+    })
+    setDraft('')
+  }
+  return (
+    <div style={{ marginTop:18, paddingTop:16, borderTop:`1px solid ${Q.border}` }}>
+      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:10 }}>
+        <StickyNote style={{ width:14, height:14, color:'#a16207' }} />
+        <span style={{ fontSize:11, fontWeight:700, textTransform:'uppercase',
+          letterSpacing:'0.05em', color:Q.muted }}>Internal Notes</span>
+        <span style={{ fontSize:11, color:Q.faint }}>· from staff · never visible to the client</span>
+        {notes.length > 0 && (
+          <span style={{ fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:99,
+            background:'rgba(196,164,78,0.18)', color:'#a16207' }}>{notes.length}</span>
+        )}
+      </div>
+      {notes.length === 0 ? (
+        <div style={{ fontSize:12.5, color:Q.faint, marginBottom:10 }}>
+          No internal notes on this order yet.
+        </div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:10 }}>
+          {notes.map(n => (
+            <div key={n.id} style={{ borderRadius:10, padding:'9px 12px',
+              background:'rgba(196,164,78,0.08)', border:'1px dashed rgba(196,164,78,0.45)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', gap:8, marginBottom:2 }}>
+                <span style={{ fontSize:12, fontWeight:600, color:'#a16207' }}>{n.author || 'Staff'}</span>
+                <span style={{ fontSize:11, color:Q.faint }}>{n.time}</span>
+              </div>
+              <div style={{ fontSize:13, color:Q.text, whiteSpace:'pre-wrap' }}>{n.text}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display:'flex', gap:8 }}>
+        <input value={draft} onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') add() }}
+          placeholder={clientCode ? 'Add an internal note…' : 'Order has no linked client account'}
+          disabled={!clientCode}
+          style={{ flex:1, padding:'8px 11px', borderRadius:8, border:`1px solid ${Q.border}`,
+            background: clientCode ? Q.card : Q.bg, color:Q.text, fontSize:13, outline:'none' }} />
+        <button onClick={add} disabled={!draft.trim() || !clientCode}
+          style={{ display:'flex', alignItems:'center', gap:5, padding:'8px 14px', borderRadius:8,
+            border:'none', fontSize:12.5, fontWeight:600,
+            background: draft.trim() && clientCode ? '#a16207' : Q.border,
+            color: draft.trim() && clientCode ? '#fff' : Q.faint,
+            cursor: draft.trim() && clientCode ? 'pointer' : 'not-allowed' }}>
+          <Send style={{ width:13, height:13 }} /> Note
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function OrderEditModal({ order, user, onClose, onSave }) {
   const { activityLog, resolveCancel, updateOrder } = useOrders()
-  const { getOrderThread, sendMessage } = useSupport()
+  const { getOrderThread, getOrderNotes, sendMessage } = useSupport()
   const cli = clientByName(order.client)
   // BUG_003: a client requested cancellation of an in-progress order; Admin
   // decides. (Orders cancelled while still queued never reach here.)
@@ -204,6 +269,9 @@ function OrderEditModal({ order, user, onClose, onSave }) {
   const orderActivity = activityLog.filter(a => a.action && a.action.includes(order.id))
   // Per-order inbox thread (client ⇄ staff), shared with the client's order view.
   const orderMessages = getOrderThread(order.id)
+  // Internal notes any staff member left on this order. Clients never see
+  // these (RLS); Admin reads them here and can add their own.
+  const orderNotes = getOrderNotes(order.id)
   const orderClientCode = order.clientCode || cli?.code || null
   const sendThread = ({ text, attachment }) => {
     if ((!text?.trim() && !attachment) || !orderClientCode) return
@@ -295,7 +363,7 @@ function OrderEditModal({ order, user, onClose, onSave }) {
         {/* Detail tabs */}
         <div className="overflow-x-auto" style={{ display:'flex', gap:0, padding:'0 22px', borderBottom:`1px solid ${Q.border}` }}>
           {DETAIL_TABS.map(t => {
-            const badge = t.key === 'inbox' ? orderMessages.length : t.key === 'files' ? files.length : 0
+            const badge = t.key === 'inbox' ? orderMessages.length + orderNotes.length : t.key === 'files' ? files.length : 0
             return (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className="shrink-0 whitespace-nowrap"
@@ -501,6 +569,7 @@ function OrderEditModal({ order, user, onClose, onSave }) {
             <OrderThread orderId={order.id} messages={orderMessages} viewerSide="support"
               canSend={!!orderClientCode} onSend={sendThread} height={420}
               emptyText={orderClientCode ? 'No messages on this order yet.' : 'This order has no linked client account to message.'} />
+            <InternalNotes order={order} notes={orderNotes} user={user} clientCode={orderClientCode} />
           </div>
         )}
 
