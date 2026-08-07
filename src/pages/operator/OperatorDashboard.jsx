@@ -9,6 +9,7 @@ import { displayClient, nextRoleFor } from '../../data/mockData'
 import { LayoutDashboard, Layers, CheckCircle, X, Send, ChevronRight, FileText, Keyboard } from 'lucide-react'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
+import OrderMessages from '../../components/OrderMessages'
 
 const ROLE_COLOR = '#0f766e'
 const NAV = [
@@ -138,6 +139,9 @@ function StageModal({ order, onClose }) {
           </>
         )}
 
+        <div className="mb-4 pt-4" style={{ borderTop: '1px solid rgba(30,41,59,0.08)' }}>
+          <OrderMessages order={order} accent={ROLE_COLOR} />
+        </div>
         {role !== 'typer' && (
           <>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}

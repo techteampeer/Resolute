@@ -15,6 +15,7 @@ import {
 import { T, Label, TextInput, TextArea, DateInput, RoundBtn, AccentButton, GhostButton } from './ui'
 import DeedTabs from './DeedTabs'
 import AttachedDocs from '../../../components/AttachedDocs'
+import OrderMessages from '../../../components/OrderMessages'
 import { CommitmentDocumentModal, buildCommitmentHtml } from '../../../components/CommitmentDocument'
 import { FileDropZone, FileRow, makeFileRef } from './FileDrop'
 import RequirementsSection from './RequirementsSection'
@@ -92,6 +93,8 @@ export default function FulfillmentScreen() {
         ? <FulfillmentBody {...{ order, f, set, comp, save, user, completeStep, updateOrder, navigate }} />
         : tab === 'Overview'
         ? <OverviewTab order={order} f={f} user={user} />
+        : tab === 'Inbox'
+        ? <div className="px-5 md:px-7 py-5 max-w-[860px]"><OrderMessages order={order} accent={T.accentBright} /></div>
         : <StubTab name={tab} order={order} user={user} />}
     </div>
   )
