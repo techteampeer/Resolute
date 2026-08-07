@@ -1,14 +1,16 @@
 import React, { useState } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrdersTable from '../../components/OrdersTable'
-import { LayoutDashboard, Truck, Package, CheckCircle, Clock, Download, Send, Mail, X, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, Truck, Package, CheckCircle, Clock, Download, Send, Mail, ChevronRight, FileText, Inbox, Files } from 'lucide-react'
 import { displayClient, clientByName } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
+import { useSupport } from '../../context/SupportContext'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
+import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
 
 const ROLE_COLOR = '#b45309'
 const NAV = [
@@ -17,45 +19,49 @@ const NAV = [
   { path: '/delivery/sent',    label: 'Delivered',    icon: CheckCircle },
 ]
 
-function DeliveryModal({ order, onClose }) {
+// Full-page order detail (replaces the old modal). Route: /delivery/order/:id
+function DeliveryOrderPage() {
+  const { id } = useParams()
+  const navigate = useNavigate()
   const { user } = useAuth()
-  const { completeStep, updateOrder } = useOrders()
-  const cli = clientByName(order.client)
-  const [method, setMethod] = useState(order.workflow?.deliveryMethod || 'email')
+  const { orders, completeStep, updateOrder, activityLog = [] } = useOrders()
+  const { getOrderThread, getOrderNotes } = useSupport()
+  const order = orders.find(o => o.id === id)
+  const cli = order ? clientByName(order.client) : null
+
+  const [method, setMethod] = useState(order?.workflow?.deliveryMethod || 'email')
   const [recipient, setRecipient] = useState(user?.superAdmin && cli ? cli.email : '')
   const [note, setNote] = useState('')
+
+  if (!order) return (
+    <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
+      <div className="text-sm" style={{ color:'#64748b' }}>Order not found, or it isn’t in your queue.</div>
+      <button onClick={() => navigate('/delivery/queue')} className="btn-primary text-sm px-5 py-2.5">Back to Ready to Send</button>
+    </div>
+  )
+
   const submit = () => {
-    updateOrder({ ...order, workflow: { ...order.workflow, deliveryMethod: method, deliveryRecipient: recipient, invoiceVisibleToClient: method === 'portal' } })
+    updateOrder({ ...order, workflow: { ...order.workflow, deliveryMethod: method,
+      deliveryRecipient: recipient, invoiceVisibleToClient: method === 'portal' } })
     completeStep(order.id, 'delivery', user?.name, `via ${method}${note ? ' · ' + note : ''}`)
-    onClose()
+    navigate('/delivery/queue')
   }
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background:'rgba(0,0,0,0.65)' }} onClick={onClose}>
-      <motion.div initial={{ scale:0.95, opacity:0 }} animate={{ scale:1, opacity:1 }}
-        className="glass-card p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <div className="font-mono font-semibold text-sm" style={{ color:ROLE_COLOR }}>{order.id}</div>
-            <div className="text-xl font-bold" style={{ color:'#1e293b' }}>{displayClient(order.client, user)}</div>
-          </div>
-          <button onClick={onClose} style={{ color:'#64748b' }}><X className="w-5 h-5" /></button>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl mb-5"
+  const msgCount = getOrderThread(order.id).length + getOrderNotes(order.id).length
+
+  const TABS = [
+    { key:'delivery', label:'Delivery', icon:Truck, render: () => (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 p-4 rounded-xl"
           style={{ background:'rgba(109,188,120,0.12)', border:'1px solid rgba(109,188,120,0.25)' }}>
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ background:'rgba(109,188,120,0.20)' }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background:'rgba(109,188,120,0.20)' }}>
             <CheckCircle className="w-5 h-5" style={{ color:'#15803d' }} />
           </div>
           <div>
-            <div className="font-semibold text-sm" style={{ color:'#1e293b' }}>Report Ready for Delivery</div>
+            <div className="font-semibold text-sm" style={{ color:'#1e293b' }}>Report ready for delivery</div>
             <div className="text-xs" style={{ color:'#64748b' }}>{order.type} · {order.state}, {order.county} County</div>
           </div>
         </div>
-        <div className="mb-4"><AttachedDocs workflow={order.workflow} /></div>
-        <div className="mb-4">
-          <label className="block text-xs font-semibold uppercase tracking-wider mb-2"
-            style={{ color:'#64748b' }}>Delivery Method</label>
+        <Panel title="Delivery method">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {[['email','Email'],['portal','Client Portal']].map(([k,l]) => (
               <button key={k} onClick={() => setMethod(k)}
@@ -67,35 +73,51 @@ function DeliveryModal({ order, onClose }) {
               </button>
             ))}
           </div>
-          <p className="text-[11px] mt-2" style={{ color:'#64748b' }}>
+          <p className="text-[11px]" style={{ color:'#64748b' }}>
             {method==='email'
               ? 'Full package + invoice will be emailed to the client.'
               : 'Package is posted to the client portal and the invoice is reflected there.'}
           </p>
-        </div>
-        <div className="mb-4" style={{ display: method==='email' ? 'block' : 'none' }}>
-          <label className="block text-xs font-semibold uppercase tracking-wider mb-2"
-            style={{ color:'#64748b' }}>Recipient Email</label>
-          <input value={recipient} onChange={e=>setRecipient(e.target.value)}
-            placeholder="client@company.com" className="input-field text-sm" />
-        </div>
-        <div className="mb-5">
-          <label className="block text-xs font-semibold uppercase tracking-wider mb-2"
-            style={{ color:'#64748b' }}>Delivery Note</label>
-        <div className="mb-4 pt-4" style={{ borderTop: '1px solid rgba(30,41,59,0.08)' }}>
-          <OrderMessages order={order} accent={ROLE_COLOR} />
-        </div>
+          {method === 'email' && (
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Recipient email</div>
+              <input value={recipient} onChange={e=>setRecipient(e.target.value)}
+                placeholder="client@company.com" className="input-field text-sm" />
+            </div>
+          )}
+        </Panel>
+        <Panel title="Delivery note">
           <textarea value={note} onChange={e=>setNote(e.target.value)}
             placeholder="Notes for the client…" rows={3} className="input-field text-sm resize-none" />
-        </div>
+        </Panel>
         <div className="flex gap-3">
           <button className="flex-1 btn-primary text-sm py-2.5 flex items-center justify-center gap-2" onClick={submit}>
             <Send className="w-4 h-4" /> Deliver &amp; Submit to Admin
           </button>
-          <button className="btn-secondary text-sm py-2.5 px-4 flex items-center gap-2" onClick={onClose}>Close</button>
+          <button className="btn-secondary text-sm py-2.5 px-4" onClick={() => navigate('/delivery/queue')}>Close</button>
         </div>
-      </motion.div>
-    </div>
+      </div>
+    )},
+    { key:'overview', label:'Overview', icon:FileText, render: () => (
+      <DetailGrid items={[
+        ['Search Type', order.type], ['County', order.county], ['State', order.state],
+        ['Priority', order.priority?.toUpperCase()], ['ETA', order.eta], ['Placed', order.created],
+      ]} />
+    )},
+    { key:'files', label:'Files', icon:Files, render: () => (
+      <Panel title="Package documents"><AttachedDocs workflow={order.workflow} /></Panel>
+    )},
+    { key:'messages', label:'Messages', icon:Inbox, badge: msgCount || null, render: () => (
+      <Panel><OrderMessages order={order} accent={ROLE_COLOR} /></Panel>
+    )},
+    { key:'activity', label:'Activity', icon:Clock, render: () => (
+      <ActivityTab order={order} activityLog={activityLog} accent={ROLE_COLOR} />
+    )},
+  ]
+
+  return (
+    <OrderDetailLayout order={order} user={user} accent={ROLE_COLOR}
+      backTo="/delivery/queue" backLabel="Back to Ready to Send" tabs={TABS} />
   )
 }
 
@@ -104,11 +126,10 @@ function DeliveryHome() {
   const { getOrdersForRole, orders } = useOrders()
   const readyOrders     = getOrdersForRole('delivery')
   const deliveredOrders = orders.filter(o => o.status === 'delivered')
-  const [selected, setSelected] = useState(null)
+  const navigate = useNavigate()
   const [emailed, setEmailed]   = useState([])
   return (
     <div className="space-y-6">
-      {selected && <DeliveryModal order={selected} onClose={() => setSelected(null)} />}
       <div>
         <h1 className="text-2xl font-bold" style={{ color:'#1e293b' }}>Delivery Dashboard</h1>
         <p className="text-sm" style={{ color:'#475569' }}>Manage and deliver completed title search reports</p>
@@ -139,7 +160,7 @@ function DeliveryHome() {
               style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(138,194,104,0.08)' }}
               onMouseOver={e=>e.currentTarget.style.borderColor='rgba(196,120,62,0.30)'}
               onMouseOut={e=>e.currentTarget.style.borderColor='rgba(138,194,104,0.08)'}
-              onClick={() => setSelected(o)}>
+              onClick={() => navigate(`/delivery/order/${o.id}`)}>
               <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{ background:`${ROLE_COLOR}22` }}>
                 <Package className="w-5 h-5" style={{ color:ROLE_COLOR }} />
@@ -201,12 +222,13 @@ function DeliveryHome() {
 }
 
 function DeliveryQueue({ orders, title }) {
-  const [selected, setSelected] = useState(null)
+  const navigate = useNavigate()
   return (
     <div className="space-y-6">
-      {selected && <DeliveryModal order={selected} onClose={() => setSelected(null)} />}
       <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>{title}</h1>
-      <div className="glass-card p-5"><OrdersTable orders={orders} onOrderClick={setSelected} /></div>
+      <div className="glass-card p-5">
+        <OrdersTable orders={orders} onOrderClick={o => navigate(`/delivery/order/${o.id}`)} />
+      </div>
     </div>
   )
 }
@@ -221,6 +243,7 @@ export default function DeliveryDashboard() {
         <Route index element={<DeliveryHome />} />
         <Route path="queue" element={<DeliveryQueue orders={readyOrders} title="Ready to Send" />} />
         <Route path="sent" element={<DeliveryQueue orders={deliveredOrders} title="Delivered Orders" />} />
+        <Route path="order/:id" element={<DeliveryOrderPage />} />
       </Routes>
     </Layout>
   )

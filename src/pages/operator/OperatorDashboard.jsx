@@ -1,15 +1,17 @@
 import React, { useState } from 'react'
-import { Routes, Route, useNavigate } from 'react-router-dom'
+import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import DocUpload from '../../components/DocUpload'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
+import { useSupport } from '../../context/SupportContext'
 import { displayClient, nextRoleFor } from '../../data/mockData'
-import { LayoutDashboard, Layers, CheckCircle, X, Send, ChevronRight, FileText, Keyboard } from 'lucide-react'
+import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files } from 'lucide-react'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
+import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
 
 const ROLE_COLOR = '#0f766e'
 const NAV = [
@@ -26,21 +28,33 @@ const STAGE = {
 }
 const ASSIGN = [['in_house', 'In-House'], ['abs', 'ABS (Abstract)'], ['both', 'Both']]
 
-// One adaptive modal that runs whichever stage the order is currently in.
-function StageModal({ order, onClose }) {
-  const { user } = useAuth()
-  const { completeStep, returnToAdmin, updateOrder } = useOrders()
+// Full-page order detail that adapts to whichever stage the order is in.
+// Route: /operator/orders/:id  (the typing stage hands off to the full
+// fulfillment screen at /operator/order/:id).
+function OperatorOrderPage() {
+  const { id } = useParams()
   const navigate = useNavigate()
-  const role = nextRoleFor(order)
+  const { user } = useAuth()
+  const { orders, completeStep, returnToAdmin, updateOrder, activityLog = [] } = useOrders()
+  const { getOrderThread, getOrderNotes } = useSupport()
+  const order = orders.find(o => o.id === id)
+  const role = order ? nextRoleFor(order) : null
   const meta = STAGE[role] || {}
 
-  const [assignment, setAssignment] = useState(order.workflow?.searchAssignment || null)
-  const [doc, setDoc] = useState(role === 'examiner' ? (order.workflow?.examinerDoc || null) : (order.workflow?.screenerDoc || null))
-  const [method, setMethod] = useState(order.workflow?.deliveryMethod || 'email')
+  const [assignment, setAssignment] = useState(order?.workflow?.searchAssignment || null)
+  const [doc, setDoc] = useState(role === 'examiner' ? (order?.workflow?.examinerDoc || null) : (order?.workflow?.screenerDoc || null))
+  const [method, setMethod] = useState(order?.workflow?.deliveryMethod || 'email')
   const [notes, setNotes] = useState('')
 
-  // Every step hands back to Admin for approval (same as the separate portals).
-  // Delivery is the final stage — completing it delivers the order outright.
+  if (!order) return (
+    <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
+      <div className="text-sm" style={{ color:'#64748b' }}>Order not found, or it isn’t assigned to your desk.</div>
+      <button onClick={() => navigate('/operator')} className="btn-primary text-sm px-5 py-2.5">Back to Workspace</button>
+    </div>
+  )
+
+  // Every step hands back to Admin for approval. Delivery is the final stage —
+  // completing it delivers the order outright.
   const advance = (workflowPatch) => {
     if (role === 'delivery') {
       if (workflowPatch) updateOrder({ ...order, workflow: { ...order.workflow, ...workflowPatch } })
@@ -48,81 +62,55 @@ function StageModal({ order, onClose }) {
     } else {
       returnToAdmin(order.id, role, user?.name, notes || 'single seating', workflowPatch || {})
     }
-    onClose()
+    navigate('/operator')
   }
-
-  const canSubmit =
-    role === 'screener' ? !!assignment
+  const canSubmit = role === 'screener' ? !!assignment
     : role === 'examiner' ? !!(doc && doc.status === 'done')
     : true
+  const msgCount = getOrderThread(order.id).length + getOrderNotes(order.id).length
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.65)' }} onClick={onClose}>
-      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        className="glass-card p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between mb-5">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{order.id}</span>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md"
-                style={{ background: `${meta.color}22`, color: meta.color }}>{meta.label}</span>
-            </div>
-            <div className="text-lg font-bold mt-0.5" style={{ color: '#1e293b' }}>{displayClient(order.client, user)}</div>
-            <div className="text-xs" style={{ color: '#64748b' }}>{order.type} · {order.state}, {order.county} County</div>
-          </div>
-          <button onClick={onClose} style={{ color: '#64748b' }}><X className="w-5 h-5" /></button>
-        </div>
-
-        {(order.workflow?.screenerDoc || order.workflow?.examinerDoc) && (
-          <div className="mb-4"><AttachedDocs workflow={order.workflow} /></div>
-        )}
-
-        {/* Screening */}
+  const TABS = [
+    { key:'stage', label: meta.label || 'Stage', icon:Layers, render: () => (
+      <div className="space-y-4">
         {role === 'screener' && (
           <>
-            <Lbl>Assign Search To</Lbl>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
-              {ASSIGN.map(([k, l]) => (
-                <button key={k} onClick={() => setAssignment(k)}
-                  className="py-2.5 rounded-lg text-xs font-semibold transition-all"
-                  style={assignment === k
-                    ? { background: `${ROLE_COLOR}28`, color: ROLE_COLOR, border: `1px solid ${ROLE_COLOR}55` }
-                    : { background: 'rgba(30,41,59,0.05)', color: '#64748b', border: '1px solid rgba(30,41,59,0.08)' }}>
-                  {l}
-                </button>
-              ))}
-            </div>
-            <Lbl>Search Document <span style={{ textTransform: 'none', opacity: 0.6 }}>(optional)</span></Lbl>
-            <div className="mb-4"><DocUpload orderId={order.id} value={doc} onChange={setDoc} accent={ROLE_COLOR} /></div>
+            <Panel title="Assign search to">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {ASSIGN.map(([k, l]) => (
+                  <button key={k} onClick={() => setAssignment(k)}
+                    className="py-2.5 rounded-lg text-xs font-semibold transition-all"
+                    style={assignment === k
+                      ? { background: `${ROLE_COLOR}28`, color: ROLE_COLOR, border: `1px solid ${ROLE_COLOR}55` }
+                      : { background: 'rgba(30,41,59,0.05)', color: '#64748b', border: '1px solid rgba(30,41,59,0.08)' }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </Panel>
+            <Panel title="Search document" hint="Optional at this stage.">
+              <DocUpload orderId={order.id} value={doc} onChange={setDoc} accent={ROLE_COLOR} />
+            </Panel>
           </>
         )}
-
-        {/* Examination */}
         {role === 'examiner' && (
-          <>
-            <Lbl>Researched Document <span style={{ textTransform: 'none', color: '#dc2626' }}>*required</span></Lbl>
-            <div className="mb-4"><DocUpload orderId={order.id} value={doc} onChange={setDoc} accent={ROLE_COLOR} /></div>
-          </>
+          <Panel title="Researched document" hint="Required before this order can go back to Admin.">
+            <DocUpload orderId={order.id} value={doc} onChange={setDoc} accent={ROLE_COLOR} />
+          </Panel>
         )}
-
-        {/* Typing — hand off to the full fulfillment screen */}
         {role === 'typer' && (
-          <div className="mb-4 p-4 rounded-xl" style={{ background: 'rgba(62,158,196,0.10)', border: '1px solid rgba(62,158,196,0.25)' }}>
+          <div className="p-4 rounded-xl" style={{ background: 'rgba(62,158,196,0.10)', border: '1px solid rgba(62,158,196,0.25)' }}>
             <div className="flex items-center gap-2 mb-1"><Keyboard className="w-4 h-4" style={{ color: '#0e7490' }} />
               <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>Type the commitment</span></div>
             <p className="text-xs mb-3" style={{ color: '#475569' }}>Opens the full sectioned fulfillment form. Submitting there sends the order to Admin for approval.</p>
-            <button onClick={() => { onClose(); navigate(`/operator/order/${order.id}`) }}
+            <button onClick={() => navigate(`/operator/order/${order.id}`)}
               className="btn-primary text-sm py-2.5 w-full flex items-center justify-center gap-2">
               <FileText className="w-4 h-4" /> Open Fulfillment Form
             </button>
           </div>
         )}
-
-        {/* Delivery */}
         {role === 'delivery' && (
-          <>
-            <Lbl>Delivery Method</Lbl>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+          <Panel title="Delivery method">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {[['email', 'Email'], ['portal', 'Client Portal']].map(([k, l]) => (
                 <button key={k} onClick={() => setMethod(k)}
                   className="py-2.5 rounded-xl text-sm font-medium transition-all border"
@@ -133,19 +121,17 @@ function StageModal({ order, onClose }) {
                 </button>
               ))}
             </div>
-            <p className="text-[11px] mb-4" style={{ color: '#64748b' }}>
+            <p className="text-[11px]" style={{ color: '#64748b' }}>
               {method === 'email' ? 'Full package + invoice emailed to the client.' : 'Package posted to the client portal; invoice reflected there.'}
             </p>
-          </>
+          </Panel>
         )}
-
-        <div className="mb-4 pt-4" style={{ borderTop: '1px solid rgba(30,41,59,0.08)' }}>
-          <OrderMessages order={order} accent={ROLE_COLOR} />
-        </div>
         {role !== 'typer' && (
           <>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-              placeholder="Notes (optional)…" className="input-field text-sm mb-4 resize-none" />
+            <Panel title="Notes">
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+                placeholder="Notes (optional)…" className="input-field text-sm resize-none" />
+            </Panel>
             <button disabled={!canSubmit}
               onClick={() => advance(
                 role === 'screener' ? { searchAssignment: assignment, screenerDoc: doc }
@@ -158,8 +144,32 @@ function StageModal({ order, onClose }) {
             </button>
           </>
         )}
-      </motion.div>
-    </div>
+      </div>
+    )},
+    { key:'overview', label:'Overview', icon:FileText, render: () => (
+      <DetailGrid items={[
+        ['Search Type', order.type], ['County', order.county], ['State', order.state],
+        ['Priority', order.priority?.toUpperCase()], ['ETA', order.eta], ['Current stage', meta.label],
+      ]} />
+    )},
+    { key:'files', label:'Files', icon:Files, render: () => (
+      <Panel title="Attached documents"><AttachedDocs workflow={order.workflow} /></Panel>
+    )},
+    { key:'messages', label:'Messages', icon:Inbox, badge: msgCount || null, render: () => (
+      <Panel><OrderMessages order={order} accent={ROLE_COLOR} /></Panel>
+    )},
+    { key:'activity', label:'Activity', icon:Clock, render: () => (
+      <ActivityTab order={order} activityLog={activityLog} accent={ROLE_COLOR} />
+    )},
+  ]
+
+  return (
+    <OrderDetailLayout order={order} user={user} accent={ROLE_COLOR}
+      backTo="/operator" backLabel="Back to Workspace" tabs={TABS}
+      statusPill={
+        <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md"
+          style={{ background: `${meta.color}22`, color: meta.color }}>{meta.label}</span>
+      } />
   )
 }
 
@@ -173,7 +183,7 @@ const Lbl = ({ children }) => (
 function OperatorHome() {
   const { user } = useAuth()
   const { orders } = useOrders()
-  const [selected, setSelected] = useState(null)
+  const navigate = useNavigate()
   const active = orders.filter(o => o.status !== 'delivered' && nextRoleFor(o))
   const actionable = active.filter(o => o.assignedTo === 'operator')
   const awaiting   = active.filter(o => o.workflow?.singleSeating && o.assignedTo !== 'operator')
@@ -181,7 +191,6 @@ function OperatorHome() {
 
   return (
     <div className="space-y-6">
-      {selected && <StageModal order={selected} onClose={() => setSelected(null)} />}
       <div>
         <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>Single Seating Workspace</h1>
         <p className="text-sm" style={{ color: '#475569' }}>Orders assigned to your desk — worked start to finish, with Admin approval at every phase</p>
@@ -209,7 +218,7 @@ function OperatorHome() {
                 style={{ background: 'rgba(30,41,59,0.03)', border: '1px solid rgba(138,194,104,0.08)' }}
                 onMouseOver={e => e.currentTarget.style.borderColor = `${s.color}55`}
                 onMouseOut={e => e.currentTarget.style.borderColor = 'rgba(138,194,104,0.08)'}
-                onClick={() => setSelected(o)}>
+                onClick={() => navigate(`/operator/orders/${o.id}`)}>
                 <div className="w-2 h-10 rounded-full flex-shrink-0" style={{ background: s.color }} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -290,7 +299,8 @@ export default function OperatorDashboard() {
     <Layout navItems={NAV} role="single seating" roleColor={ROLE_COLOR}>
       <Routes>
         <Route index element={<OperatorHome />} />
-        <Route path="order/:id" element={<FulfillmentScreen />} />
+        <Route path="order/:id"  element={<FulfillmentScreen />} />
+        <Route path="orders/:id" element={<OperatorOrderPage />} />
         <Route path="completed" element={<CompletedList />} />
       </Routes>
     </Layout>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
@@ -236,8 +236,30 @@ function InternalNotes({ order, notes, user, clientCode }) {
   )
 }
 
-function OrderEditModal({ order, user, onClose, onSave }) {
-  const { activityLog, resolveCancel, updateOrder } = useOrders()
+// Full-page order detail (replaces the old modal). Route: /admin/orders/:id
+function AdminOrderPage() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const { orders, activityLog, resolveCancel, updateOrder } = useOrders()
+  const order = orders.find(o => o.id === id)
+  const onClose = () => navigate('/admin/orders')
+  // The old modal was handed AdminOrders' local `saveOrder`, which was just a
+  // pass-through to updateOrder — the context never exported one.
+  const onSave  = (o) => updateOrder(o)
+  return order
+    ? <AdminOrderDetail {...{ order, user, onClose, onSave, activityLog, resolveCancel, updateOrder }} />
+    : (
+      <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
+        <div style={{ fontSize:13, color:Q.muted }}>Order not found.</div>
+        <button onClick={onClose} className="btn-primary text-sm px-5 py-2.5">Back to Orders</button>
+      </div>
+    )
+}
+
+// Hooks below must run unconditionally, so the not-found guard lives in the
+// wrapper above and this component always receives a real order.
+function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCancel, updateOrder }) {
   const { getOrderThread, getOrderNotes, sendMessage } = useSupport()
   const cli = clientByName(order.client)
   // BUG_003: a client requested cancellation of an in-progress order; Admin
@@ -317,22 +339,27 @@ function OrderEditModal({ order, user, onClose, onSave }) {
   const intake = order.workflow?.intake
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background:'rgba(15,23,42,0.45)' }} onClick={onClose}>
-      <motion.div initial={{ scale:0.96, opacity:0 }} animate={{ scale:1, opacity:1 }}
-        onClick={e => e.stopPropagation()}
-        style={{ background:Q.card, borderRadius:12, width:'100%', maxWidth:620,
-          maxHeight:'90vh', overflowY:'auto', boxShadow:'0 20px 50px rgba(0,0,0,0.25)' }}>
+    <div style={{ maxWidth:900, margin:'0 auto' }}>
+      <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.18 }}
+        style={{ background:Q.card, borderRadius:12, border:`1px solid ${Q.border}`, overflow:'hidden' }}>
+        <div style={{ padding:'16px 22px 0' }}>
+          <button onClick={onClose}
+            style={{ display:'flex', alignItems:'center', gap:6, background:'none', border:'none',
+              padding:0, cursor:'pointer', color:Q.muted, fontSize:13 }}>
+            <ChevronDown style={{ width:15, height:15, transform:'rotate(90deg)' }} /> Back to Orders
+          </button>
+        </div>
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between',
-          padding:'18px 22px' }}>
+          padding:'12px 22px 18px' }}>
           <div>
             <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:ROLE_COLOR }}>{order.id}</div>
-            <div style={{ fontSize:18, fontWeight:700, color:Q.text }}>{displayClient(order.client, user)}</div>
-            <div style={{ fontSize:12, color:Q.muted }}>{order.type} · {order.county}, {order.state}</div>
+            <div style={{ fontSize:20, fontWeight:700, color:Q.text }}>{displayClient(order.client, user)}</div>
+            <div style={{ fontSize:12, color:Q.muted }}>{order.type} · {order.county}, {order.state}{order.eta ? ` · ETA ${order.eta}` : ''}</div>
           </div>
-          <button onClick={onClose} style={{ background:'transparent', border:'none', cursor:'pointer', color:Q.faint }}>
-            <X style={{ width:18, height:18 }} />
-          </button>
+          {order.priority === 'rush' && (
+            <span style={{ fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:99,
+              background:'rgba(220,38,38,0.12)', color:'#dc2626' }}>RUSH</span>
+          )}
         </div>
 
         {order.status === 'cancelled' && (
@@ -630,7 +657,7 @@ const routingState = (o) => {
 function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const { user } = useAuth()
   const { orders, updateOrder } = useOrders()
-  const [editing, setEditing]   = useState(null)   // full edit/detail modal
+  const navigate = useNavigate()
   const [assigning, setAssigning] = useState(null)  // focused assign modal
   const [search, setSearch]     = useState('')
   const [activeTab, setActiveTab] = useState('all')   // lifecycle tab
@@ -642,7 +669,6 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const [rushOnly, setRushOnly] = useState(false)
   const [page, setPage]         = useState(1)
   const PAGE_SIZE = pageSize
-  const saveOrder = (updated) => updateOrder(updated)
 
   // Cascading geographic options: state list narrows by region, county by state.
   const inRegion = (o) => region === 'all' || regionOf(o.state) === region
@@ -714,7 +740,6 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
 
   return (
     <div className="space-y-4">
-      {editing && <OrderEditModal order={editing} user={user} onClose={() => setEditing(null)} onSave={saveOrder} />}
       {assigning && <AssignModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
       {/* Toolbar — row 1: search · date range · new order */}
       <div className="flex items-center gap-3 flex-wrap">
@@ -835,7 +860,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                   style={{ borderBottom:`1px solid ${Q.border}`, cursor:'pointer' }}
                   onMouseOver={e => e.currentTarget.style.background = Q.rowHover}
                   onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                  onClick={() => setEditing(o)}>
+                  onClick={() => navigate(`/admin/orders/${o.id}`)}>
                   <td style={{ padding:'10px 16px', whiteSpace:'nowrap' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                       <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:12, color:ROLE_COLOR }}>{o.id}</span>
@@ -910,7 +935,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                           {r.kind === 'inprogress' ? 'Reassign' : `Assign ${cap(r.next)}`}
                         </button>
                       )}
-                      <button title="View details" onClick={e => { e.stopPropagation(); setEditing(o) }}
+                      <button title="View details" onClick={e => { e.stopPropagation(); navigate(`/admin/orders/${o.id}`) }}
                         style={{ padding:6, borderRadius:6, background:'transparent', border:'none', cursor:'pointer', color:Q.faint }}
                         onMouseOver={e => e.currentTarget.style.background = '#f1f5f9'}
                         onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
@@ -1561,7 +1586,8 @@ export default function AdminDashboard() {
     <Layout navItems={navItems} role="admin" roleColor={ROLE_COLOR} lightTheme>
       <Routes>
         <Route index            element={<AdminHome />} />
-        <Route path="orders"   element={<AdminOrders />} />
+        <Route path="orders"     element={<AdminOrders />} />
+        <Route path="orders/:id" element={<AdminOrderPage />} />
         <Route path="users"    element={<AdminUsers />} />
         <Route path="billing"  element={<AdminBilling />} />
         <Route path="support"  element={<AdminSupport />} />
