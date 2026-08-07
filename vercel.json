@@ -3,5 +3,21 @@
   "framework": "vite",
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "comment": "Hashed build output — the filename changes on every build, so it is safe (and desirable) to cache forever.",
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "comment": "index.html must NEVER be cached: it is the only file that names the current hashed bundle. A cached shell keeps loading the previous deploy's JS, so users see an old app long after a successful deploy.",
+      "source": "/((?!assets/|api/).*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    }
   ]
 }
