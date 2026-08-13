@@ -20,8 +20,29 @@ into `public.order_events` and `public.support_messages`, so every event already
 written to those tables produces an email — no client wiring, full coverage of
 server-side events.
 
-Routing: placement + client-sent messages + cancellations → admins; status
-updates + staff messages → the order's client.
+### Routing (role-based defaults, in code — no per-user preferences)
+
+| Event | Recipients |
+|---|---|
+| New order placed | Admins |
+| Order assigned / handed to a stage | The staff on that stage |
+| Stage completed, returned for assignment | Admins |
+| Order delivered | The client + the owning staff |
+| Cancellation requested | Admins |
+| Cancellation approved / declined | The client |
+| Clarification, hold, payment, status change | The client |
+| Client sends a message | Admins |
+| Admin replies to a client | The client |
+| Internal staff note | Admins |
+
+`order_events.audience` (`staff` / `client` / `all`) selects the groups. For
+staff-facing events the recipient is whichever role currently owns the order
+(`orders.assigned_to`), read at send time so it is always accurate; inactive
+profiles are skipped. One event can notify several groups — each is sent
+independently, so one failure can't drop the others.
+
+The routing table is asserted in `api/__tests__/notify.test.js` (`npm test`),
+which runs without a database or SMTP.
 
 ### Environment variables
 | Var | Purpose |
