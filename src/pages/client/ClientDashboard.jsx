@@ -8,7 +8,7 @@ import {
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign, Search,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye
 } from 'lucide-react'
-import { clientCode as codeByName, clientName } from '../../data/mockData'
+import { clientCode as codeByName, clientName, orderProgress, isOrderComplete } from '../../data/mockData'
 import { PRODUCTS } from '../../data/products'
 import { isSupabaseConfigured, openDocument, uploadDocument } from '../../lib/backend'
 import { fileKind, uid } from '../../data/fulfillment'
@@ -143,12 +143,16 @@ function TrackOrder({ order, onOpen }) {
         ))}
       </div>
       <div className="flex items-center justify-between text-xs mb-1.5" style={{ color:'#64748b' }}>
-        <span>ETA: <span style={{ color:'#1e293b' }}>{order.eta}</span></span>
-        <span>{order.progress}% complete</span>
+        <span>{isOrderComplete(order)
+          ? <>Delivered: <span style={{ color:'#1e293b' }}>{order.completed || order.eta}</span></>
+          : <>ETA: <span style={{ color:'#1e293b' }}>{order.eta}</span></>}</span>
+        <span style={isOrderComplete(order) ? { color:'#15803d', fontWeight:600 } : undefined}>
+          {isOrderComplete(order) ? 'Completed' : `${orderProgress(order)}% complete`}
+        </span>
       </div>
       <div className="h-1.5 rounded-full overflow-hidden" style={{ background:'rgba(30,41,59,0.08)' }}>
         <motion.div className="h-full rounded-full"
-          initial={{ width:0 }} animate={{ width:`${order.progress}%` }}
+          initial={{ width:0 }} animate={{ width:`${orderProgress(order)}%` }}
           transition={{ duration:1.2, ease:'easeOut' }}
           style={{ background:'linear-gradient(90deg,#3d7020,#8fc268)' }} />
       </div>
@@ -375,7 +379,7 @@ function OrderDetailPage() {
             <Row k="Placed" v={order.created} />
             <Row k="Estimated delivery" v={order.eta} />
             <Row k="Delivered" v={order.completed} />
-            <div className="pt-1"><span style={{ color:'#64748b' }}>Progress: </span><span className="font-medium" style={{ color:'#1e293b' }}>{order.progress}%</span></div>
+            <div className="pt-1"><span style={{ color:'#64748b' }}>Progress: </span><span className="font-medium" style={{ color:'#1e293b' }}>{isOrderComplete(order) ? 'Completed (100%)' : `${orderProgress(order)}%`}</span></div>
           </div>
           {clientDocs.length > 0 && order.clarification !== 'pending' && (
             <div className="glass-card p-4 space-y-2">
@@ -975,7 +979,6 @@ function SupportPage() {
         </div>
         <div className="p-3 flex gap-2" style={{ borderTop:'1px solid rgba(138,194,104,0.09)' }}>
           <input value={msg} onChange={e=>setMsg(e.target.value)}
-            onKeyDown={e => e.key==='Enter' && send()}
             placeholder="Type a message…" className="input-field text-sm flex-1 py-2" />
           <button onClick={send} className="btn-primary px-4 py-2 text-sm flex items-center gap-1.5">
             <Send className="w-4 h-4" />

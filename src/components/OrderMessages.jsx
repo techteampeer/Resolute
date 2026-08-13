@@ -84,7 +84,6 @@ export default function OrderMessages({ order, accent = '#4d7c2f' }) {
           {notes.length > 0 && <div className="space-y-2 mb-2">{notes.map(m => <Bubble key={m.id} m={m} internal />)}</div>}
           <div className="flex gap-2">
             <input value={note} onChange={e => setNote(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') addNote() }}
               placeholder="Flag something for Admin…"
               className="input-field text-xs flex-1" style={{ padding: '7px 10px' }} />
             <button onClick={addNote} disabled={!note.trim()}

@@ -93,12 +93,14 @@ export function OrderProvider({ children }) {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
       const newDates = { ...o.completedDates, [role]: todayISO() }
-      const nextStatus = statusForRole(nextRoleFor({ completedDates: newDates }))
+      const nextRole = nextRoleFor({ completedDates: newDates })
+      const nextStatus = statusForRole(nextRole)
       const next = {
         ...o,
         status: nextStatus,
         assignedTo: 'admin',
-        progress: progressFor(nextStatus),
+        // Pipeline finished → 100, never progressFor('delivery') = 80.
+        progress: nextRole === null ? 100 : progressFor(nextStatus),
         completedDates: newDates,
         completedBy: { ...o.completedBy, [role]: userName },
         workflow: { ...o.workflow, ...extra },

@@ -80,7 +80,6 @@ export default function OrderThread({ orderId, messages = [], viewerSide = 'supp
           )}
           {err && <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 6 }}>{err}</div>}
           <textarea value={text} onChange={e => setText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
             placeholder="Type a message…" rows={3}
             style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13.5, outline: 'none', resize: 'none', color: '#1e293b', fontFamily: 'inherit' }} />
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
