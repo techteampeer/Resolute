@@ -1,13 +1,14 @@
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { X, Printer, Download, FileText } from 'lucide-react'
 import { useFulfillmentStore } from '../context/FulfillmentContext'
+import { downloadCommitmentPdf } from '../lib/commitmentPdf'
 import {
   requirementText, exceptionText, fmtDate, fmtDateTime, titleVestingAuto, recInfo,
 } from '../data/fulfillment'
 
 // Inline brand mark (swoosh + wordmark + tagline). Swap for the official PNG by
 // dropping it in /public and replacing this with <img src="/resolute-logo.png">.
-const LOGO_SVG = `
+export const LOGO_SVG = `
 <svg width="150" height="52" viewBox="0 0 150 52" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Resolute">
   <defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
     <stop offset="0" stop-color="#f0a020"/><stop offset="1" stop-color="#e0431f"/></linearGradient></defs>
@@ -160,11 +161,15 @@ export function CommitmentDocumentModal({ order, onClose }) {
   const html = useMemo(() => (f ? buildCommitmentHtml(order, f) : null), [order, f])
 
   const print = () => frameRef.current?.contentWindow?.print()
-  const download = () => {
-    const blob = new Blob(['﻿' + html], { type: 'application/msword' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob); a.download = `${order.id}-commitment.doc`; a.click()
-    URL.revokeObjectURL(a.href)
+  // BUG_011: clients must receive PDF, never Word. Download is a real vector
+  // PDF (selectable text) built from the same fulfillment data as the preview.
+  const [saving, setSaving] = useState(false)
+  const download = async () => {
+    if (!f || saving) return
+    setSaving(true)
+    try { await downloadCommitmentPdf(order, f) }
+    catch (err) { console.error('[commitment pdf]', err); window.alert('Could not generate the PDF. Please try again.') }
+    finally { setSaving(false) }
   }
 
   return (
@@ -175,10 +180,10 @@ export function CommitmentDocumentModal({ order, onClose }) {
           <span className="text-sm font-semibold" style={{ color: '#1e293b' }}>Commitment Document · {order.id}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={download} disabled={!html}
+          <button onClick={download} disabled={!f || saving}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium"
-            style={{ color: '#374151', border: '1px solid #e2e8f0', background: '#fff', opacity: html ? 1 : 0.5 }}>
-            <Download className="w-4 h-4" /> .doc
+            style={{ color: '#374151', border: '1px solid #e2e8f0', background: '#fff', opacity: (f && !saving) ? 1 : 0.5 }}>
+            <Download className="w-4 h-4" /> {saving ? 'Generating…' : 'Download PDF'}
           </button>
           <button onClick={print} disabled={!html}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-semibold text-white"

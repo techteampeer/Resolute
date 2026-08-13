@@ -98,6 +98,19 @@ export const nextRoleFor = (order) =>
 
 // The single source of truth for status: it follows the owning role.
 // null role (all stages done) → 'delivered'.
+// BUG_010: a delivered order must never read "80% complete". Progress is
+// DERIVED from the order's terminal state rather than trusting the stored
+// column, which can lag (progressFor('delivery') is 80, and rows written at
+// that stage keep it after delivery).
+export const orderProgress = (order) => {
+  if (!order) return 0
+  if (order.status === 'cancelled') return 0
+  if (order.status === 'delivered' || order.completed) return 100
+  return Math.min(100, Math.max(0, Number(order.progress) || 0))
+}
+export const isOrderComplete = (order) =>
+  !!order && (order.status === 'delivered' || !!order.completed)
+
 export const statusForRole = (role) =>
   role === null ? 'delivered'
     : ({ screener: 'screening', examiner: 'examining', typer: 'typing', delivery: 'delivery' }[role] || 'received')

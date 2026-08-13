@@ -16,7 +16,8 @@ import { T, Label, TextInput, TextArea, DateInput, RoundBtn, AccentButton, Ghost
 import DeedTabs from './DeedTabs'
 import AttachedDocs from '../../../components/AttachedDocs'
 import OrderMessages from '../../../components/OrderMessages'
-import { CommitmentDocumentModal, buildCommitmentHtml } from '../../../components/CommitmentDocument'
+import { CommitmentDocumentModal } from '../../../components/CommitmentDocument'
+import { commitmentPdfBlob, commitmentFileName } from '../../../lib/commitmentPdf'
 import { FileDropZone, FileRow, makeFileRef } from './FileDrop'
 import RequirementsSection from './RequirementsSection'
 import ExceptionsSection from './ExceptionsSection'
@@ -534,14 +535,15 @@ function Finalize({ comp, order, f, user, completeStep, updateOrder, navigate })
     // Generate the commitment document and attach it to the order so it flows
     // to Admin and Delivery under Files, like every other stage's document.
     try {
-      const html = buildCommitmentHtml(order, f)
-      const file = new File([html], `Title Commitment - ${order.id}.doc`, { type: 'application/msword' })
+      // BUG_011: this file is what the client downloads, so it must be a PDF.
+      const blob = await commitmentPdfBlob(order, f)
+      const file = new File([blob], commitmentFileName(order), { type: 'application/pdf' })
       let ref
       if (isSupabaseConfigured) {
         const { url, path } = await uploadDocument(order.id, file)
-        ref = { id: uid(), name: file.name, type: 'word', url, path }
+        ref = { id: uid(), name: file.name, type: 'pdf', url, path }
       } else {
-        ref = { id: uid(), name: file.name, type: 'word', url: URL.createObjectURL(file) }
+        ref = { id: uid(), name: file.name, type: 'pdf', url: URL.createObjectURL(file) }
       }
       updateOrder({ ...order, workflow: { ...order.workflow, commitmentDoc: ref, invoiceAmount, invoicedAt } })
     } catch (e) {

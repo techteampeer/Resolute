@@ -219,7 +219,6 @@ function InternalNotes({ order, notes, user, clientCode }) {
       )}
       <div style={{ display:'flex', gap:8 }}>
         <input value={draft} onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') add() }}
           placeholder={clientCode ? 'Add an internal note…' : 'Order has no linked client account'}
           disabled={!clientCode}
           style={{ flex:1, padding:'8px 11px', borderRadius:8, border:`1px solid ${Q.border}`,
@@ -1558,7 +1557,7 @@ function AdminSupport() {
                   ))}
                 </div>
                 <div style={{ padding:12, borderTop:`1px solid ${Q.border}`, display:'flex', gap:8 }}>
-                  <input value={reply} onChange={e => setReply(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()}
+                  <input value={reply} onChange={e => setReply(e.target.value)}
                     placeholder="Type a reply…"
                     style={{ flex:1, padding:'9px 12px', border:`1px solid ${Q.border}`, borderRadius:8, fontSize:13, outline:'none', color:Q.text }} />
                   <button onClick={send} style={{ padding:'9px 14px', background:ROLE_COLOR, border:'none', borderRadius:8, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:600 }}>
