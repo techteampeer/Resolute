@@ -51,7 +51,13 @@ export function OrderProvider({ children }) {
       if (queue === 'operator') next.workflow = { ...o.workflow, singleSeating: true }
       else if (['screener', 'examiner', 'typer', 'delivery'].includes(queue)) next.workflow = { ...o.workflow, singleSeating: false }
       if (personName) next[queue] = personName
-      if (o.status == null || o.status === 'received') next.status = 'received'
+      // Status follows the owning role, always — pinning it to 'received' here
+      // left a freshly assigned order reading "Received" while it sat in the
+      // screener's queue. 'admin' and 'operator' aren't pipeline stages, so for
+      // those the status reflects the stage actually being worked next.
+      const STAGES = ['screener', 'examiner', 'typer', 'delivery']
+      next.status = statusForRole(STAGES.includes(queue) ? queue : nextRoleFor(o))
+      next.progress = progressFor(next.status)
       persist(next)
       return next
     }))

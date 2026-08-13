@@ -84,7 +84,7 @@ function ScreenerOrderPage() {
             style={{ opacity: assignment ? 1 : 0.5, cursor: assignment ? 'pointer' : 'not-allowed' }}>
             <Send className="w-4 h-4" /> Confirm &amp; Send to Admin
           </button>
-          <button className="btn-secondary text-sm py-2.5 px-4" onClick={() => navigate('/screener/queue')}>Hold</button>
+          <button className="btn-secondary text-sm py-2.5 px-4" onClick={() => navigate('/screener/queue')}>Back to Queue</button>
         </div>
         {!assignment && <p className="text-[11px]" style={{ color:'#64748b' }}>Choose who conducts the search to continue.</p>}
       </div>

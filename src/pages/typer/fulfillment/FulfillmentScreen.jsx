@@ -31,7 +31,7 @@ export default function FulfillmentScreen() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { orders, completeStep, updateOrder } = useOrders()
+  const { orders, updateOrder } = useOrders()
   const { byOrder, ensure, update, save } = useFulfillmentStore()
   const order = orders.find(o => o.id === id)
   const [tab, setTab] = useState('Fulfillment')
@@ -91,7 +91,7 @@ export default function FulfillmentScreen() {
       </div>
 
       {tab === 'Fulfillment'
-        ? <FulfillmentBody {...{ order, f, set, comp, save, user, completeStep, updateOrder, navigate }} />
+        ? <FulfillmentBody {...{ order, f, set, comp, save, user, updateOrder, navigate }} />
         : tab === 'Overview'
         ? <OverviewTab order={order} f={f} user={user} />
         : tab === 'Inbox'
@@ -102,7 +102,7 @@ export default function FulfillmentScreen() {
 }
 
 // ── Fulfillment body: two-column layout ──────────────────────────────────────
-function FulfillmentBody({ order, f, set, comp, save, user, completeStep, updateOrder, navigate }) {
+function FulfillmentBody({ order, f, set, comp, save, user, updateOrder, navigate }) {
   return (
     <div className="flex gap-6 px-5 md:px-7 py-5">
       <div className="flex-1 min-w-0 max-w-[860px]">
@@ -225,7 +225,7 @@ function FulfillmentBody({ order, f, set, comp, save, user, completeStep, update
 
         {/* 18 — Finalize */}
         <Section n={18} title="Finalize Order" done={comp.done === comp.total}>
-          <Finalize comp={comp} order={order} f={f} user={user} completeStep={completeStep} updateOrder={updateOrder} navigate={navigate} />
+          <Finalize comp={comp} order={order} f={f} user={user} updateOrder={updateOrder} navigate={navigate} />
         </Section>
       </div>
 
@@ -513,15 +513,15 @@ function Supplementary({ order, f, set }) {
 }
 
 // ── Section 12: Finalize ─────────────────────────────────────────────────────
-function Finalize({ comp, order, f, user, completeStep, updateOrder, navigate }) {
+function Finalize({ comp, order, f, user, updateOrder, navigate }) {
   const { returnToAdmin } = useOrders()
   const [showDoc, setShowDoc] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const missing = comp.items.filter(i => !i.done)
   const ready = missing.length === 0
-  // From the Single Seating desk every step needs Admin approval before the
-  // next stage; the dedicated typer portal advances the order directly.
-  const singleSeating = user?.role === 'operator'
+  // Every stage parks with Admin for approval before the next one (CLAUDE.md);
+  // typing is no exception, from either the typer portal or the Single Seating
+  // desk — so this path never calls completeStep.
   const submit = async () => {
     if (!ready || submitting) return
     setSubmitting(true)
@@ -550,8 +550,7 @@ function Finalize({ comp, order, f, user, completeStep, updateOrder, navigate })
       // Doc attach is best-effort — still stamp the invoice total.
       updateOrder({ ...order, workflow: { ...order.workflow, invoiceAmount, invoicedAt } })
     }
-    if (singleSeating) returnToAdmin(order.id, 'typer', user?.name, 'Commitment typed, generated & verified')
-    else completeStep(order.id, 'typer', user?.name, 'Commitment typed, generated & verified')
+    returnToAdmin(order.id, 'typer', user?.name, 'Commitment typed, generated & verified')
     navigate(-1)
   }
   return (

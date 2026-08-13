@@ -14,3 +14,6 @@ npm-debug.log*
 # Supabase CLI local runtime state
 supabase/.branches/
 supabase/.temp/
+
+# local UI-audit scripts (not part of the app)
+.audit/
