@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test \"services/email_ingest/__tests__/ingest.test.js\"",
+    "test": "node --test \"services/email_ingest/__tests__/ingest.test.js\" \"api/__tests__/notify.test.js\"",
     "email:ingest": "node services/email_ingest/runner.js",
     "email:ingest:once": "node services/email_ingest/runner.js --once",
     "email:test": "node scripts/test-email.js"

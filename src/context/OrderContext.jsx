@@ -38,7 +38,7 @@ export function OrderProvider({ children }) {
   // trail (orderId/actor ride on the entry when the caller knows them).
   const log = (entry) => {
     setActivityLog(a => [entry, ...a])
-    if (isSupabaseConfigured) logEvent({ orderId: entry.orderId, action: entry.action, type: entry.type, actor: entry.actor })
+    if (isSupabaseConfigured) logEvent({ orderId: entry.orderId, action: entry.action, type: entry.type, actor: entry.actor, audience: entry.audience || 'staff' })
   }
   const persist = (order) => { if (isSupabaseConfigured) saveOrder(order) }
 
@@ -55,7 +55,7 @@ export function OrderProvider({ children }) {
       persist(next)
       return next
     }))
-    log({ id: Date.now(), orderId, action: `Admin assigned ${orderId} to ${queue}${personName ? ` · ${personName}` : ''}`, time: 'Just now', type: 'status' })
+    log({ id: Date.now(), orderId, action: `Admin assigned ${orderId} to ${queue}${personName ? ` · ${personName}` : ''}`, time: 'Just now', type: 'status', audience: 'staff' })
   }
 
   let advancedTo = null
@@ -82,6 +82,7 @@ export function OrderProvider({ children }) {
       action: `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId}`
         + (advancedTo ? ` → handed to ${advancedTo}` : ' → delivered') + (notes ? ` (${notes})` : ''),
       time: 'Just now', type: 'progress',
+      audience: advancedTo ? 'staff' : 'all',
     })
   }
 
@@ -108,7 +109,7 @@ export function OrderProvider({ children }) {
       persist(next)
       return next
     }))
-    log({ id: Date.now(), orderId, actor: userName, action: `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId} → returned to Admin for assignment` + (notes ? ` (${notes})` : ''), time: 'Just now', type: 'status' })
+    log({ id: Date.now(), orderId, actor: userName, action: `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId} → returned to Admin for assignment` + (notes ? ` (${notes})` : ''), time: 'Just now', type: 'status', audience: 'staff' })
   }
 
   const updateOrder = (updated) => {
@@ -172,7 +173,7 @@ export function OrderProvider({ children }) {
       persist(next)
       return next
     }))
-    log({ id: Date.now(), orderId, actor, action: `${actor} ${approve ? 'approved' : 'declined'} cancellation of ${orderId}`, time: 'Just now', type: 'status' })
+    log({ id: Date.now(), orderId, actor, action: `${actor} ${approve ? 'approved' : 'declined'} cancellation of ${orderId}`, time: 'Just now', type: 'status', audience: 'all' })
   }
 
   // Create a new order (client "Place an Order"). It parks with Admin for
@@ -208,7 +209,7 @@ export function OrderProvider({ children }) {
     // attachments — the documents storage policy authorizes a client upload by
     // checking that the order (path orders/<id>/…) belongs to them.
     if (isSupabaseConfigured) await insertOrder(order)
-    log({ id: Date.now(), orderId: order.id, action: `New order ${order.id} placed (${order.type})`, time: 'Just now', type: 'new' })
+    log({ id: Date.now(), orderId: order.id, action: `New order ${order.id} placed (${order.type})`, time: 'Just now', type: 'new', audience: 'all' })
     return order
   }
 
