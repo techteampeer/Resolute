@@ -48,7 +48,12 @@ function ExaminerOrderPage() {
   const ready = doc && doc.status === 'done'
   const submit = () => {
     if (!ready) return
-    returnToAdmin(order.id, 'examiner', user?.name, findings, { examinerDoc: doc })
+    returnToAdmin(order.id, 'examiner', user?.name, findings, {
+      examinerDoc: doc,
+      examChecklist: checks,
+      examIssues: { liens, encumbrances },
+      examNotes: findings,
+    })
     navigate('/examiner/examine')
   }
   const msgCount = getOrderThread(order.id).length + getOrderNotes(order.id).length

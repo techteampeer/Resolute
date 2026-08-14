@@ -19,8 +19,8 @@ import { orderSubtitle } from '../../components/OrderDetailLayout'
 import OrderThread from '../../components/OrderThread'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS,
-  STAGE_KEYS, STAGE_LABELS, displayClient, clientByName,
-  REGIONS, regionOf, nextRoleFor,
+  CLIENTS, STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode,
+  REGIONS, regionOf, nextRoleFor, statusForRole,
 } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
@@ -39,8 +39,8 @@ const ROLE_HOVER  = '#4d8c2a'
 
 const NAV = [
   { path: '/admin',          label: 'Dashboard',    icon: LayoutDashboard },
-  { path: '/admin/orders',   label: 'Orders',       icon: ClipboardList, badge: 8 },
-  { path: '/admin/users',    label: 'Users',        icon: Users,         badge: 9 },
+  { path: '/admin/orders',   label: 'Orders',       icon: ClipboardList },
+  { path: '/admin/users',    label: 'Users',        icon: Users },
   { path: '/admin/billing',  label: 'Billing',      icon: DollarSign },
   { path: '/admin/support',  label: 'Support',      icon: MessageSquare },
   { path: '/admin/map',      label: 'Coverage Map', icon: MapPin },
@@ -271,7 +271,15 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
     delivery: order.delivery, payment: order.payment, status: order.status,
     assignedTo: order.assignedTo || '',
   })
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  // Status is derived from the owning role; changing the owner therefore moves
+  // the status with it, so the two can't silently drift. Status stays editable
+  // afterwards for a deliberate correction.
+  const STAGES = ['screener', 'examiner', 'typer', 'delivery']
+  const set = (k, v) => setForm(f => {
+    if (k !== 'assignedTo') return { ...f, [k]: v }
+    const derived = statusForRole(STAGES.includes(v) ? v : nextRoleFor(order))
+    return { ...f, assignedTo: v, status: v ? derived : f.status }
+  })
   const save = () => {
     const completed = form.status === 'delivered'
       ? (order.completed || order.eta)
@@ -649,9 +657,107 @@ const cap = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s
 //   ready       – between stages, waiting for admin to route the next role
 const routingState = (o) => {
   if (o.status === 'delivered') return { kind: 'delivered' }
+  // Parked with Admin: waiting on a routing decision, not being worked.
+  if (o.assignedTo === 'admin') {
+    const anyDone = Object.values(o.completedDates || {}).some(Boolean)
+    return { kind: anyDone ? 'ready' : 'new', next: nextRoleFor(o) }
+  }
   if (o.assignedTo)             return { kind: 'inprogress', role: o.assignedTo, person: o[o.assignedTo] }
   const anyDone = Object.values(o.completedDates || {}).some(Boolean)
   return { kind: anyDone ? 'ready' : 'new', next: nextRoleFor(o) }
+}
+
+// What the STATUS column shows. Status is derived from the owning role, but an
+// order parked with Admin would otherwise display the next stage ('Examining')
+// while nobody is examining it — so say what is actually true.
+const awaitingApproval = (o) =>
+  o.assignedTo === 'admin' && o.status !== 'delivered' && o.status !== 'cancelled'
+
+// Admin-side intake. Orders placed here land in Admin's own queue
+// (createOrder parks with assignedTo 'admin'), exactly like a client-placed
+// order, so the approval path is identical.
+function NewOrderModal({ onClose }) {
+  const { createOrder } = useOrders()
+  const [f, setF] = useState({ client: '', state: '', county: '', type: 'Full Search', priority: 'normal', eta: '' })
+  const [busy, setBusy] = useState(false)
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }))
+  const ready = f.client && f.state && f.county
+  const submit = async () => {
+    if (!ready || busy) return
+    setBusy(true)
+    try {
+      await createOrder({
+        client: f.client, clientCode: clientCode(f.client) || null,
+        state: f.state.toUpperCase(), county: f.county, type: f.type,
+        priority: f.priority, eta: f.eta || '',
+        intake: { source: 'admin', propertyAddress: '', orderType: f.type },
+      })
+      onClose()
+    } finally { setBusy(false) }
+  }
+  const field = { width:'100%', padding:'8px 11px', borderRadius:8, border:`1px solid ${Q.border}`,
+    background:Q.card, color:Q.text, fontSize:13, outline:'none' }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background:'rgba(15,23,42,0.45)' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background:Q.card, borderRadius:12, width:'100%', maxWidth:460, padding:'20px 22px' }}>
+        <div style={{ fontSize:17, fontWeight:700, color:Q.text, marginBottom:4 }}>New Order</div>
+        <div style={{ fontSize:12.5, color:Q.muted, marginBottom:16 }}>
+          Placed on behalf of a client. It parks in your queue for routing.
+        </div>
+        <div style={{ display:'grid', gap:10 }}>
+          <div>
+            <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>CLIENT</div>
+            <select value={f.client} onChange={e => set('client', e.target.value)} style={field}>
+              <option value="">Select a client…</option>
+              {CLIENTS.map(c => <option key={c.code} value={c.name}>{c.code} · {c.name}</option>)}
+            </select>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <div>
+              <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>STATE</div>
+              <input value={f.state} onChange={e => set('state', e.target.value)} placeholder="FL" maxLength={2} style={field} />
+            </div>
+            <div>
+              <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>COUNTY</div>
+              <input value={f.county} onChange={e => set('county', e.target.value)} placeholder="Miami-Dade" style={field} />
+            </div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <div>
+              <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>SEARCH TYPE</div>
+              <select value={f.type} onChange={e => set('type', e.target.value)} style={field}>
+                {['Full Search','Current Owner','Two-Owner','Lien Search','Tax Certificate','HOA Estoppel']
+                  .map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>PRIORITY</div>
+              <select value={f.priority} onChange={e => set('priority', e.target.value)} style={field}>
+                <option value="normal">Normal</option><option value="rush">Rush</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>ETA <span style={{ fontWeight:400 }}>(optional)</span></div>
+            <input type="date" value={f.eta} onChange={e => set('eta', e.target.value)} style={field} />
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:8, marginTop:18 }}>
+          <button onClick={submit} disabled={!ready || busy}
+            style={{ flex:1, padding:'9px 14px', borderRadius:8, border:'none', fontSize:13, fontWeight:600,
+              background: ready && !busy ? ROLE_COLOR : Q.border, color: ready && !busy ? '#fff' : Q.faint,
+              cursor: ready && !busy ? 'pointer' : 'not-allowed' }}>
+            {busy ? 'Creating…' : 'Create Order'}
+          </button>
+          <button onClick={onClose}
+            style={{ padding:'9px 16px', borderRadius:8, border:`1px solid ${Q.border}`, background:Q.bg,
+              color:Q.muted, fontSize:13, fontWeight:600, cursor:'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function OrdersPipeline({ pageSize = 6, scrollable = false }) {
@@ -661,6 +767,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const [assigning, setAssigning] = useState(null)  // focused assign modal
   const [search, setSearch]     = useState('')
   const [activeTab, setActiveTab] = useState('all')   // lifecycle tab
+  const [newOrder, setNewOrder]   = useState(false)
   const [showMap, setShowMap]   = useState(false)
   const [region, setRegion]     = useState('all')
   const [stateF, setStateF]     = useState('all')
@@ -685,15 +792,14 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const lifecycleOf = (o) => {
     if (o.status === 'cancelled') return 'cancelled'
     if (o.status === 'delivered') return 'complete'
-    if (o.assignedTo)             return 'open'
-    const anyDone = Object.values(o.completedDates || {}).some(Boolean)
-    return anyDone ? 'submitted' : 'pending'
+    // Parked with Admin (between stages, or never routed) — Admin's own queue.
+    if (o.assignedTo === 'admin' || o.assignedTo == null) return 'awaiting'
+    return 'open'
   }
   const tabs = [
     { key: 'all',       label: 'All' },
-    { key: 'pending',   label: 'Pending' },
-    { key: 'open',      label: 'Open' },
-    { key: 'submitted', label: 'Submitted' },
+    { key: 'awaiting',  label: 'Awaiting Approval' },
+    { key: 'open',      label: 'In Progress' },
     { key: 'complete',  label: 'Complete' },
     { key: 'cancelled', label: 'Cancelled' },
   ].map(t => ({ ...t, count: t.key === 'all' ? orders.length : orders.filter(o => lifecycleOf(o) === t.key).length }))
@@ -741,6 +847,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   return (
     <div className="space-y-4">
       {assigning && <AssignModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
+      {newOrder && <NewOrderModal onClose={() => setNewOrder(false)} />}
       {/* Toolbar — row 1: search · date range · new order */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative" style={{ flex:'1 1 260px', minWidth: 240 }}>
@@ -763,7 +870,8 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
             {DATE_RANGES.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
           </select>
         </div>
-        <button style={{ ...ctlBtn, background:ROLE_COLOR, border:'none', color:'#fff' }}
+        <button onClick={() => setNewOrder(true)}
+          style={{ ...ctlBtn, background:ROLE_COLOR, border:'none', color:'#fff' }}
           onMouseOver={e => e.currentTarget.style.background = ROLE_HOVER}
           onMouseOut={e => e.currentTarget.style.background = ROLE_COLOR}>
           <Plus style={{ width:15, height:15 }} /> New Order
@@ -852,7 +960,9 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
           </thead>
           <tbody>
             {paged.map((o, i) => {
-              const s = STATUS_MAP[o.status] || STATUS_MAP.received
+              const s = awaitingApproval(o)
+                ? { label: 'Awaiting Approval', bg: '#fffbeb', color: '#b45309' }
+                : (STATUS_MAP[o.status] || STATUS_MAP.received)
               const r = routingState(o)
               return (
                 <motion.tr key={o.id}
@@ -932,7 +1042,9 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                           onMouseOver={e => e.currentTarget.style.background = `${ROLE_COLOR}22`}
                           onMouseOut={e => e.currentTarget.style.background = `${ROLE_COLOR}12`}>
                           <UserPlus style={{ width:13, height:13 }} />
-                          {r.kind === 'inprogress' ? 'Reassign' : `Assign ${cap(r.next)}`}
+                          {r.kind === 'inprogress' ? 'Reassign'
+                            : r.kind === 'ready' ? `Approve & Assign ${cap(r.next)}`
+                            : `Assign ${cap(r.next)}`}
                         </button>
                       )}
                       <button title="View details" onClick={e => { e.stopPropagation(); navigate(`/admin/orders/${o.id}`) }}
@@ -1015,7 +1127,12 @@ function AdminHome() {
   const activeCount    = orders.filter(o => !isClosed(o)).length
   const deliveredCount = orders.filter(o => o.status === 'delivered').length
   const rushCount      = orders.filter(o => o.priority === 'rush' && !isClosed(o)).length
-  const toAssignCount  = orders.filter(o => o.assignedTo == null && o.status !== 'delivered').length
+  // Orders sitting with Admin: parked for approval between stages, or never
+  // routed at all. Previously this tested `assignedTo == null`, which parked
+  // orders never satisfy (they carry assignedTo 'admin'), so it always read 0.
+  const toAssignCount  = orders.filter(o => !isClosed(o) && (o.assignedTo === 'admin' || o.assignedTo == null)).length
+  // A client counts as active while it has at least one order in flight.
+  const activeClients  = new Set(orders.filter(o => !isClosed(o)).map(o => o.clientCode || clientCode(o.client)).filter(Boolean)).size
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -1039,8 +1156,8 @@ function AdminHome() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={Package}     label="Active Orders"     value={activeCount}    sub={`${rushCount} rush priority`}      color={ROLE_COLOR} delay={0}    />
         <StatCard icon={CheckCircle} label="Delivered"         value={deliveredCount} sub="completed orders"                 color="#16a34a"    delay={0.05} />
-        <StatCard icon={Clock}       label="Awaiting Assignment" value={toAssignCount} sub="need routing"                    color="#d97706"    delay={0.10} />
-        <StatCard icon={Users}       label="Active Clients"    value="24"             sub="6 new this month"                 color="#7c3aed"    trend="+8%" delay={0.15} />
+        <StatCard icon={Clock}       label="Awaiting Approval" value={toAssignCount}  sub="parked with Admin"                color="#d97706"    delay={0.10} />
+        <StatCard icon={Users}       label="Active Clients"    value={activeClients}  sub="with orders in flight"            color="#7c3aed"    delay={0.15} />
       </div>
 
       {/* Chart + Activity */}
@@ -1304,6 +1421,10 @@ function AdminUsers() {
 }
 
 function AdminMap() {
+  const { orders } = useOrders()
+  // Top five states by live order volume; no fabricated totals.
+  const byState = orders.reduce((m, o) => (o.state ? { ...m, [o.state]: (m[o.state] || 0) + 1 } : m), {})
+  const top = Object.entries(byState).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([s, c]) => ({ s, c }))
   return (
     <div className="space-y-5">
       <div>
@@ -1312,7 +1433,7 @@ function AdminMap() {
       </div>
       <QCard className="p-6"><USAMap /></QCard>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        {[{s:'FL',c:31},{s:'TX',c:35},{s:'CA',c:28},{s:'NY',c:24},{s:'OH',c:19}].map(({s,c}) => (
+        {top.map(({s,c}) => (
           <div key={s}
             style={{ background:Q.card, border:`1px solid ${Q.border}`, borderRadius:10,
               boxShadow:Q.shadow, padding:'16px', textAlign:'center' }}>
@@ -1579,9 +1700,13 @@ function AdminSupport() {
 
 export default function AdminDashboard() {
   const { pendingCount } = useSupport()
+  const { orders } = useOrders()
   const pending = pendingCount ? pendingCount() : 0
-  // Inject a live "awaiting reply" badge on the Support nav item.
-  const navItems = NAV.map(n => n.path === '/admin/support' && pending ? { ...n, badge: pending } : n)
+  // Every nav badge is live. Orders counts what still needs work (closed orders
+  // aren't actionable), Users the real roster, Support the awaiting replies.
+  const openOrders = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').length
+  const badges = { '/admin/orders': openOrders, '/admin/users': USERS.length, '/admin/support': pending }
+  const navItems = NAV.map(n => (badges[n.path] ? { ...n, badge: badges[n.path] } : n))
   return (
     <Layout navItems={navItems} role="admin" roleColor={ROLE_COLOR} lightTheme>
       <Routes>
