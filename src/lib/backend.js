@@ -240,7 +240,8 @@ export async function fetchActivity(limit = 50) {
 
 // `audience` decides who the event is for: 'staff' (internal routing),
 // 'client' (client-facing), or 'all'. It gates client visibility in RLS
-// (order_events_client_read) and picks the email recipients in api/notify.js.
+// (order_events_client_read) — without it a client sees none of their own
+// order history — so it outlived the email system it was first added for.
 export async function logEvent({ orderId = null, action, type = 'status', actor = null, audience = 'staff' }) {
   const { error } = await supabase.from('order_events').insert({ order_id: orderId, action, type, actor, audience })
   if (error) console.error('[logEvent]', error.message)

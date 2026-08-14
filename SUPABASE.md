@@ -24,7 +24,7 @@ env vars are absent, so nothing breaks while you set this up.
    | `20260601000000_init.sql` | tables, enums, RLS, storage bucket, profile trigger |
    | `20260615000000_operator_portal.sql` | operator role + workflow column |
    | `20260620000000_payment_system.sql` | client payment terms |
-   | `20260625000000_email_ingest.sql` | inbound-email draft orders support |
+   | `20260625000000_email_ingest.sql` | *(historical — its tables are dropped by the teardown migration below)* |
    | `20260713000000_vendor_payouts_billing.sql` | vendors, payout ledger, subscriptions, audit trail, order-ID sequence |
 
    **Migrations are schema only**, so `db push` produces a clean, empty
@@ -92,7 +92,7 @@ supabase db reset   # (re)applies every migration + seeds — full Resolute sche
   timestamped file under `supabase/migrations/`
   (`supabase migration new <name>` generates one) and `supabase db push`.
 - **Service-role key**: only the **anon** key goes in the browser (`VITE_*`).
-  The service-role key is used solely by `api/webhooks/inbound-email.js`
+  The service-role key is used solely by `api/admin/users.js`
   (set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` as Vercel server env vars,
   never `VITE_`-prefixed).
 

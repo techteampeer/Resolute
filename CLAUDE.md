@@ -14,12 +14,12 @@ Verify every new feature against these constraints before implementing.
 
 - Do NOT add or extend AI/LLM logic that runs on Vercel. No new AI libraries in
   `package.json` for the Vercel deployment.
-- Existing state (allowed to remain, dormant): `api/webhooks/inbound-email.js`
-  falls back to regex heuristics when `ANTHROPIC_API_KEY` is unset — do not set
-  that key on Vercel. `services/email_ingest/` is a local/offline service.
-- Post-migration goal: email stream → parse attachments (invoices / search
-  packages) with AWS-native AI (Textract / Comprehend / Bedrock) → auto-draft
-  order in the portal. Keep `extractOrderFields()` as the provider-agnostic seam.
+- The email→order ingest that carried the old extraction seam has been removed
+  (see "Email" below), so there is no dormant AI path left in the app.
+- Post-migration goal (unchanged): email stream → parse attachments (invoices /
+  search packages) with AWS-native AI (Textract / Comprehend / Bedrock) →
+  auto-draft order in the portal. Rebuild the extraction behind one
+  provider-agnostic seam so the provider stays swappable.
 
 ## Billing & payment logic
 
@@ -55,14 +55,24 @@ Verify every new feature against these constraints before implementing.
 - Client identities: non-super-admins see client codes, not names
   (`displayClient`).
 
+## Email — REMOVED, to be rebuilt from scratch
+
+- Both halves are gone: outbound notifications (`api/notify.js`,
+  `api/_lib/mailer.js`) and the inbound email→order ingest
+  (`api/webhooks/inbound-email.js`, `services/email_ingest/`). No mail
+  dependencies remain in `package.json`, and no `SMTP_*` / `IMAP_*` /
+  `MAIL_*` / `NOTIFY_*` / `PORTAL_URL` var is read by the app.
+- Do NOT reintroduce email piecemeal. When it is rebuilt, design the whole
+  cycle first. The previous implementation is in git history if any of it is
+  worth reusing.
+- Supabase Database Webhooks must not point at this app — there is no endpoint
+  to receive them.
+
 ## Client communication policy
 
 - **Portal-only.** Every client reply happens in the portal
-  (`support_messages`). Email is NOTIFICATION ONLY: `api/notify.js` sends on
-  insert, `api/_lib/mailer.js` stamps `Reply-To: no-reply@…`, an
-  "unmonitored mailbox" footer, and a deep link back to the thread.
-  `api/webhooks/inbound-email.js` drops replies to our own notifications
-  (`isReplyToNotification`) so correspondence never becomes a draft order.
+  (`support_messages`). There is no email channel at all right now, so the
+  portal is the only way a client hears from us or reaches us.
 - **Only ADMINS reply to clients.** Screener / examiner / typer / delivery /
   Single Seating see every thread read-only and may write `visibility:
   'internal'` notes, which RLS hides from clients entirely.

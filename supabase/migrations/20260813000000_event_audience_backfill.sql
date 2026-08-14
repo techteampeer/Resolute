@@ -1,6 +1,6 @@
 -- Order events carry an `audience` ('staff' | 'client' | 'all') that decides
 -- both client visibility (order_events_client_read) and who gets the email in
--- api/notify.js. Until now nothing ever set it, so every row defaulted to
+-- notifications. Until now nothing ever set it, so every row defaulted to
 -- 'staff' and clients could see none of their own order history.
 --
 -- Backfill the existing rows from their action text. Idempotent: it only
