@@ -8,47 +8,32 @@ export default {
         display: ['DM Sans', 'Inter', 'sans-serif'],
       },
       colors: {
-        /* Primary brand = olive green */
+        /* ── Finalised brand palette ──
+           navy   #12284C  headers, sidebars, primary text
+           indigo #2441E5  the single accent: buttons, links, active state
+           cyan   #00B8D9  highlights, bars, fills — DECORATIVE ONLY
+                           (2.3:1 on white, never use for text or thin icons)
+           grey   #F3F5F8  page background                                   */
+        navy: {
+          50:  '#EAEEF5', 100: '#CCD5E4', 200: '#9FAECA', 300: '#6E82A8',
+          400: '#455F8B', 500: '#1E3A67', 600: '#12284C', 700: '#0E203D',
+          800: '#0A182E', 900: '#071120', 950: '#040A14',
+        },
+        indigo: {
+          50:  '#EEF1FE', 100: '#D9DFFC', 200: '#B3BEF9', 300: '#8496F3',
+          400: '#4A63EA', 500: '#2441E5', 600: '#1B34C4', 700: '#152AA3',
+          800: '#101F7C', 900: '#0B1656', 950: '#060B2E',
+        },
+        cyan: {
+          50:  '#E4F7FB', 100: '#BDEDF6', 200: '#7FDCEC', 300: '#3ECBE1',
+          400: '#00B8D9', 500: '#00A0BD', 600: '#0E7C90', 700: '#0C6274',
+          800: '#094957', 900: '#06333D', 950: '#031A20',
+        },
+        /* Legacy alias so any stale `brand-*` class still resolves to indigo */
         brand: {
-          50:  '#f0f8ec',
-          100: '#d8edcc',
-          200: '#b4d999',
-          300: '#8fc268',
-          400: '#6aab42',
-          500: '#4d8c2a',
-          600: '#3d7020',
-          700: '#2f5619',
-          800: '#243d14',
-          900: '#1a2c10',
-          950: '#0e1809',
-        },
-        /* Warm cream accents */
-        cream: {
-          50:  '#fdfaf5',
-          100: '#f8f1e4',
-          200: '#f0e3c8',
-          300: '#e4cda0',
-          400: '#d4b070',
-          500: '#c49248',
-          600: '#a87630',
-          700: '#8a5e22',
-          800: '#6e4818',
-          900: '#523610',
-          950: '#301e06',
-        },
-        /* Dark olive backgrounds */
-        olive: {
-          50:  '#f2f7ed',
-          100: '#ddebd3',
-          200: '#bdd9ab',
-          300: '#96c079',
-          400: '#72a650',
-          500: '#548c34',
-          600: '#416e26',
-          700: '#335620',
-          800: '#2a4419',
-          900: '#233914',
-          950: '#111d09',
+          50:  '#EEF1FE', 100: '#D9DFFC', 200: '#B3BEF9', 300: '#8496F3',
+          400: '#4A63EA', 500: '#2441E5', 600: '#1B34C4', 700: '#152AA3',
+          800: '#101F7C', 900: '#0B1656', 950: '#060B2E',
         },
       },
       animation: {

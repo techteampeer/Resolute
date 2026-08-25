@@ -4,10 +4,10 @@ import { X, UserCheck } from 'lucide-react'
 import { USERS, displayClient, nextRoleFor } from '../data/mockData'
 import { useOrders } from '../context/OrderContext'
 
-const ROLE_COLOR = '#3d7020'
+const ROLE_COLOR = '#2441E5'
 const Q = {
-  card:'#ffffff', border:'#e2e8f0', text:'#1e293b',
-  muted:'#64748b', faint:'#94a3b8', bg:'#f0f2f4',
+  card:'#ffffff', border:'#DDE3EC', text:'#12284C',
+  muted:'#5C6E8C', faint:'#9AA8BF', bg:'#F3F5F8',
 }
 
 // Role queues in pipeline order. Each key doubles as the order's person field.
@@ -67,7 +67,7 @@ export default function AssignModal({ order, user, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background:'rgba(15,23,42,0.45)' }} onClick={onClose}>
+      style={{ background:'rgba(12,29,56,0.45)' }} onClick={onClose}>
       <motion.div initial={{ scale:0.96, opacity:0 }} animate={{ scale:1, opacity:1 }}
         onClick={e => e.stopPropagation()}
         style={{ background:Q.card, borderRadius:12, width:'100%', maxWidth:480,

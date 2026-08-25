@@ -13,7 +13,7 @@ import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
 
-const ROLE_COLOR = '#a16207'
+const ROLE_COLOR = '#2441E5'
 const NAV = [
   { path: '/examiner',           label: 'Dashboard',  icon: LayoutDashboard },
   { path: '/examiner/examine',   label: 'To Examine', icon: FileSearch, badge: 2 },
@@ -40,7 +40,7 @@ function ExaminerOrderPage() {
 
   if (!order) return (
     <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
-      <div className="text-sm" style={{ color:'#64748b' }}>Order not found, or it isn’t in your queue.</div>
+      <div className="text-sm" style={{ color:'#5C6E8C' }}>Order not found, or it isn’t in your queue.</div>
       <button onClick={() => navigate('/examiner/examine')} className="btn-primary text-sm px-5 py-2.5">Back to To Examine</button>
     </div>
   )
@@ -65,11 +65,11 @@ function ExaminerOrderPage() {
           <div className="space-y-1">
             {CHECKLIST.map(item => (
               <label key={item} className="flex items-center gap-3 cursor-pointer p-2.5 rounded-lg transition-colors"
-                onMouseOver={e=>e.currentTarget.style.background='rgba(30,41,59,0.05)'}
+                onMouseOver={e=>e.currentTarget.style.background='rgba(18,40,76,0.05)'}
                 onMouseOut={e=>e.currentTarget.style.background='transparent'}>
                 <input type="checkbox" className="w-4 h-4 rounded" style={{ accentColor: ROLE_COLOR }}
                   checked={!!checks[item]} onChange={e => setChecks(c => ({ ...c, [item]: e.target.checked }))} />
-                <span className="text-sm" style={{ color:'#334155' }}>{item}</span>
+                <span className="text-sm" style={{ color:'#2A3E5F' }}>{item}</span>
               </label>
             ))}
           </div>
@@ -81,7 +81,7 @@ function ExaminerOrderPage() {
                 className="p-3 rounded-xl text-sm font-medium transition-all border"
                 style={v
                   ? { border:'1px solid rgba(220,80,60,0.40)', background:'rgba(220,80,60,0.14)', color:'#dc2626' }
-                  : { border:'1px solid rgba(30,41,59,0.08)', color:'#64748b' }}>
+                  : { border:'1px solid rgba(18,40,76,0.08)', color:'#5C6E8C' }}>
                 {l}: {v ? 'YES' : 'NO'}
               </button>
             ))}
@@ -103,7 +103,7 @@ function ExaminerOrderPage() {
           </button>
           <button className="btn-secondary text-sm py-2.5 px-4" onClick={() => navigate('/examiner/examine')}>Save Draft</button>
         </div>
-        {!ready && <p className="text-[11px]" style={{ color:'#64748b' }}>Upload the researched document to continue.</p>}
+        {!ready && <p className="text-[11px]" style={{ color:'#5C6E8C' }}>Upload the researched document to continue.</p>}
       </div>
     )},
     { key:'overview', label:'Overview', icon:FileText, render: () => (
@@ -138,12 +138,12 @@ function ExaminerHome() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold" style={{ color:'#1e293b' }}>Examiner Dashboard</h1>
-        <p className="text-sm" style={{ color:'#475569' }}>Examine title documents and verify chain of title</p>
+        <h1 className="text-2xl font-bold" style={{ color:'#12284C' }}>Examiner Dashboard</h1>
+        <p className="text-sm" style={{ color:'#3D5171' }}>Examine title documents and verify chain of title</p>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon:FileSearch,  label:'Awaiting Exam',   value:'2',  color:'#2563eb' },
+          { icon:FileSearch,  label:'Awaiting Exam',   value:'2',  color:'#2441E5' },
           { icon:Clock,       label:'In Progress',     value:'1',  color:ROLE_COLOR },
           { icon:CheckCircle, label:'Completed Today', value:'4',  color:'#15803d' },
           { icon:AlertCircle, label:'Issues Found',    value:'1',  color:'#dc2626' },
@@ -152,21 +152,21 @@ function ExaminerHome() {
             <div className="w-9 h-9 rounded-xl mb-3 flex items-center justify-center" style={{ background:`${s.color}22` }}>
               <s.icon className="w-4 h-4" style={{ color:s.color }} />
             </div>
-            <div className="text-2xl font-bold" style={{ color:'#1e293b' }}>{s.value}</div>
-            <div className="text-sm" style={{ color:'#475569' }}>{s.label}</div>
+            <div className="text-2xl font-bold" style={{ color:'#12284C' }}>{s.value}</div>
+            <div className="text-sm" style={{ color:'#3D5171' }}>{s.label}</div>
           </motion.div>
         ))}
       </div>
       <div className="glass-card p-5">
-        <h2 className="font-semibold mb-4" style={{ color:'#1e293b' }}>Examination Queue</h2>
+        <h2 className="font-semibold mb-4" style={{ color:'#12284C' }}>Examination Queue</h2>
         <div className="space-y-3">
           {myOrders.map((o,i) => (
             <motion.div key={o.id} initial={{ opacity:0, x:-8 }} animate={{ opacity:1, x:0 }}
               transition={{ delay:i*0.07 }}
               className="flex items-center gap-4 p-4 rounded-xl cursor-pointer transition-all"
-              style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(138,194,104,0.08)' }}
+              style={{ background:'rgba(18,40,76,0.03)', border:'1px solid rgba(36,65,229,0.08)' }}
               onMouseOver={e=>e.currentTarget.style.borderColor='rgba(196,164,78,0.30)'}
-              onMouseOut={e=>e.currentTarget.style.borderColor='rgba(138,194,104,0.08)'}
+              onMouseOut={e=>e.currentTarget.style.borderColor='rgba(36,65,229,0.08)'}
               onClick={() => openOrder(o)}>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
@@ -176,19 +176,19 @@ function ExaminerHome() {
                       style={{ background:'rgba(220,80,60,0.18)', color:'#dc2626' }}>RUSH</span>
                   )}
                 </div>
-                <div className="font-medium text-sm truncate" style={{ color:'#1e293b' }}>{displayClient(o.client, user)}</div>
-                <div className="text-xs" style={{ color:'#64748b' }}>{o.type} · {o.state}, {o.county}</div>
-                <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background:'rgba(30,41,59,0.10)' }}>
+                <div className="font-medium text-sm truncate" style={{ color:'#12284C' }}>{displayClient(o.client, user)}</div>
+                <div className="text-xs" style={{ color:'#5C6E8C' }}>{o.type} · {o.state}, {o.county}</div>
+                <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background:'rgba(18,40,76,0.10)' }}>
                   <div className="h-full rounded-full transition-all"
-                    style={{ width:`${o.progress}%`, background:'linear-gradient(90deg,#4d8c2a,#c4a44e)' }} />
+                    style={{ width:`${o.progress}%`, background:'linear-gradient(90deg,#1B34C4,#c4a44e)' }} />
                 </div>
               </div>
               <div className="text-right flex-shrink-0">
                 <span className="text-xs font-semibold px-2.5 py-1 rounded-full capitalize"
                   style={{ background:`${ROLE_COLOR}22`, color:ROLE_COLOR }}>{o.status}</span>
-                <div className="text-xs mt-1" style={{ color:'#64748b' }}>{o.progress}%</div>
+                <div className="text-xs mt-1" style={{ color:'#5C6E8C' }}>{o.progress}%</div>
               </div>
-              <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color:'rgba(30,41,59,0.18)' }} />
+              <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color:'rgba(18,40,76,0.18)' }} />
             </motion.div>
           ))}
         </div>
@@ -201,7 +201,7 @@ function ExaminerQueue({ orders, title }) {
   const navigate = useNavigate()
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>{title}</h1>
+      <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>{title}</h1>
       <div className="glass-card p-5">
         <OrdersTable orders={orders} onOrderClick={o => navigate(`/examiner/order/${o.id}`)} />
       </div>

@@ -10,7 +10,7 @@ import {
   PAY_STATUS, isBillable, dueDate, isOverdue, openStatement, buildPayment,
 } from '../../lib/billing'
 
-const ROLE_COLOR = '#4d7c2f'
+const ROLE_COLOR = '#2441E5'
 
 const Chip = ({ status }) => {
   const s = PAY_STATUS[status] || PAY_STATUS.unpaid
@@ -26,39 +26,39 @@ const OverdueBadge = () => (
 
 // Remittance instructions — placeholders until real details are configured.
 function Remittance({ method }) {
-  const box = { background: 'rgba(30,41,59,0.04)', border: '1px solid rgba(30,41,59,0.08)' }
+  const box = { background: 'rgba(18,40,76,0.04)', border: '1px solid rgba(18,40,76,0.08)' }
   if (method === 'ACH') {
     return (
       <div className="rounded-xl p-3 text-xs space-y-1" style={box}>
-        <div className="flex items-center gap-1.5 font-semibold" style={{ color: '#1e293b' }}>
+        <div className="flex items-center gap-1.5 font-semibold" style={{ color: '#12284C' }}>
           <Landmark className="w-3.5 h-3.5" style={{ color: ROLE_COLOR }} /> Send ACH to
         </div>
         {hasRemittanceDetails ? (
-          <div style={{ color: '#475569' }}>
+          <div style={{ color: '#3D5171' }}>
             <div>{REMITTANCE.bankName} · Acct name: {REMITTANCE.accountName}</div>
             <div>Routing: {REMITTANCE.routingNumber} · Account: {REMITTANCE.accountNumber}</div>
           </div>
         ) : (
-          <div style={{ color: '#475569' }}>Contact <a href={`mailto:${REMITTANCE.billingEmail}`} className="underline" style={{ color: ROLE_COLOR }}>{REMITTANCE.billingEmail}</a> for ACH remittance details.</div>
+          <div style={{ color: '#3D5171' }}>Contact <a href={`mailto:${REMITTANCE.billingEmail}`} className="underline" style={{ color: ROLE_COLOR }}>{REMITTANCE.billingEmail}</a> for ACH remittance details.</div>
         )}
-        <div style={{ color: '#64748b' }}>Include the invoice / statement number as the transfer reference.</div>
+        <div style={{ color: '#5C6E8C' }}>Include the invoice / statement number as the transfer reference.</div>
       </div>
     )
   }
   return (
     <div className="rounded-xl p-3 text-xs space-y-1" style={box}>
-      <div className="flex items-center gap-1.5 font-semibold" style={{ color: '#1e293b' }}>
+      <div className="flex items-center gap-1.5 font-semibold" style={{ color: '#12284C' }}>
         <Mail className="w-3.5 h-3.5" style={{ color: ROLE_COLOR }} /> Mail check to
       </div>
       {REMITTANCE.payee && REMITTANCE.checkAddress ? (
-        <div style={{ color: '#475569' }}>
+        <div style={{ color: '#3D5171' }}>
           <div>Payable to: {REMITTANCE.payee}</div>
           <div>{REMITTANCE.checkAddress}</div>
         </div>
       ) : (
-        <div style={{ color: '#475569' }}>Contact <a href={`mailto:${REMITTANCE.billingEmail}`} className="underline" style={{ color: ROLE_COLOR }}>{REMITTANCE.billingEmail}</a> for the payee name and mailing address.</div>
+        <div style={{ color: '#3D5171' }}>Contact <a href={`mailto:${REMITTANCE.billingEmail}`} className="underline" style={{ color: ROLE_COLOR }}>{REMITTANCE.billingEmail}</a> for the payee name and mailing address.</div>
       )}
-      <div style={{ color: '#64748b' }}>Write the invoice / statement number in the memo. Credit is applied once the check is received and deposited.</div>
+      <div style={{ color: '#5C6E8C' }}>Write the invoice / statement number in the memo. Credit is applied once the check is received and deposited.</div>
     </div>
   )
 }
@@ -98,15 +98,15 @@ function PayPanel({ payLabel, docKeyId, onPaid }) {
           <button key={m} onClick={() => setMethod(m)}
             className="py-2 rounded-xl text-sm font-medium border transition-all"
             style={method === m
-              ? { background: `${ROLE_COLOR}1e`, border: `1px solid ${ROLE_COLOR}55`, color: '#1e293b' }
-              : { border: '1px solid rgba(30,41,59,0.08)', color: '#475569' }}>
+              ? { background: `${ROLE_COLOR}1e`, border: `1px solid ${ROLE_COLOR}55`, color: '#12284C' }
+              : { border: '1px solid rgba(18,40,76,0.08)', color: '#3D5171' }}>
             {m}
           </button>
         ))}
       </div>
       <Remittance method={method} />
       <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: '#64748b' }}>
+        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: '#5C6E8C' }}>
           {method === 'ACH' ? 'ACH trace / confirmation #' : 'Check #'} *
         </label>
         <input value={reference} onChange={e => setReference(e.target.value)}
@@ -115,11 +115,11 @@ function PayPanel({ payLabel, docKeyId, onPaid }) {
       </div>
       {method === 'Check' && (
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: '#64748b' }}>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: '#5C6E8C' }}>
             Check image / PDF <span style={{ textTransform: 'none', opacity: .6 }}>(for reference)</span>
           </label>
           <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl border cursor-pointer text-sm"
-            style={{ border: '1px dashed rgba(30,41,59,0.2)', color: checkDoc ? '#15803d' : '#64748b' }}>
+            style={{ border: '1px dashed rgba(18,40,76,0.2)', color: checkDoc ? '#15803d' : '#5C6E8C' }}>
             <Upload className="w-4 h-4" />
             {checkDoc ? checkDoc.name : 'Upload a photo or PDF of the check'}
             <input type="file" accept="image/*,.pdf" className="hidden" onChange={onFile} />
@@ -130,7 +130,7 @@ function PayPanel({ payLabel, docKeyId, onPaid }) {
         className="btn-primary w-full text-sm py-2.5" style={{ opacity: (!reference.trim() || busy) ? 0.5 : 1 }}>
         {busy ? 'Uploading…' : `Mark ${payLabel} as Paid via ${method}`}
       </button>
-      <p className="text-[11px]" style={{ color: '#64748b' }}>
+      <p className="text-[11px]" style={{ color: '#5C6E8C' }}>
         This records your payment for reconciliation — funds move via your bank{method === 'Check' ? ' / the mailed check' : ''}.
         The invoice shows as Paid once Resolute confirms the deposit.
       </p>
@@ -149,15 +149,15 @@ function InvoiceRow({ order, termKey, onPaid, demo }) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <FileText className="w-4 h-4 flex-shrink-0" style={{ color: ROLE_COLOR }} />
-            <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{invoiceNumber(order)}</span>
+            <span className="font-semibold text-sm" style={{ color: '#12284C' }}>{invoiceNumber(order)}</span>
             <Chip status={status} />
             {overdue && <OverdueBadge />}
           </div>
-          <div className="text-xs mt-1" style={{ color: '#64748b' }}>
+          <div className="text-xs mt-1" style={{ color: '#5C6E8C' }}>
             {order.type} · {order.id} · delivered {order.completed || '—'} · due {dueDate(order, termKey) || '—'}
           </div>
           {p && status !== 'unpaid' && (
-            <div className="text-xs mt-1" style={{ color: '#64748b' }}>
+            <div className="text-xs mt-1" style={{ color: '#5C6E8C' }}>
               {p.method} ref <span className="font-mono">{p.reference}</span>
               {(p.checkDoc?.url || p.checkDoc?.path) && <> · <button onClick={() => openDocument(p.checkDoc)} className="underline" style={{ color: ROLE_COLOR, background:'none', border:'none', padding:0, font:'inherit', cursor:'pointer' }}>check image</button></>}
               {status === 'marked' && ' · awaiting deposit confirmation'}
@@ -166,7 +166,7 @@ function InvoiceRow({ order, termKey, onPaid, demo }) {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-lg font-bold tabular-nums" style={{ color: '#1e293b' }}>{money(invoiceAmount(order))}</span>
+          <span className="text-lg font-bold tabular-nums" style={{ color: '#12284C' }}>{money(invoiceAmount(order))}</span>
           {!demo && (status === 'unpaid' || status === 'bounced') && (
             <button onClick={() => setOpen(!open)} className="btn-secondary text-xs px-3 py-2">{open ? 'Close' : 'Pay'}</button>
           )}
@@ -209,7 +209,7 @@ export default function ClientBilling({ myOrders }) {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>Billing</h1>
+        <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>Billing</h1>
         <span className="text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1.5"
           style={{ background: `${ROLE_COLOR}16`, color: ROLE_COLOR, border: `1px solid ${ROLE_COLOR}2e` }}>
           <Clock className="w-3.5 h-3.5" /> Terms: {term.label}
@@ -217,7 +217,7 @@ export default function ClientBilling({ myOrders }) {
       </div>
 
       {isDemo && (
-        <div className="text-xs px-4 py-2.5 rounded-xl" style={{ background:'rgba(77,124,47,0.08)', border:'1px solid rgba(77,124,47,0.22)', color:'#3d7020' }}>
+        <div className="text-xs px-4 py-2.5 rounded-xl" style={{ background:'rgba(36,65,229,0.08)', border:'1px solid rgba(36,65,229,0.22)', color:'#2441E5' }}>
           Payments are disabled in the demo — the invoices below are sample data.
         </div>
       )}
@@ -229,15 +229,15 @@ export default function ClientBilling({ myOrders }) {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>Statement · {stmt.id}</span>
+                <span className="font-semibold text-sm" style={{ color: '#12284C' }}>Statement · {stmt.id}</span>
                 {stmt.overdue && <OverdueBadge />}
               </div>
-              <div className="text-xs mt-1" style={{ color: '#64748b' }}>
+              <div className="text-xs mt-1" style={{ color: '#5C6E8C' }}>
                 {stmt.items.length} invoice{stmt.items.length > 1 ? 's' : ''} · {term.label} terms · due {stmt.due}
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xl font-bold tabular-nums" style={{ color: '#1e293b' }}>{money(stmt.total)}</span>
+              <span className="text-xl font-bold tabular-nums" style={{ color: '#12284C' }}>{money(stmt.total)}</span>
               {!isDemo && (
                 <button onClick={() => setPayStmt(!payStmt)} className="btn-primary text-xs px-4 py-2">
                   {payStmt ? 'Close' : 'Pay Statement'}
@@ -247,7 +247,7 @@ export default function ClientBilling({ myOrders }) {
           </div>
           <div className="mt-3 space-y-1">
             {stmt.items.map(o => (
-              <div key={o.id} className="flex items-center justify-between text-xs" style={{ color: '#475569' }}>
+              <div key={o.id} className="flex items-center justify-between text-xs" style={{ color: '#3D5171' }}>
                 <span>{invoiceNumber(o)} · {o.type}</span>
                 <span className="flex items-center gap-2"><Chip status={payStatusOf(o)} /><span className="tabular-nums font-medium">{money(invoiceAmount(o))}</span></span>
               </div>
@@ -259,9 +259,9 @@ export default function ClientBilling({ myOrders }) {
 
       {/* Per-order invoices (always listed; pay buttons hidden when a statement covers them) */}
       <div className="space-y-3">
-        <h2 className="font-semibold text-sm" style={{ color: '#1e293b' }}>Open Invoices</h2>
+        <h2 className="font-semibold text-sm" style={{ color: '#12284C' }}>Open Invoices</h2>
         {unconfirmed.length === 0 && (
-          <div className="glass-card p-6 text-center text-sm" style={{ color: '#64748b' }}>
+          <div className="glass-card p-6 text-center text-sm" style={{ color: '#5C6E8C' }}>
             <CheckCircle className="w-6 h-6 mx-auto mb-2" style={{ color: '#15803d' }} />
             No outstanding invoices — you're all settled.
           </div>
@@ -269,10 +269,10 @@ export default function ClientBilling({ myOrders }) {
         {unconfirmed.map(o => stmt
           ? ( // covered by the statement — informational row only
             <div key={o.id} className="glass-card p-4 flex items-center justify-between gap-3 flex-wrap">
-              <div className="text-sm" style={{ color: '#475569' }}>
-                <span className="font-semibold" style={{ color: '#1e293b' }}>{invoiceNumber(o)}</span> · {o.type} · included in {stmt.id}
+              <div className="text-sm" style={{ color: '#3D5171' }}>
+                <span className="font-semibold" style={{ color: '#12284C' }}>{invoiceNumber(o)}</span> · {o.type} · included in {stmt.id}
               </div>
-              <span className="tabular-nums font-bold text-sm" style={{ color: '#1e293b' }}>{money(invoiceAmount(o))}</span>
+              <span className="tabular-nums font-bold text-sm" style={{ color: '#12284C' }}>{money(invoiceAmount(o))}</span>
             </div>
           )
           : <InvoiceRow key={o.id} order={o} termKey={termKey} onPaid={payOne} demo={isDemo} />
@@ -282,19 +282,19 @@ export default function ClientBilling({ myOrders }) {
       {/* Payment history */}
       {paid.length > 0 && (
         <div className="space-y-3">
-          <h2 className="font-semibold text-sm" style={{ color: '#1e293b' }}>Payment History</h2>
+          <h2 className="font-semibold text-sm" style={{ color: '#12284C' }}>Payment History</h2>
           {paid.map(o => {
             const p = paymentOf(o)
             return (
               <div key={o.id} className="glass-card p-4 flex items-center justify-between gap-3 flex-wrap">
-                <div className="text-xs" style={{ color: '#64748b' }}>
-                  <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{invoiceNumber(o)}</span>
+                <div className="text-xs" style={{ color: '#5C6E8C' }}>
+                  <span className="font-semibold text-sm" style={{ color: '#12284C' }}>{invoiceNumber(o)}</span>
                   <span> · {p?.method} ref </span><span className="font-mono">{p?.reference}</span>
                   <span> · confirmed {p?.confirmedAt} by {p?.confirmedBy}</span>
                 </div>
                 <span className="flex items-center gap-2">
                   <Chip status="confirmed" />
-                  <span className="tabular-nums font-bold text-sm" style={{ color: '#1e293b' }}>{money(invoiceAmount(o))}</span>
+                  <span className="tabular-nums font-bold text-sm" style={{ color: '#12284C' }}>{money(invoiceAmount(o))}</span>
                 </span>
               </div>
             )

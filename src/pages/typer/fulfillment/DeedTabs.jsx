@@ -31,7 +31,7 @@ export default function DeedTabs({ deeds, onChange }) {
                 className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-md text-[12px] font-medium transition-colors tabular-nums"
                 style={{
                   color: on ? T.text : T.faint,
-                  background: on ? 'rgba(124,191,78,0.12)' : 'transparent',
+                  background: on ? 'rgba(36,65,229,0.12)' : 'transparent',
                   border: `1px solid ${on ? T.borderStrong : T.border}`,
                 }}>
                 {deedLabel(i)}

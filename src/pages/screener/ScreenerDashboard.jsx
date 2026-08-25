@@ -13,7 +13,7 @@ import OrderMessages from '../../components/OrderMessages'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
 
-const ROLE_COLOR = '#4d7c2f'
+const ROLE_COLOR = '#2441E5'
 const ASSIGN_OPTS = [['in_house', 'In-House'], ['abs', 'ABS (Abstract)'], ['both', 'Both']]
 const NAV = [
   { path: '/screener',           label: 'Dashboard',       icon: LayoutDashboard },
@@ -22,7 +22,7 @@ const NAV = [
 ]
 
 const STATUS_DOT = {
-  received:  '#2563eb', screening: '#b45309', searching: '#4d7c2f',
+  received:  '#2441E5', screening: '#b45309', searching: '#2441E5',
   examining: '#a16207', typing: '#0e7490', delivered: '#15803d',
 }
 
@@ -41,7 +41,7 @@ function ScreenerOrderPage() {
 
   if (!order) return (
     <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
-      <div className="text-sm" style={{ color:'#64748b' }}>Order not found, or it isn’t in your queue.</div>
+      <div className="text-sm" style={{ color:'#5C6E8C' }}>Order not found, or it isn’t in your queue.</div>
       <button onClick={() => navigate('/screener/queue')} className="btn-primary text-sm px-5 py-2.5">Back to Screening Queue</button>
     </div>
   )
@@ -65,7 +65,7 @@ function ScreenerOrderPage() {
                 className="py-2.5 rounded-lg text-xs font-semibold transition-all"
                 style={assignment === k
                   ? { background: `${ROLE_COLOR}28`, color: ROLE_COLOR, border: `1px solid ${ROLE_COLOR}55` }
-                  : { background: 'rgba(30,41,59,0.05)', color: '#64748b', border: '1px solid rgba(30,41,59,0.08)' }}>
+                  : { background: 'rgba(18,40,76,0.05)', color: '#5C6E8C', border: '1px solid rgba(18,40,76,0.08)' }}>
                 {l}
               </button>
             ))}
@@ -86,7 +86,7 @@ function ScreenerOrderPage() {
           </button>
           <button className="btn-secondary text-sm py-2.5 px-4" onClick={() => navigate('/screener/queue')}>Back to Queue</button>
         </div>
-        {!assignment && <p className="text-[11px]" style={{ color:'#64748b' }}>Choose who conducts the search to continue.</p>}
+        {!assignment && <p className="text-[11px]" style={{ color:'#5C6E8C' }}>Choose who conducts the search to continue.</p>}
       </div>
     )},
     { key:'overview', label:'Overview', icon:FileText, render: () => (
@@ -106,8 +106,8 @@ function ScreenerOrderPage() {
                 ['Borrower', intake.borrowerName], ['Buyer', intake.buyer], ['Seller', intake.seller],
                 ['Special instructions', intake.specialInstructions]]
                 .filter(([, v]) => v).map(([k, v]) => (
-                <div key={k}><span style={{ color:'#64748b' }}>{k}: </span>
-                  <span className="font-medium" style={{ color:'#1e293b' }}>{v}</span></div>
+                <div key={k}><span style={{ color:'#5C6E8C' }}>{k}: </span>
+                  <span className="font-medium" style={{ color:'#12284C' }}>{v}</span></div>
               ))}
             </div>
           </Panel>
@@ -146,8 +146,8 @@ function ScreenerHome() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>Screening Dashboard</h1>
-        <p className="text-sm" style={{ color: '#475569' }}>Review and validate incoming title search requests</p>
+        <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>Screening Dashboard</h1>
+        <p className="text-sm" style={{ color: '#3D5171' }}>Review and validate incoming title search requests</p>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
@@ -160,21 +160,21 @@ function ScreenerHome() {
             <div className="w-9 h-9 rounded-xl mb-3 flex items-center justify-center" style={{ background: `${s.color}22` }}>
               <s.icon className="w-4 h-4" style={{ color: s.color }} />
             </div>
-            <div className="text-2xl font-bold" style={{ color: '#1e293b' }}>{s.value}</div>
-            <div className="text-sm" style={{ color: '#475569' }}>{s.label}</div>
+            <div className="text-2xl font-bold" style={{ color: '#12284C' }}>{s.value}</div>
+            <div className="text-sm" style={{ color: '#3D5171' }}>{s.label}</div>
           </motion.div>
         ))}
       </div>
       <div className="glass-card p-5">
-        <h2 className="font-semibold mb-4" style={{ color: '#1e293b' }}>My Screening Queue</h2>
+        <h2 className="font-semibold mb-4" style={{ color: '#12284C' }}>My Screening Queue</h2>
         <div className="space-y-3">
           {myOrders.map((o, i) => (
             <motion.div key={o.id} initial={{ opacity:0, x:-8 }} animate={{ opacity:1, x:0 }}
               transition={{ delay: i * 0.07 }}
               className="flex items-center gap-4 p-4 rounded-xl cursor-pointer transition-all"
-              style={{ background:'rgba(30,41,59,0.03)', border:'1px solid rgba(138,194,104,0.08)' }}
-              onMouseOver={e => e.currentTarget.style.borderColor = 'rgba(138,194,104,0.25)'}
-              onMouseOut={e => e.currentTarget.style.borderColor = 'rgba(138,194,104,0.08)'}
+              style={{ background:'rgba(18,40,76,0.03)', border:'1px solid rgba(36,65,229,0.08)' }}
+              onMouseOver={e => e.currentTarget.style.borderColor = 'rgba(36,65,229,0.25)'}
+              onMouseOut={e => e.currentTarget.style.borderColor = 'rgba(36,65,229,0.08)'}
               onClick={() => openOrder(o)}>
               <div className="w-2 h-10 rounded-full flex-shrink-0" style={{ background: STATUS_DOT[o.status] || ROLE_COLOR }} />
               <div className="flex-1 min-w-0">
@@ -185,17 +185,17 @@ function ScreenerHome() {
                       style={{ background:'rgba(220,80,60,0.18)', color:'#dc2626' }}>RUSH</span>
                   )}
                 </div>
-                <div className="font-medium text-sm mt-0.5 truncate" style={{ color:'#1e293b' }}>{displayClient(o.client, user)}</div>
-                <div className="text-xs" style={{ color:'#64748b' }}>{o.type} · {o.state}, {o.county}</div>
+                <div className="font-medium text-sm mt-0.5 truncate" style={{ color:'#12284C' }}>{displayClient(o.client, user)}</div>
+                <div className="text-xs" style={{ color:'#5C6E8C' }}>{o.type} · {o.state}, {o.county}</div>
               </div>
               <div className="text-right flex-shrink-0">
                 <span className="text-xs font-semibold px-2.5 py-1 rounded-full capitalize"
                   style={{ background: `${STATUS_DOT[o.status] || ROLE_COLOR}22`, color: STATUS_DOT[o.status] || ROLE_COLOR }}>
                   {o.status}
                 </span>
-                <div className="text-xs mt-1" style={{ color:'#64748b' }}>ETA {o.eta}</div>
+                <div className="text-xs mt-1" style={{ color:'#5C6E8C' }}>ETA {o.eta}</div>
               </div>
-              <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color:'rgba(30,41,59,0.18)' }} />
+              <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color:'rgba(18,40,76,0.18)' }} />
             </motion.div>
           ))}
         </div>
@@ -208,7 +208,7 @@ function ScreenerQueue({ orders, title }) {
   const navigate = useNavigate()
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>{title}</h1>
+      <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>{title}</h1>
       <div className="glass-card p-5">
         <OrdersTable orders={orders} onOrderClick={o => navigate(`/screener/order/${o.id}`)} />
       </div>

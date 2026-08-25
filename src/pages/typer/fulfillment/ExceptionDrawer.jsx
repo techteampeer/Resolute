@@ -73,7 +73,7 @@ export default function ExceptionDrawer({ open, onClose, exception, onSave }) {
               <RoundBtn icon={Plus} title="Add plat map" onClick={addMap} />
             </div>
             {maps.length === 0 ? (
-              <div className="text-[12px] italic px-2.5 py-2 rounded-md" style={{ color: T.dim, background: 'rgba(30,41,59,0.025)' }}>No plat maps added.</div>
+              <div className="text-[12px] italic px-2.5 py-2 rounded-md" style={{ color: T.dim, background: 'rgba(18,40,76,0.025)' }}>No plat maps added.</div>
             ) : (
               <div className="space-y-2.5">
                 {maps.map((m, i) => (

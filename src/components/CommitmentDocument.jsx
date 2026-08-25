@@ -16,8 +16,8 @@ export const LOGO_SVG = `
     <path d="M24 4a20 20 0 1 0 14 6" fill="none" stroke="url(#rg)" stroke-width="7" stroke-linecap="round"/>
     <path d="M38 2 L42 14 L30 12 Z" fill="#e0431f"/>
   </g>
-  <text x="52" y="26" font-family="Georgia, serif" font-size="20" font-weight="700" fill="#1e293b" letter-spacing="1">RESOLUTE</text>
-  <text x="52" y="40" font-family="Arial, sans-serif" font-size="8" fill="#4d7c2f" letter-spacing="0.5">integrity · intelligence · innovation</text>
+  <text x="52" y="26" font-family="Georgia, serif" font-size="20" font-weight="700" fill="#12284C" letter-spacing="1">RESOLUTE</text>
+  <text x="52" y="40" font-family="Arial, sans-serif" font-size="8" fill="#2441E5" letter-spacing="0.5">integrity · intelligence · innovation</text>
 </svg>`
 
 // Prefer the official logo from /public; fall back to the inline mark if absent.
@@ -73,29 +73,29 @@ export function buildCommitmentHtml(order, f) {
 <style>
   @page { size: letter; margin: 0.7in; }
   * { box-sizing: border-box; }
-  body { font-family: Georgia, 'Times New Roman', serif; color: #1e293b; font-size: 11pt; line-height: 1.5; margin: 0; }
+  body { font-family: Georgia, 'Times New Roman', serif; color: #12284C; font-size: 11pt; line-height: 1.5; margin: 0; }
   .wrap { max-width: 7.1in; margin: 0 auto; }
-  header { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 3px solid #3d7020; padding-bottom: 12px; margin-bottom: 6px; }
+  header { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 3px solid #2441E5; padding-bottom: 12px; margin-bottom: 6px; }
   header .doc-title { text-align: right; }
-  header .doc-title h1 { font-size: 16pt; margin: 0; color: #1e293b; letter-spacing: 0.5px; }
-  header .doc-title .meta { font-family: Arial, sans-serif; font-size: 8.5pt; color: #475569; margin-top: 3px; }
+  header .doc-title h1 { font-size: 16pt; margin: 0; color: #12284C; letter-spacing: 0.5px; }
+  header .doc-title .meta { font-family: Arial, sans-serif; font-size: 8.5pt; color: #3D5171; margin-top: 3px; }
   h2 { font-family: Arial, sans-serif; font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.06em;
-       color: #3d7020; border-bottom: 1px solid #e2e8f0; padding-bottom: 3px; margin: 18px 0 8px; }
+       color: #2441E5; border-bottom: 1px solid #DDE3EC; padding-bottom: 3px; margin: 18px 0 8px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; font-family: Arial, sans-serif; font-size: 9.5pt; }
-  .grid .row { display: flex; justify-content: space-between; border-bottom: 1px dotted #e2e8f0; padding: 2px 0; }
-  .grid .k { color: #64748b; text-transform: uppercase; font-size: 8pt; letter-spacing: 0.04em; }
-  .grid .v { color: #1e293b; font-weight: 600; text-align: right; }
+  .grid .row { display: flex; justify-content: space-between; border-bottom: 1px dotted #DDE3EC; padding: 2px 0; }
+  .grid .k { color: #5C6E8C; text-transform: uppercase; font-size: 8pt; letter-spacing: 0.04em; }
+  .grid .v { color: #12284C; font-weight: 600; text-align: right; }
   table { width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 9pt; margin-top: 4px; }
   th { background: #f0f7ea; color: #33501a; text-align: left; padding: 5px 7px; border: 1px solid #d9e7cc; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.03em; }
-  td { padding: 5px 7px; border: 1px solid #e2e8f0; vertical-align: top; }
+  td { padding: 5px 7px; border: 1px solid #DDE3EC; vertical-align: top; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   p.legal { white-space: pre-wrap; text-align: justify; }
   ol.clauses { padding-left: 18px; margin: 4px 0; } ol.clauses li { margin-bottom: 7px; text-align: justify; }
   ul.plain { padding-left: 18px; margin: 4px 0; }
-  .ph { color: #94a3b8; font-style: italic; }
-  .sub { color: #64748b; font-size: 8pt; }
-  .disclaimer { font-family: Arial, sans-serif; font-size: 7.5pt; color: #64748b; line-height: 1.45; border-top: 1px solid #e2e8f0; margin-top: 22px; padding-top: 8px; text-align: justify; }
-  footer { font-family: Arial, sans-serif; font-size: 7.5pt; color: #94a3b8; display: flex; justify-content: space-between; margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 6px; }
+  .ph { color: #9AA8BF; font-style: italic; }
+  .sub { color: #5C6E8C; font-size: 8pt; }
+  .disclaimer { font-family: Arial, sans-serif; font-size: 7.5pt; color: #5C6E8C; line-height: 1.45; border-top: 1px solid #DDE3EC; margin-top: 22px; padding-top: 8px; text-align: justify; }
+  footer { font-family: Arial, sans-serif; font-size: 7.5pt; color: #9AA8BF; display: flex; justify-content: space-between; margin-top: 10px; border-top: 1px solid #DDE3EC; padding-top: 6px; }
 </style></head><body><div class="wrap">
   <header>
     <div>${LOGO_HTML}</div>
@@ -173,24 +173,24 @@ export function CommitmentDocumentModal({ order, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col" style={{ background: 'rgba(15,23,42,0.55)' }} onClick={onClose}>
-      <div className="flex items-center justify-between px-5 py-3 flex-shrink-0" style={{ background: '#ffffff', borderBottom: '1px solid #e2e8f0' }} onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[70] flex flex-col" style={{ background: 'rgba(12,29,56,0.55)' }} onClick={onClose}>
+      <div className="flex items-center justify-between px-5 py-3 flex-shrink-0" style={{ background: '#ffffff', borderBottom: '1px solid #DDE3EC' }} onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2">
-          <FileText className="w-4 h-4" style={{ color: '#3d7020' }} />
-          <span className="text-sm font-semibold" style={{ color: '#1e293b' }}>Commitment Document · {order.id}</span>
+          <FileText className="w-4 h-4" style={{ color: '#2441E5' }} />
+          <span className="text-sm font-semibold" style={{ color: '#12284C' }}>Commitment Document · {order.id}</span>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={download} disabled={!f || saving}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium"
-            style={{ color: '#374151', border: '1px solid #e2e8f0', background: '#fff', opacity: (f && !saving) ? 1 : 0.5 }}>
+            style={{ color: '#33465F', border: '1px solid #DDE3EC', background: '#fff', opacity: (f && !saving) ? 1 : 0.5 }}>
             <Download className="w-4 h-4" /> {saving ? 'Generating…' : 'Download PDF'}
           </button>
           <button onClick={print} disabled={!html}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-semibold text-white"
-            style={{ background: '#3d7020', opacity: html ? 1 : 0.5 }}>
+            style={{ background: '#2441E5', opacity: html ? 1 : 0.5 }}>
             <Printer className="w-4 h-4" /> Print / Save as PDF
           </button>
-          <button onClick={onClose} className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ color: '#64748b', border: '1px solid #e2e8f0', background: '#fff' }}>
+          <button onClick={onClose} className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ color: '#5C6E8C', border: '1px solid #DDE3EC', background: '#fff' }}>
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -198,8 +198,8 @@ export function CommitmentDocumentModal({ order, onClose }) {
       <div className="flex-1 overflow-hidden p-4" onClick={e => e.stopPropagation()}>
         {html
           ? <iframe ref={frameRef} title="Commitment Document" srcDoc={html}
-              className="w-full h-full rounded-lg" style={{ background: '#fff', border: '1px solid #e2e8f0' }} />
-          : <div className="h-full flex items-center justify-center text-sm" style={{ color: '#64748b' }}>Loading document…</div>}
+              className="w-full h-full rounded-lg" style={{ background: '#fff', border: '1px solid #DDE3EC' }} />
+          : <div className="h-full flex items-center justify-center text-sm" style={{ color: '#5C6E8C' }}>Loading document…</div>}
       </div>
     </div>
   )

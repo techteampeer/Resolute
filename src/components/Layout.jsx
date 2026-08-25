@@ -15,9 +15,9 @@ const readSeen = (user) => {
   try { return new Set(JSON.parse(localStorage.getItem(seenStoreKey(user)) || '[]')) }
   catch { return new Set() }
 }
-const NOTIF_DOT = { new: '#4d7c2f', delivered: '#16a34a', progress: '#d97706', status: '#7c3aed', user: '#2563eb' }
+const NOTIF_DOT = { new: '#2441E5', delivered: '#16a34a', progress: '#d97706', status: '#00B8D9', user: '#2441E5' }
 
-export default function Layout({ children, navItems, role, roleColor = '#4d7c2f', lightTheme = true }) {
+export default function Layout({ children, navItems, role, roleColor = '#2441E5', lightTheme = true }) {
   const { user, logout } = useAuth()
   const { activityLog = [], orders = [] } = useOrders() || {}
   const navigate    = useNavigate()
@@ -60,62 +60,37 @@ export default function Layout({ children, navItems, role, roleColor = '#4d7c2f'
 
   const handleLogout = () => { logout(); navigate('/login') }
 
-  const T = lightTheme ? {
-    mainBg:      '#f0f2f4',
-    sidebarBg:   '#ffffff',
-    sidebarBdr:  '#e5e7eb',
-    topbarBg:    '#ffffff',
-    topbarBdr:   '#e5e7eb',
-    logo:        '#111827',
-    subtext:     '#9ca3af',
-    navText:     '#6b7280',
-    navActive:   '#111827',
-    navActiveBg: `${roleColor}14`,
-    navHoverBg:  '#f9fafb',
-    navBadgeBg:  `${roleColor}18`,
-    badgeText:   roleColor,
-    userText:    '#111827',
-    userSub:     '#9ca3af',
-    logoutClr:   '#6b7280',
-    logoutHover: '#111827',
-    iconBg:      '#f3f4f6',
-    iconBdr:     '#e5e7eb',
-    iconClr:     '#6b7280',
-    iconHover:   '#111827',
-    menuBg:      '#ffffff',
-    menuBdr:     '#e5e7eb',
-    menuText:    '#374151',
-    menuHover:   '#f3f4f6',
-    badgePing:   roleColor,
-    overlay:     'rgba(0,0,0,0.3)',
-  } : {
-    mainBg:      '#f0f2f4',
-    sidebarBg:   'rgba(255,255,255,0.75)',
-    sidebarBdr:  'rgba(138,194,104,0.09)',
-    topbarBg:    'rgba(255,255,255,0.75)',
-    topbarBdr:   'rgba(138,194,104,0.09)',
-    logo:        '#1e293b',
-    subtext:     '#64748b',
-    navText:     '#475569',
-    navActive:   '#1e293b',
-    navActiveBg: `${roleColor}22`,
-    navHoverBg:  'rgba(30,41,59,0.06)',
-    navBadgeBg:  `${roleColor}28`,
-    badgeText:   roleColor,
-    userText:    '#1e293b',
-    userSub:     '#64748b',
-    logoutClr:   '#64748b',
-    logoutHover: '#1e293b',
-    iconBg:      'rgba(30,41,59,0.06)',
-    iconBdr:     'rgba(138,194,104,0.14)',
-    iconClr:     '#475569',
-    iconHover:   '#1e293b',
-    menuBg:      'rgba(30,41,59,0.04)',
-    menuBdr:     'rgba(138,194,104,0.12)',
-    menuText:    '#475569',
-    menuHover:   'rgba(30,41,59,0.07)',
-    badgePing:   '#3d7020',
-    overlay:     'rgba(0,0,0,0.65)',
+  // One sidebar treatment for every portal: navy ground, indigo active state,
+  // cyan badges. Cyan on navy is 6.2:1, so badges stay legible; cyan is never
+  // placed on white anywhere in the app.
+  const T = {
+    mainBg:      '#F3F5F8',
+    sidebarBg:   '#12284C',
+    sidebarBdr:  'rgba(255,255,255,0.10)',
+    topbarBg:    '#FFFFFF',
+    topbarBdr:   '#DDE3EC',
+    logo:        '#FFFFFF',
+    subtext:     'rgba(255,255,255,0.55)',
+    navText:     'rgba(255,255,255,0.72)',
+    navActive:   '#FFFFFF',
+    navActiveBg: '#2441E5',
+    navHoverBg:  'rgba(255,255,255,0.08)',
+    navBadgeBg:  'rgba(0,184,217,0.22)',
+    badgeText:   '#7FDCEC',
+    userText:    '#FFFFFF',
+    userSub:     'rgba(255,255,255,0.55)',
+    logoutClr:   'rgba(255,255,255,0.65)',
+    logoutHover: '#FFFFFF',
+    iconBg:      '#EDF0F5',
+    iconBdr:     '#DDE3EC',
+    iconClr:     '#3D5171',
+    iconHover:   '#12284C',
+    menuBg:      '#FFFFFF',
+    menuBdr:     '#DDE3EC',
+    menuText:    '#3D5171',
+    menuHover:   '#EDF0F5',
+    badgePing:   '#00B8D9',
+    overlay:     'rgba(12,29,56,0.55)',
   }
 
   const Sidebar = ({ mobile = false }) => (
@@ -124,8 +99,8 @@ export default function Layout({ children, navItems, role, roleColor = '#4d7c2f'
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b" style={{ borderColor: T.sidebarBdr }}>
         <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: '#3d7020' }}>
-          <MapPin className="w-4 h-4" style={{ color: '#f5f7f2' }} />
+          style={{ background: '#2441E5' }}>
+          <MapPin className="w-4 h-4" style={{ color: '#FFFFFF' }} />
         </div>
         {(!collapsed || mobile) && (
           <div className="overflow-hidden min-w-0">
@@ -158,7 +133,12 @@ export default function Layout({ children, navItems, role, roleColor = '#4d7c2f'
       <nav className="flex-1 px-2.5 py-1 space-y-0.5 overflow-y-auto">
         {navItems.map(item => {
           const Icon   = item.icon
-          const active = location.pathname === item.path || location.pathname.startsWith(item.path + '/')
+          // The portal root ('/admin', '/screener', …) is a prefix of every
+          // sub-route, so a plain startsWith lit it up alongside the real page.
+          // Root items match exactly; only deeper items match by prefix.
+          const isRoot = item.path.split('/').filter(Boolean).length === 1
+          const active = location.pathname === item.path
+            || (!isRoot && location.pathname.startsWith(item.path + '/'))
           return (
             <button key={item.path}
               onClick={() => { navigate(item.path); setMobileOpen(false) }}
@@ -266,7 +246,7 @@ export default function Layout({ children, navItems, role, roleColor = '#4d7c2f'
             </button>
             {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
-                style={{ background: T.badgePing, color: '#f5f7f2' }}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+                style={{ background: T.badgePing, color: '#FFFFFF' }}>{unreadCount > 9 ? '9+' : unreadCount}</span>
             )}
             <AnimatePresence>
               {showNotif && (

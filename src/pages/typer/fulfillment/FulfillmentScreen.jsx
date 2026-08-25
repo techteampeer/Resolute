@@ -59,7 +59,7 @@ export default function FulfillmentScreen() {
             <div className="flex items-center gap-3">
               <h1 className="text-[22px] font-bold font-mono tracking-tight" style={{ color: T.text }}>{order.id}</h1>
               <span className="text-[11px] font-semibold uppercase tracking-[0.1em] px-2 py-0.5 rounded-full"
-                style={{ color: T.accentBright, background: 'rgba(124,191,78,0.14)', border: `1px solid ${T.borderStrong}` }}>Open</span>
+                style={{ color: T.accentBright, background: 'rgba(36,65,229,0.14)', border: `1px solid ${T.borderStrong}` }}>Open</span>
               {order.priority === 'rush' &&
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(220,80,60,0.18)', color: '#dc2626' }}>RUSH</span>}
             </div>
@@ -241,7 +241,7 @@ function CompletenessBar({ comp, address, save }) {
   const pct = Math.round((comp.done / comp.total) * 100)
   return (
     <div className="sticky top-0 z-30 -mx-1 mb-5 rounded-xl px-4 py-3 backdrop-blur"
-      style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(16,24,40,0.06)' }}>
+      style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid #DDE3EC', boxShadow: '0 1px 3px rgba(16,24,40,0.06)' }}>
       <div className="flex items-center gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -249,7 +249,7 @@ function CompletenessBar({ comp, address, save }) {
             <span className="text-[13px]" style={{ color: T.faint }}>sections complete for</span>
             <span className="text-[13px] font-medium truncate" style={{ color: T.muted }}>{address}</span>
           </div>
-          <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(30,41,59,0.08)' }}>
+          <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(18,40,76,0.08)' }}>
             <motion.div className="h-full rounded-full" style={{ background: T.accentBright }} animate={{ width: `${pct}%` }} transition={{ type: 'spring', stiffness: 200, damping: 28 }} />
           </div>
         </div>
@@ -356,10 +356,10 @@ function Section({ n, id, title, instruction, done, optional, children }) {
         <StatusMark done={done} optional={optional} />
         <span className="text-[11px] font-semibold tabular-nums" style={{ color: T.dim }}>{String(n).padStart(2, '0')}</span>
         <h2 className="text-[15px] font-semibold" style={{ color: T.text }}>{title}</h2>
-        {optional && <span className="text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5 rounded" style={{ color: T.dim, background: 'rgba(30,41,59,0.04)' }}>Optional</span>}
+        {optional && <span className="text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5 rounded" style={{ color: T.dim, background: 'rgba(18,40,76,0.04)' }}>Optional</span>}
       </div>
       {instruction && <p className="text-[12px] mb-3 -mt-1 ml-[26px]" style={{ color: T.faint }}>{instruction}</p>}
-      <div className="ml-[26px] rounded-xl p-4" style={{ background: 'rgba(30,41,59,0.02)', border: `1px solid ${T.borderSoft}` }}>
+      <div className="ml-[26px] rounded-xl p-4" style={{ background: 'rgba(18,40,76,0.02)', border: `1px solid ${T.borderSoft}` }}>
         {children}
       </div>
     </section>
@@ -695,7 +695,7 @@ function OverviewTab({ order, f, user }) {
     <div className="px-5 md:px-7 py-5 max-w-[860px]">
       <div className="flex items-center gap-2 mb-4">
         <span className="text-[13px] font-semibold" style={{ color: T.text }}>Order details submitted by the client</span>
-        {intake.source === 'email' && <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded" style={{ background: 'rgba(37,99,235,0.10)', color: '#2563eb' }}>via email</span>}
+        {intake.source === 'email' && <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded" style={{ background: 'rgba(37,99,235,0.10)', color: '#2441E5' }}>via email</span>}
       </div>
 
       <Card title="Order">

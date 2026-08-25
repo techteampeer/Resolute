@@ -70,7 +70,7 @@ export function paymentOf(o) {
   return { ...p, status: p.status === 'submitted' ? 'marked' : p.status }
 }
 export const PAY_STATUS = {
-  unpaid:    { label: 'Unpaid',        color: '#64748b' },
+  unpaid:    { label: 'Unpaid',        color: '#5C6E8C' },
   marked:    { label: 'Marked Paid',   color: '#b45309' },
   confirmed: { label: 'Paid',          color: '#15803d' },
   bounced:   { label: 'Bounced',       color: '#dc2626' },

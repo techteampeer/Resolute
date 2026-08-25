@@ -19,10 +19,10 @@ import {
 } from '../../lib/payouts'
 
 const Q = {
-  card: '#ffffff', border: '#e2e8f0', text: '#1e293b', muted: '#64748b',
-  faint: '#94a3b8', shadow: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
+  card: '#ffffff', border: '#DDE3EC', text: '#12284C', muted: '#5C6E8C',
+  faint: '#9AA8BF', shadow: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
 }
-const ACCENT = '#3d7020'
+const ACCENT = '#2441E5'
 
 const Chip = ({ status }) => {
   const s = PAY_STATUS[status] || PAY_STATUS.unpaid
@@ -110,7 +110,7 @@ export default function AdminBilling() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Outstanding', value: totals.outstanding, color: '#b45309' },
-          { label: 'Marked Paid (to confirm)', value: totals.marked, color: '#2563eb' },
+          { label: 'Marked Paid (to confirm)', value: totals.marked, color: '#2441E5' },
           { label: 'Collected', value: totals.collected, color: '#15803d' },
           { label: 'Overdue', value: totals.overdue, color: '#dc2626' },
         ].map(k => (
@@ -174,7 +174,7 @@ export default function AdminBilling() {
                   {vivek && stmt.items.some(o => payStatusOf(o) === 'marked' && paymentOf(o)?.statementId === stmt.id) && (
                     <button onClick={() => confirmStatement(stmt.id)}
                       className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-                      style={{ background: ACCENT, color: '#f5f7f2' }}>
+                      style={{ background: ACCENT, color: '#FFFFFF' }}>
                       Confirm Statement Received
                     </button>
                   )}
@@ -309,7 +309,7 @@ function VendorPayouts({ orders, updateOrder, user, vivek }) {
           { label: 'Accrued (to pay)', value: money(sum(accrued)), color: '#b45309' },
           { label: 'Overdue', value: money(overdueTotal), color: '#dc2626' },
           { label: 'Paid out', value: money(sum(paid)), color: '#15803d' },
-          { label: 'Awaiting fee entry', value: pending.length, color: '#2563eb' },
+          { label: 'Awaiting fee entry', value: pending.length, color: '#2441E5' },
         ].map(k => (
           <div key={k.label} className="rounded-xl p-4" style={{ background: Q.card, border: `1px solid ${Q.border}`, boxShadow: Q.shadow }}>
             <div className="text-xl font-bold tabular-nums" style={{ color: k.color }}>{k.value}</div>
@@ -356,7 +356,7 @@ function VendorPayouts({ orders, updateOrder, user, vivek }) {
                 {vivek && open.length > 0 && (
                   <button onClick={() => open.forEach(markPaid)}
                     className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-                    style={{ background: ACCENT, color: '#f5f7f2' }}>
+                    style={{ background: ACCENT, color: '#FFFFFF' }}>
                     Mark {open.length} Paid · {money(sum(open))}
                   </button>
                 )}
@@ -501,7 +501,7 @@ function FeeEntryRow({ order, vendors, onSave }) {
         style={{ border: `1px solid ${Q.border}`, background: Q.card, color: Q.text }} />
       <button disabled={!ready} onClick={() => onSave(order, vendor, amount)}
         className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg"
-        style={{ background: ready ? ACCENT : Q.border, color: '#f5f7f2', cursor: ready ? 'pointer' : 'not-allowed' }}>
+        style={{ background: ready ? ACCENT : Q.border, color: '#FFFFFF', cursor: ready ? 'pointer' : 'not-allowed' }}>
         <Plus className="w-3.5 h-3.5" /> Accrue
       </button>
     </div>
