@@ -180,7 +180,7 @@ function ExaminerHome() {
                 <div className="text-xs" style={{ color:'#5C6E8C' }}>{o.type} · {o.state}, {o.county}</div>
                 <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background:'rgba(18,40,76,0.10)' }}>
                   <div className="h-full rounded-full transition-all"
-                    style={{ width:`${o.progress}%`, background:'linear-gradient(90deg,#1B34C4,#c4a44e)' }} />
+                    style={{ width:`${o.progress}%`, background:'linear-gradient(90deg,#2441E5,#00B8D9)' }} />
                 </div>
               </div>
               <div className="text-right flex-shrink-0">

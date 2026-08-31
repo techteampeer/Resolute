@@ -98,7 +98,7 @@ export default function USAMap({ compact = false }) {
         style={{ overflow: 'visible' }}
       >
         <defs>
-          <filter id="olive-glow" x="-20%" y="-20%" width="140%" height="140%">
+          <filter id="accent-glow" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
             <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
@@ -123,7 +123,7 @@ export default function USAMap({ compact = false }) {
                 style={{
                   cursor: 'pointer',
                   transition: 'fill 0.18s ease, stroke 0.18s ease, filter 0.18s ease',
-                  filter: isHovered ? 'url(#olive-glow)' : 'url(#state-shadow)',
+                  filter: isHovered ? 'url(#accent-glow)' : 'url(#state-shadow)',
                 }}
                 onMouseMove={e => handleMouseMove(e, st.abbrev)}
                 onMouseLeave={() => setHovered(null)}
