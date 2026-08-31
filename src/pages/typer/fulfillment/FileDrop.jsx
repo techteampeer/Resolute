@@ -21,7 +21,7 @@ export const makeFileRef = (file) => ({
 
 const TypeIcon = ({ type, className }) =>
   type === 'pdf'  ? <FileText className={className} style={{ color: '#dc2626' }} />
-: type === 'word' ? <FileText className={className} style={{ color: '#2563eb' }} />
+: type === 'word' ? <FileText className={className} style={{ color: '#2441E5' }} />
 :                   <FileIcon className={className} style={{ color: T.faint }} />
 
 // Drag-and-drop + click-to-browse zone. Emits validated File[] via onFiles.
@@ -53,7 +53,7 @@ export function FileDropZone({ onFiles, multiple = false, compact = false }) {
         className={`rounded-lg flex flex-col items-center justify-center text-center cursor-pointer transition-all ${compact ? 'py-4 px-4' : 'py-7 px-6'}`}
         style={{
           border: `1.5px dashed ${drag ? T.borderStrong : T.border}`,
-          background: drag ? 'rgba(124,191,78,0.07)' : 'transparent',
+          background: drag ? 'rgba(36,65,229,0.07)' : 'transparent',
         }}>
         <UploadCloud className={compact ? 'w-5 h-5 mb-1.5' : 'w-7 h-7 mb-2'} style={{ color: drag ? T.accentBright : T.faint }} />
         <div className="text-[13px] font-medium" style={{ color: T.text }}>
@@ -87,7 +87,7 @@ export function FileRow({ file, onRemove, onRetry, onReplace, checkbox, checked,
       <div className="flex-1 min-w-0">
         <div className="text-[13px] font-medium truncate" style={{ color: T.text }}>{file.name}</div>
         {file.status === 'uploading' ? (
-          <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(30,41,59,0.08)' }}>
+          <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(18,40,76,0.08)' }}>
             <motion.div className="h-full rounded-full" style={{ background: T.accentBright }}
               animate={{ width: `${file.progress}%` }} transition={{ ease: 'linear' }} />
           </div>

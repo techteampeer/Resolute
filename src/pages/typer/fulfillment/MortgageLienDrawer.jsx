@@ -19,7 +19,7 @@ function ListField({ title, items, onChange, placeholder, emptyText }) {
         <RoundBtn icon={Plus} title={`Add ${title.toLowerCase()}`} onClick={add} />
       </div>
       {items.length === 0 ? (
-        <div className="text-[12px] italic px-2.5 py-2 rounded-md" style={{ color: T.dim, background: 'rgba(30,41,59,0.025)' }}>{emptyText}</div>
+        <div className="text-[12px] italic px-2.5 py-2 rounded-md" style={{ color: T.dim, background: 'rgba(18,40,76,0.025)' }}>{emptyText}</div>
       ) : (
         <div className="space-y-2">
           {items.map(it => (
@@ -46,7 +46,7 @@ function AssignmentList({ items, onChange }) {
         <RoundBtn icon={Plus} title="Add assignment" onClick={add} />
       </div>
       {items.length === 0 ? (
-        <div className="text-[12px] italic px-2.5 py-2 rounded-md" style={{ color: T.dim, background: 'rgba(30,41,59,0.025)' }}>No assignments added.</div>
+        <div className="text-[12px] italic px-2.5 py-2 rounded-md" style={{ color: T.dim, background: 'rgba(18,40,76,0.025)' }}>No assignments added.</div>
       ) : (
         <div className="space-y-2.5">
           {items.map((a, i) => (

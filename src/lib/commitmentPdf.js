@@ -13,11 +13,11 @@ import {
 } from '../data/fulfillment'
 import { LOGO_SVG } from '../components/CommitmentDocument'
 
-const GREEN = '#3d7020'
-const TEXT   = '#1e293b'
-const MUTED  = '#64748b'
-const BORDER = '#e2e8f0'
-const PLACEHOLDER = { text: '—', color: '#94a3b8', italics: true }
+const GREEN = '#2441E5'
+const TEXT   = '#12284C'
+const MUTED  = '#5C6E8C'
+const BORDER = '#DDE3EC'
+const PLACEHOLDER = { text: '—', color: '#9AA8BF', italics: true }
 
 const v = (s) => (s && String(s).trim() ? String(s) : PLACEHOLDER)
 const heading = (text) => ({
@@ -55,7 +55,7 @@ function chunk(arr, n) {
 }
 
 const dataTable = (headers, rows, emptyText) => {
-  if (!rows.length) return { text: emptyText, color: '#94a3b8', italics: true, fontSize: 9, margin: [0, 2, 0, 4] }
+  if (!rows.length) return { text: emptyText, color: '#9AA8BF', italics: true, fontSize: 9, margin: [0, 2, 0, 4] }
   return {
     table: {
       headerRows: 1,
@@ -76,7 +76,7 @@ const dataTable = (headers, rows, emptyText) => {
 
 // Numbered clause list (Schedule B-I / B-II).
 const clauses = (items, resolve) => {
-  if (!items || !items.length) return { text: 'None.', color: '#94a3b8', italics: true, fontSize: 9.5, margin: [0, 2, 0, 4] }
+  if (!items || !items.length) return { text: 'None.', color: '#9AA8BF', italics: true, fontSize: 9.5, margin: [0, 2, 0, 4] }
   return {
     ol: items.map(it => ({ text: resolve(it) || '—', margin: [0, 0, 0, 5], alignment: 'justify' })),
     fontSize: 9.5, margin: [0, 2, 0, 4],
@@ -85,7 +85,7 @@ const clauses = (items, resolve) => {
 
 const bullets = (arr) => {
   const vals = (arr || []).map(x => x.value).filter(x => x && x.trim())
-  if (!vals.length) return { text: 'None recorded.', color: '#94a3b8', italics: true, fontSize: 9.5, margin: [0, 2, 0, 4] }
+  if (!vals.length) return { text: 'None recorded.', color: '#9AA8BF', italics: true, fontSize: 9.5, margin: [0, 2, 0, 4] }
   return { ul: vals, fontSize: 9.5, margin: [0, 2, 0, 4] }
 }
 
@@ -146,7 +146,7 @@ export function commitmentDocDefinition(order, f) {
     ]),
 
     heading('Title Vesting'),
-    vest ? { text: vest, alignment: 'justify' } : { text: 'Not provided.', color: '#94a3b8', italics: true },
+    vest ? { text: vest, alignment: 'justify' } : { text: 'Not provided.', color: '#9AA8BF', italics: true },
 
     heading('Deeds — Vesting & Chain of Title'),
     dataTable(
@@ -158,7 +158,7 @@ export function commitmentDocDefinition(order, f) {
     heading('Legal Description'),
     f.legalDescription
       ? { text: f.legalDescription, alignment: 'justify', preserveLeadingSpaces: true }
-      : { text: 'Not provided.', color: '#94a3b8', italics: true },
+      : { text: 'Not provided.', color: '#9AA8BF', italics: true },
   ]
 
   if (hasTax) {
@@ -213,8 +213,8 @@ export function commitmentDocDefinition(order, f) {
     footer: (page, pages) => ({
       margin: [50, 8, 50, 0],
       columns: [
-        { text: 'Resolute Title Services · Confidential', fontSize: 7, color: '#94a3b8' },
-        { text: `${order.id} · Page ${page} of ${pages}`, fontSize: 7, color: '#94a3b8', alignment: 'right' },
+        { text: 'Resolute Title Services · Confidential', fontSize: 7, color: '#9AA8BF' },
+        { text: `${order.id} · Page ${page} of ${pages}`, fontSize: 7, color: '#9AA8BF', alignment: 'right' },
       ],
     }),
   }

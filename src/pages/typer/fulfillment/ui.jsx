@@ -5,23 +5,23 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Minus, X, GripVertical, ChevronUp, ChevronDown } from 'lucide-react'
 
 export const T = {
-  text:        '#1e293b',
-  muted:       '#475569',
-  faint:       '#64748b',
-  dim:         '#64748b',
-  accent:      '#4d8c2a',
-  accentDeep:  '#3d7020',
-  accentBright:'#4d7c2f',
+  text:        '#12284C',
+  muted:       '#3D5171',
+  faint:       '#5C6E8C',
+  dim:         '#5C6E8C',
+  accent:      '#1B34C4',
+  accentDeep:  '#2441E5',
+  accentBright:'#2441E5',
   warn:        '#a16207',
-  border:      'rgba(138,194,104,0.14)',
-  borderSoft:  'rgba(138,194,104,0.09)',
-  borderStrong:'rgba(124,191,78,0.42)',
-  field:       'rgba(30,41,59,0.045)',
-  fieldFocus:  'rgba(30,41,59,0.08)',
-  card:        'rgba(30,41,59,0.035)',
-  rowHover:    'rgba(30,41,59,0.05)',
+  border:      'rgba(36,65,229,0.14)',
+  borderSoft:  'rgba(36,65,229,0.09)',
+  borderStrong:'rgba(36,65,229,0.42)',
+  field:       'rgba(18,40,76,0.045)',
+  fieldFocus:  'rgba(18,40,76,0.08)',
+  card:        'rgba(18,40,76,0.035)',
+  rowHover:    'rgba(18,40,76,0.05)',
   drawerBg:    '#ffffff',
-  drawerField: 'rgba(30,41,59,0.06)',
+  drawerField: 'rgba(18,40,76,0.06)',
 }
 
 // ── Label ────────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ export function AccentButton({ children, onClick, icon: Icon, disabled, classNam
   return (
     <button onClick={onClick} disabled={disabled}
       className={`inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-[13px] font-semibold transition-all ${className}`}
-      style={{ background: disabled ? 'rgba(61,112,32,0.35)' : T.accentDeep, color: disabled ? T.faint : '#f5f7f2', cursor: disabled ? 'not-allowed' : 'pointer' }}
+      style={{ background: disabled ? 'rgba(36,65,229,0.35)' : T.accentDeep, color: disabled ? T.faint : '#FFFFFF', cursor: disabled ? 'not-allowed' : 'pointer' }}
       onMouseOver={e => { if (!disabled) e.currentTarget.style.background = T.accent }}
       onMouseOut={e => { if (!disabled) e.currentTarget.style.background = T.accentDeep }}
       {...rest}>
@@ -223,7 +223,7 @@ export function Drawer({ open, onClose, title, subtitle, children, footer, width
 // Live clause preview block (shared by drawers).
 export function ClausePreview({ text, label = 'Generated clause' }) {
   return (
-    <div className="rounded-lg p-3" style={{ background: 'rgba(124,191,78,0.06)', border: `1px solid ${T.borderSoft}` }}>
+    <div className="rounded-lg p-3" style={{ background: 'rgba(36,65,229,0.06)', border: `1px solid ${T.borderSoft}` }}>
       <div className="text-[10px] font-semibold uppercase tracking-[0.12em] mb-1.5 flex items-center gap-1.5" style={{ color: T.accentBright }}>
         <span className="w-1.5 h-1.5 rounded-full" style={{ background: T.accentBright }} /> {label}
       </div>

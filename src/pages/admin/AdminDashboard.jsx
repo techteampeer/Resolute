@@ -34,8 +34,8 @@ const TEAM = {
   delivery: USERS.filter(u => u.role === 'delivery').map(u => u.name),
 }
 
-const ROLE_COLOR  = '#3d7020'
-const ROLE_HOVER  = '#4d8c2a'
+const ROLE_COLOR  = '#2441E5'
+const ROLE_HOVER  = '#1B34C4'
 
 const NAV = [
   { path: '/admin',          label: 'Dashboard',    icon: LayoutDashboard },
@@ -50,23 +50,23 @@ const NAV = [
 
 // Light theme palette
 const Q = {
-  bg:      '#f0f2f4',
+  bg:      '#F3F5F8',
   card:    '#ffffff',
-  border:  '#e2e8f0',
-  text:    '#1e293b',
-  muted:   '#64748b',
-  faint:   '#94a3b8',
+  border:  '#DDE3EC',
+  text:    '#12284C',
+  muted:   '#5C6E8C',
+  faint:   '#9AA8BF',
   shadow:  '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
-  rowHover:'#f8fafc',
+  rowHover:'#F9FBFD',
 }
 
 const STATUS_MAP = {
-  received:  { label:'Received',  color:'#64748b', bg:'#f1f5f9' },
-  screening: { label:'Screening', color:'#d97706', bg:'#fffbeb' },
-  searching: { label:'Searching', color:'#2563eb', bg:'#eff6ff' },
-  examining: { label:'Examining', color:'#7c3aed', bg:'#f5f3ff' },
-  typing:    { label:'Typing',    color:'#0e7490', bg:'#ecfeff' },
-  delivery:  { label:'Out for Delivery', color:'#b45309', bg:'#fff7ed' },
+  received:  { label:'Received',  color:'#12284C', bg:'#EDF0F5' },
+  screening: { label:'Screening', color:'#1B3A8C', bg:'#EAEEF8' },
+  searching: { label:'Searching', color:'#2441E5', bg:'#EEF1FE' },
+  examining: { label:'Examining', color:'#2441E5', bg:'#EEF1FE' },
+  typing:    { label:'Typing',    color:'#1268A8', bg:'#E8F4FB' },
+  delivery:  { label:'Out for Delivery', color:'#0E7C90', bg:'#E4F7FB' },
   delivered: { label:'Delivered', color:'#15803d', bg:'#f0fdf4' },
   cancelled: { label:'Cancelled', color:'#dc2626', bg:'#fef2f2' },
 }
@@ -85,7 +85,7 @@ export function exportOrdersCsv(orders, user) {
 
 const csvBtnStyle = {
   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8,
-  border: '1px solid #e2e8f0', background: '#fff', color: '#1e293b', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+  border: '1px solid #DDE3EC', background: '#fff', color: '#12284C', fontSize: 13, fontWeight: 600, cursor: 'pointer',
 }
 
 function QCard({ children, className = '', style = {} }) {
@@ -418,9 +418,9 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
         {tab === 'overview' && (<>
           <div style={{ padding:'16px 22px', borderBottom:`1px solid ${Q.border}` }}>
             {user?.superAdmin && cli ? (
-              <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10, padding:'12px 14px' }}>
+              <div style={{ background:'rgba(36,65,229,0.05)', border:'1px solid rgba(36,65,229,0.18)', borderRadius:10, padding:'12px 14px' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, fontWeight:700,
-                  textTransform:'uppercase', letterSpacing:'0.05em', color:'#16a34a', marginBottom:8 }}>
+                  textTransform:'uppercase', letterSpacing:'0.05em', color:'#2441E5', marginBottom:8 }}>
                   <ShieldCheck style={{ width:13, height:13 }} /> Client details ({cli.code})
                 </div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 16px', fontSize:13 }}>
@@ -548,7 +548,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 </button>
               )}
               {confirmed && (
-                <span style={{ padding:'8px 12px', borderRadius:8, fontSize:12.5, fontWeight:600, background:'#eff6ff', color:'#2563eb', border:'1px solid #bfdbfe' }}>
+                <span style={{ padding:'8px 12px', borderRadius:8, fontSize:12.5, fontWeight:600, background:'#EEF1FE', color:'#2441E5', border:'1px solid #C6CFFA' }}>
                   Confirmed{order.workflow?.confirmedBy ? ` · ${order.workflow.confirmedBy}` : ''}
                 </span>
               )}
@@ -587,7 +587,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 <div key={a.id ?? i} style={{ display:'flex', gap:10 }}>
                   <div style={{ width:8, height:8, borderRadius:99, flexShrink:0, marginTop:5,
                     background: a.type==='new' ? ROLE_COLOR : a.type==='delivered' ? '#16a34a'
-                      : a.type==='progress' ? '#d97706' : '#7c3aed' }} />
+                      : a.type==='progress' ? '#d97706' : '#00B8D9' }} />
                   <div>
                     <p style={{ fontSize:13, lineHeight:'1.5', color:Q.text }}>{a.action}</p>
                     <p style={{ fontSize:11, marginTop:2, color:Q.faint }}>{a.time}</p>
@@ -620,7 +620,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 {files.map(f => (
                   <div key={f.id || f.name} style={{ display:'flex', alignItems:'center', gap:12,
                     border:`1px solid ${Q.border}`, borderRadius:10, padding:'10px 14px' }}>
-                    <FileText style={{ width:18, height:18, color: f.type === 'pdf' ? '#dc2626' : '#2563eb', flexShrink:0 }} />
+                    <FileText style={{ width:18, height:18, color: f.type === 'pdf' ? '#dc2626' : '#2441E5', flexShrink:0 }} />
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:13, fontWeight:500, color:Q.text }}>{f.name}</div>
                       <div style={{ fontSize:11, color:Q.faint }}>{f.stage} · {(f.type || 'file').toUpperCase()}</div>
@@ -699,7 +699,7 @@ function NewOrderModal({ onClose }) {
     background:Q.card, color:Q.text, fontSize:13, outline:'none' }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background:'rgba(15,23,42,0.45)' }} onClick={onClose}>
+      style={{ background:'rgba(12,29,56,0.45)' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()}
         style={{ background:Q.card, borderRadius:12, width:'100%', maxWidth:460, padding:'20px 22px' }}>
         <div style={{ fontSize:17, fontWeight:700, color:Q.text, marginBottom:4 }}>New Order</div>
@@ -947,13 +947,13 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
         <div style={{ overflowX:'auto', ...(scrollable ? { maxHeight:560, overflowY:'auto' } : {}) }}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:920 }}>
           <thead>
-            <tr style={{ background:'#f8fafc', borderBottom:`1px solid ${Q.border}` }}>
+            <tr style={{ background:'#F9FBFD', borderBottom:`1px solid ${Q.border}` }}>
               {['File #','Client','Location','Type','Status','Payment','Assignee','Completed','ETA / Done',''].map(h => (
                 <th key={h} style={{
                   padding:'10px 16px', textAlign:'left', fontSize:11,
                   fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em',
                   color:Q.faint, whiteSpace:'nowrap',
-                  ...(scrollable ? { position:'sticky', top:0, background:'#f8fafc', zIndex:1 } : {}),
+                  ...(scrollable ? { position:'sticky', top:0, background:'#F9FBFD', zIndex:1 } : {}),
                 }}>{h}</th>
               ))}
             </tr>
@@ -991,7 +991,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       }}>{s.label}</span>
                       {r.kind === 'new' && (
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#eff6ff', color:'#2563eb', border:'1px solid #bfdbfe' }}>New</span>
+                          background:'#EEF1FE', color:'#2441E5', border:'1px solid #C6CFFA' }}>New</span>
                       )}
                       {r.kind === 'ready' && (
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
@@ -1005,7 +1005,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       )}
                       {!o.workflow?.confirmed && o.status === 'received' && (
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#eff6ff', color:'#2563eb', border:'1px solid #bfdbfe' }}>Awaiting confirm</span>
+                          background:'#EEF1FE', color:'#2441E5', border:'1px solid #C6CFFA' }}>Awaiting confirm</span>
                       )}
                       {o.workflow?.onHold && (
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
@@ -1049,7 +1049,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       )}
                       <button title="View details" onClick={e => { e.stopPropagation(); navigate(`/admin/orders/${o.id}`) }}
                         style={{ padding:6, borderRadius:6, background:'transparent', border:'none', cursor:'pointer', color:Q.faint }}
-                        onMouseOver={e => e.currentTarget.style.background = '#f1f5f9'}
+                        onMouseOver={e => e.currentTarget.style.background = '#EDF0F5'}
                         onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
                         <Eye style={{ width:14, height:14 }} />
                       </button>
@@ -1069,7 +1069,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
         )}
         {filtered.length > 0 && (
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-            padding:'10px 16px', borderTop:`1px solid ${Q.border}`, background:'#f8fafc' }}>
+            padding:'10px 16px', borderTop:`1px solid ${Q.border}`, background:'#F9FBFD' }}>
             <span style={{ fontSize:12, color:Q.muted }}>
               Showing <strong style={{ color:Q.text }}>{(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)}</strong> of <strong style={{ color:Q.text }}>{filtered.length}</strong> orders
             </span>
@@ -1099,7 +1099,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
           padding:'12px 20px', background:'transparent', border:'none', cursor:'pointer',
           fontSize:13, fontWeight:600, color:Q.text,
         }}
-          onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
+          onMouseOver={e => e.currentTarget.style.background = '#F9FBFD'}
           onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
           <span style={{ display:'flex', alignItems:'center', gap:8 }}>
             <MapPin style={{ width:15, height:15, color:ROLE_COLOR }} />
@@ -1157,7 +1157,7 @@ function AdminHome() {
         <StatCard icon={Package}     label="Active Orders"     value={activeCount}    sub={`${rushCount} rush priority`}      color={ROLE_COLOR} delay={0}    />
         <StatCard icon={CheckCircle} label="Delivered"         value={deliveredCount} sub="completed orders"                 color="#16a34a"    delay={0.05} />
         <StatCard icon={Clock}       label="Awaiting Approval" value={toAssignCount}  sub="parked with Admin"                color="#d97706"    delay={0.10} />
-        <StatCard icon={Users}       label="Active Clients"    value={activeClients}  sub="with orders in flight"            color="#7c3aed"    delay={0.15} />
+        <StatCard icon={Users}       label="Active Clients"    value={activeClients}  sub="with orders in flight"            color="#00B8D9"    delay={0.15} />
       </div>
 
       {/* Chart + Activity */}
@@ -1189,7 +1189,7 @@ function AdminHome() {
                 <div style={{
                   width:8, height:8, borderRadius:99, flexShrink:0, marginTop:5,
                   background: a.type==='new' ? ROLE_COLOR : a.type==='delivered' ? '#16a34a'
-                    : a.type==='progress' ? '#d97706' : '#7c3aed',
+                    : a.type==='progress' ? '#d97706' : '#00B8D9',
                 }} />
                 <div>
                   <p style={{ fontSize:12, lineHeight:'1.5', color:Q.muted }}>{a.action}</p>
@@ -1249,7 +1249,7 @@ function UserFormModal({ initial, onClose, onSave, busy }) {
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
   const inputStyle = { width: '100%', padding: '9px 12px', border: `1px solid ${Q.border}`, borderRadius: 8, fontSize: 13, outline: 'none', color: Q.text, background: '#fff' }
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.45)' }} onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(12,29,56,0.45)' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: Q.card, borderRadius: 12, width: '100%', maxWidth: 420, padding: 22 }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: Q.text, marginBottom: 14 }}>{isEdit ? 'Edit user' : 'Invite / add user'}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1313,12 +1313,12 @@ function AdminUsers() {
   })
 
   const counts = [
-    { role: 'Admins', count: users.filter(u => u.role === 'admin').length, color: '#3d7020' },
-    { role: 'Screeners', count: users.filter(u => u.role === 'screener').length, color: '#4d8c2a' },
+    { role: 'Admins', count: users.filter(u => u.role === 'admin').length, color: '#2441E5' },
+    { role: 'Screeners', count: users.filter(u => u.role === 'screener').length, color: '#1B34C4' },
     { role: 'Examiners', count: users.filter(u => u.role === 'examiner').length, color: '#d97706' },
-    { role: 'Typers', count: users.filter(u => u.role === 'typer').length, color: '#0891b2' },
-    { role: 'Delivery', count: users.filter(u => u.role === 'delivery').length, color: '#7c3aed' },
-    { role: 'Clients', count: users.filter(u => u.role === 'client').length, color: '#2563eb' },
+    { role: 'Typers', count: users.filter(u => u.role === 'typer').length, color: '#00B8D9' },
+    { role: 'Delivery', count: users.filter(u => u.role === 'delivery').length, color: '#00B8D9' },
+    { role: 'Clients', count: users.filter(u => u.role === 'client').length, color: '#2441E5' },
   ]
   const btn = (label, onClick, tone = 'muted', disabled = false) => (
     <button onClick={onClick} disabled={disabled || busy}
@@ -1365,7 +1365,7 @@ function AdminUsers() {
         <div className="overflow-x-auto">
           <table className="min-w-[760px]" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: `1px solid ${Q.border}` }}>
+              <tr style={{ background: '#F9FBFD', borderBottom: `1px solid ${Q.border}` }}>
                 {['Name', 'Email', 'Role', 'Status', live ? 'Actions' : 'Joined'].map(h => (
                   <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: Q.faint }}>{h}</th>
                 ))}
@@ -1666,7 +1666,7 @@ function AdminSupport() {
                   {active.messages.map((m, i) => (
                     <div key={m.id || i} style={{ display:'flex', justifyContent: m.from === 'support' ? 'flex-end' : 'flex-start' }}>
                       <div style={{ maxWidth:'75%', padding:'8px 12px', borderRadius:14, fontSize:13,
-                        background: m.from === 'support' ? ROLE_COLOR : '#f1f5f9',
+                        background: m.from === 'support' ? ROLE_COLOR : '#EDF0F5',
                         color: m.from === 'support' ? '#fff' : Q.text,
                         border: m.from === 'support' ? 'none' : `1px solid ${Q.border}` }}>
                         {m.text}

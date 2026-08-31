@@ -19,7 +19,7 @@ import { DEMO_ORDERS } from '../../data/demoData'
 import ClientBilling from './ClientBilling'
 import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '../../lib/billing'
 
-const ROLE_COLOR = '#4d7c2f'
+const ROLE_COLOR = '#2441E5'
 const NAV = [
   { path: '/client',         label: 'Dashboard',   icon: LayoutDashboard },
   { path: '/client/order',   label: 'Place Order', icon: PlusCircle },
@@ -52,14 +52,14 @@ function InvoiceCard({ order }) {
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <FileText className="w-4 h-4" style={{ color: ROLE_COLOR }} />
-          <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{invoiceNumber(order)}</span>
+          <span className="font-semibold text-sm" style={{ color: '#12284C' }}>{invoiceNumber(order)}</span>
           <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ background: `${s.color}1a`, color: s.color }}>{s.label}</span>
         </div>
-        <span className="text-lg font-bold tabular-nums" style={{ color: '#1e293b' }}>{money(invoiceAmount(order))}</span>
+        <span className="text-lg font-bold tabular-nums" style={{ color: '#12284C' }}>{money(invoiceAmount(order))}</span>
       </div>
       {status === 'confirmed' ? (
         <div className="flex items-center gap-2 text-sm px-3 py-2.5 rounded-xl"
-          style={{ background: 'rgba(109,188,120,0.12)', border: '1px solid rgba(109,188,120,0.25)', color: '#15803d' }}>
+          style={{ background: 'rgba(0,184,217,0.12)', border: '1px solid rgba(0,184,217,0.25)', color: '#15803d' }}>
           <CheckCircle className="w-4 h-4" /> Payment received — thank you.
         </div>
       ) : (
@@ -93,10 +93,10 @@ function clientStage(order) {
   if (order.status === 'delivered')          return { idx: 3, label: 'Delivered',               color: '#15803d' }
   if (order.workflow?.onHold)                return { idx: working ? 2 : 1, label: 'On Hold',    color: '#a16207' }
   if (order.clarification === 'pending')     return { idx: 2, label: 'Clarification Required',  color: '#dc2626' }
-  if (order.clarification === 'responded')   return { idx: 2, label: 'Clarification Responded',  color: '#2563eb' }
+  if (order.clarification === 'responded')   return { idx: 2, label: 'Clarification Responded',  color: '#2441E5' }
   if (working)                               return { idx: 2, label: 'In Progress',              color: '#b45309' }
-  if (confirmed)                             return { idx: 1, label: 'Received',                 color: '#2563eb' }
-  return { idx: 0, label: 'Placed', color: '#4d7c2f' }
+  if (confirmed)                             return { idx: 1, label: 'Received',                 color: '#2441E5' }
+  return { idx: 0, label: 'Placed', color: '#2441E5' }
 }
 
 // BUG_007: clicking an order opens its detail view (see OrderDetailPage).
@@ -111,8 +111,8 @@ function TrackOrder({ order, onOpen }) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <div className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{order.id}</div>
-          <div className="font-bold" style={{ color:'#1e293b' }}>{order.client}</div>
-          <div className="text-xs" style={{ color:'#64748b' }}>{order.type} · {order.state}</div>
+          <div className="font-bold" style={{ color:'#12284C' }}>{order.client}</div>
+          <div className="text-xs" style={{ color:'#5C6E8C' }}>{order.type} · {order.state}</div>
         </div>
         <span className="text-xs font-semibold px-3 py-1.5 rounded-full"
           style={{ background:`${sc}1e`, color:sc }}>{stage.label}</span>
@@ -124,37 +124,37 @@ function TrackOrder({ order, onOpen }) {
             <div className="flex flex-col items-center gap-1.5">
               <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all"
                 style={i < idx
-                  ? { background:'#3d7020', color:'#f5f7f2' }
+                  ? { background:'#2441E5', color:'#FFFFFF' }
                   : i === idx
-                  ? { background:'#3d7020', color:'#f5f7f2', boxShadow:`0 0 0 3px rgba(90,140,62,0.25)` }
-                  : { background:'rgba(30,41,59,0.08)', color:'#64748b' }}>
+                  ? { background:'#2441E5', color:'#FFFFFF', boxShadow:`0 0 0 3px rgba(90,140,62,0.25)` }
+                  : { background:'rgba(18,40,76,0.08)', color:'#5C6E8C' }}>
                 {i < idx ? <CheckCircle className="w-3.5 h-3.5" /> : i + 1}
               </div>
               <span className="text-[9px] text-center leading-tight whitespace-nowrap hidden sm:block"
-                style={{ color: i <= idx ? '#475569' : '#64748b' }}>
+                style={{ color: i <= idx ? '#3D5171' : '#5C6E8C' }}>
                 {step}
               </span>
             </div>
             {i < CLIENT_STEPS.length - 1 && (
               <div className="flex-1 h-0.5 rounded-full mb-5"
-                style={{ background: i < idx ? '#4d8c2a' : 'rgba(30,41,59,0.10)' }} />
+                style={{ background: i < idx ? '#1B34C4' : 'rgba(18,40,76,0.10)' }} />
             )}
           </React.Fragment>
         ))}
       </div>
-      <div className="flex items-center justify-between text-xs mb-1.5" style={{ color:'#64748b' }}>
+      <div className="flex items-center justify-between text-xs mb-1.5" style={{ color:'#5C6E8C' }}>
         <span>{isOrderComplete(order)
-          ? <>Delivered: <span style={{ color:'#1e293b' }}>{order.completed || order.eta}</span></>
-          : <>ETA: <span style={{ color:'#1e293b' }}>{order.eta}</span></>}</span>
+          ? <>Delivered: <span style={{ color:'#12284C' }}>{order.completed || order.eta}</span></>
+          : <>ETA: <span style={{ color:'#12284C' }}>{order.eta}</span></>}</span>
         <span style={isOrderComplete(order) ? { color:'#15803d', fontWeight:600 } : undefined}>
           {isOrderComplete(order) ? 'Completed' : `${orderProgress(order)}% complete`}
         </span>
       </div>
-      <div className="h-1.5 rounded-full overflow-hidden" style={{ background:'rgba(30,41,59,0.08)' }}>
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background:'rgba(18,40,76,0.08)' }}>
         <motion.div className="h-full rounded-full"
           initial={{ width:0 }} animate={{ width:`${orderProgress(order)}%` }}
           transition={{ duration:1.2, ease:'easeOut' }}
-          style={{ background:'linear-gradient(90deg,#3d7020,#8fc268)' }} />
+          style={{ background:'linear-gradient(90deg,#2441E5,#00B8D9)' }} />
       </div>
     </div>
   )
@@ -202,10 +202,10 @@ function ClientAttach({ orderId = null, value = [], onChange, accent = ROLE_COLO
         onDragLeave={() => setDrag(false)}
         onDrop={e => { e.preventDefault(); setDrag(false); add(e.dataTransfer.files) }}
         className="rounded-xl flex flex-col items-center justify-center py-5 px-4 cursor-pointer transition-all"
-        style={{ border:`1.5px dashed ${drag ? accent : 'rgba(77,124,47,0.30)'}`, background: drag ? `${accent}10` : 'transparent' }}>
-        <UploadCloud className="w-6 h-6 mb-1.5" style={{ color: drag ? accent : '#64748b' }} />
-        <div className="text-sm font-medium" style={{ color:'#1e293b' }}>Drag &amp; drop or <span style={{ color:accent }}>browse</span></div>
-        <div className="text-[11px] mt-0.5" style={{ color:'#64748b' }}>PDF, Word, or image · up to 25 MB each</div>
+        style={{ border:`1.5px dashed ${drag ? accent : 'rgba(36,65,229,0.30)'}`, background: drag ? `${accent}10` : 'transparent' }}>
+        <UploadCloud className="w-6 h-6 mb-1.5" style={{ color: drag ? accent : '#5C6E8C' }} />
+        <div className="text-sm font-medium" style={{ color:'#12284C' }}>Drag &amp; drop or <span style={{ color:accent }}>browse</span></div>
+        <div className="text-[11px] mt-0.5" style={{ color:'#5C6E8C' }}>PDF, Word, or image · up to 25 MB each</div>
         <input ref={inputRef} type="file" accept={CLIENT_ATTACH_ACCEPT} multiple className="hidden"
           onChange={e => { add(e.target.files); e.target.value = '' }} />
       </div>
@@ -213,16 +213,16 @@ function ClientAttach({ orderId = null, value = [], onChange, accent = ROLE_COLO
       {value.length > 0 && (
         <div className="space-y-1.5">
           {value.map(f => (
-            <div key={f.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(30,41,59,0.10)' }}>
-              <FileText className="w-4 h-4 flex-shrink-0" style={{ color: f.type === 'pdf' ? '#dc2626' : f.type === 'word' ? '#2563eb' : '#64748b' }} />
+            <div key={f.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(18,40,76,0.10)' }}>
+              <FileText className="w-4 h-4 flex-shrink-0" style={{ color: f.type === 'pdf' ? '#dc2626' : f.type === 'word' ? '#2441E5' : '#5C6E8C' }} />
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-medium truncate" style={{ color:'#1e293b' }}>{f.name}</div>
-                <div className="text-[10px]" style={{ color:'#64748b' }}>
+                <div className="text-[13px] font-medium truncate" style={{ color:'#12284C' }}>{f.name}</div>
+                <div className="text-[10px]" style={{ color:'#5C6E8C' }}>
                   {f.status === 'uploading' ? 'Uploading…' : f.status === 'error' ? 'Upload failed' : f.status === 'staged' ? 'Ready to send' : 'Uploaded'}
                 </div>
               </div>
               {(f.url || f.path) && f.status !== 'uploading' && (
-                <button type="button" onClick={() => openDocument(f)} title="Preview" className="p-1" style={{ color:'#64748b' }}><Eye className="w-4 h-4" /></button>
+                <button type="button" onClick={() => openDocument(f)} title="Preview" className="p-1" style={{ color:'#5C6E8C' }}><Eye className="w-4 h-4" /></button>
               )}
               <button type="button" onClick={() => remove(f.id)} title="Remove" className="p-1" style={{ color:'#dc2626' }}><Trash2 className="w-4 h-4" /></button>
             </div>
@@ -235,7 +235,7 @@ function ClientAttach({ orderId = null, value = [], onChange, accent = ROLE_COLO
 
 // Colour per activity type — mirrors the notification bell (Layout.jsx) so the
 // Activity tab reads the same visual language as the bell feed.
-const ACTIVITY_DOT = { new: '#4d7c2f', delivered: '#16a34a', progress: '#d97706', status: '#7c3aed', user: '#2563eb', payment: '#0891b2' }
+const ACTIVITY_DOT = { new: '#2441E5', delivered: '#16a34a', progress: '#d97706', status: '#00B8D9', user: '#2441E5', payment: '#00B8D9' }
 
 // BUG_007 → full order page. Clicking an order opens /client/orders/:id, a
 // dedicated page with three tabs:
@@ -261,7 +261,7 @@ function OrderDetailPage() {
 
   if (!order) return (
     <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
-      <div className="text-sm" style={{ color:'#64748b' }}>Order not found, or it isn’t one of yours.</div>
+      <div className="text-sm" style={{ color:'#5C6E8C' }}>Order not found, or it isn’t one of yours.</div>
       <button onClick={() => navigate('/client/orders')} className="btn-primary text-sm px-5 py-2.5">Back to My Orders</button>
     </div>
   )
@@ -302,7 +302,7 @@ function OrderDetailPage() {
   }
 
   const Row = ({ k, v }) => v ? (
-    <div><span style={{ color:'#64748b' }}>{k}: </span><span className="font-medium" style={{ color:'#1e293b' }}>{v}</span></div>
+    <div><span style={{ color:'#5C6E8C' }}>{k}: </span><span className="font-medium" style={{ color:'#12284C' }}>{v}</span></div>
   ) : null
   const TABS = [
     { key:'overview', label:'Overview', icon:FileText },
@@ -314,27 +314,27 @@ function OrderDetailPage() {
     <div className="max-w-3xl mx-auto space-y-5">
       {/* Header */}
       <div>
-        <button onClick={() => navigate('/client/orders')} className="flex items-center gap-1.5 text-sm mb-3" style={{ color:'#64748b', background:'none', border:'none', padding:0, cursor:'pointer' }}>
+        <button onClick={() => navigate('/client/orders')} className="flex items-center gap-1.5 text-sm mb-3" style={{ color:'#5C6E8C', background:'none', border:'none', padding:0, cursor:'pointer' }}>
           <ChevronRight className="w-4 h-4" style={{ transform:'rotate(180deg)' }} /> Back to My Orders
         </button>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <div className="font-mono font-semibold text-sm" style={{ color:ROLE_COLOR }}>{order.id}</div>
-            <div className="font-bold text-xl" style={{ color:'#1e293b' }}>{order.type}</div>
-            <div className="text-xs" style={{ color:'#64748b' }}>{order.county}, {order.state} · placed {order.created}</div>
+            <div className="font-bold text-xl" style={{ color:'#12284C' }}>{order.type}</div>
+            <div className="text-xs" style={{ color:'#5C6E8C' }}>{order.county}, {order.state} · placed {order.created}</div>
           </div>
           <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background:`${stage.color}1e`, color:stage.color }}>{stage.label}</span>
         </div>
       </div>
 
       {/* Tab strip */}
-      <div className="flex items-center gap-1 border-b" style={{ borderColor:'rgba(30,41,59,0.10)' }}>
+      <div className="flex items-center gap-1 border-b" style={{ borderColor:'rgba(18,40,76,0.10)' }}>
         {TABS.map(t => {
           const active = tab === t.key
           return (
             <button key={t.key} onClick={() => setTab(t.key)}
               className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors"
-              style={{ color: active ? ROLE_COLOR : '#64748b', borderBottom: `2px solid ${active ? ROLE_COLOR : 'transparent'}`, marginBottom:-1, background:'none', cursor:'pointer' }}>
+              style={{ color: active ? ROLE_COLOR : '#5C6E8C', borderBottom: `2px solid ${active ? ROLE_COLOR : 'transparent'}`, marginBottom:-1, background:'none', cursor:'pointer' }}>
               <t.icon className="w-4 h-4" /> {t.label}
               {t.badge ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background:`${ROLE_COLOR}1a`, color:ROLE_COLOR }}>{t.badge}</span> : null}
             </button>
@@ -357,14 +357,14 @@ function OrderDetailPage() {
               </div>
               {canUpload && (
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Provide requested documents</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Provide requested documents</div>
                   <ClientAttach orderId={order.id} value={clientDocs} onChange={syncDocs} />
                 </div>
               )}
             </div>
           )}
           <div className="glass-card p-4 space-y-1.5 text-sm">
-            <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#64748b' }}>Order details</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Order details</div>
             <Row k="Property" v={intake?.propertyAddress} />
             <Row k="Parcel / APN" v={intake?.parcelNumberAPN} />
             <Row k="Buyer" v={intake?.buyer} />
@@ -372,22 +372,22 @@ function OrderDetailPage() {
             <Row k="Seller" v={intake?.seller} />
             <Row k="Priority" v={order.priority === 'rush' ? 'RUSH' : 'Normal'} />
             <Row k="Special instructions" v={intake?.specialInstructions} />
-            {!intake && <div className="text-xs" style={{ color:'#64748b' }}>Submitted before detailed intake was captured.</div>}
+            {!intake && <div className="text-xs" style={{ color:'#5C6E8C' }}>Submitted before detailed intake was captured.</div>}
           </div>
           <div className="glass-card p-4 text-sm space-y-1.5">
-            <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#64748b' }}>Timeline</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Timeline</div>
             <Row k="Placed" v={order.created} />
             <Row k="Estimated delivery" v={order.eta} />
             <Row k="Delivered" v={order.completed} />
-            <div className="pt-1"><span style={{ color:'#64748b' }}>Progress: </span><span className="font-medium" style={{ color:'#1e293b' }}>{isOrderComplete(order) ? 'Completed (100%)' : `${orderProgress(order)}%`}</span></div>
+            <div className="pt-1"><span style={{ color:'#5C6E8C' }}>Progress: </span><span className="font-medium" style={{ color:'#12284C' }}>{isOrderComplete(order) ? 'Completed (100%)' : `${orderProgress(order)}%`}</span></div>
           </div>
           {clientDocs.length > 0 && order.clarification !== 'pending' && (
             <div className="glass-card p-4 space-y-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#64748b' }}>Your attachments</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#5C6E8C' }}>Your attachments</div>
               {clientDocs.map((d, i) => (
-                <div key={d.id || i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(30,41,59,0.08)' }}>
-                  <FileText className="w-4 h-4 flex-shrink-0" style={{ color: d.type === 'pdf' ? '#dc2626' : d.type === 'word' ? '#2563eb' : '#64748b' }} />
-                  <div className="flex-1 min-w-0"><div className="text-[13px] font-medium truncate" style={{ color:'#1e293b' }}>{d.name}</div></div>
+                <div key={d.id || i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(18,40,76,0.08)' }}>
+                  <FileText className="w-4 h-4 flex-shrink-0" style={{ color: d.type === 'pdf' ? '#dc2626' : d.type === 'word' ? '#2441E5' : '#5C6E8C' }} />
+                  <div className="flex-1 min-w-0"><div className="text-[13px] font-medium truncate" style={{ color:'#12284C' }}>{d.name}</div></div>
                   {(d.url || d.path) && (
                     <button onClick={() => openDocument(d)} className="text-xs font-semibold underline" style={{ color:ROLE_COLOR, background:'none', border:'none', cursor:'pointer' }}>Open</button>
                   )}
@@ -397,13 +397,13 @@ function OrderDetailPage() {
           )}
           {docs.length > 0 && (
             <div className="glass-card p-4 space-y-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#64748b' }}>Delivered documents</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#5C6E8C' }}>Delivered documents</div>
               {docs.map((d, i) => (
-                <div key={d.id || i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(30,41,59,0.08)' }}>
-                  <FileText className="w-4 h-4 flex-shrink-0" style={{ color: d.type === 'pdf' ? '#dc2626' : '#2563eb' }} />
+                <div key={d.id || i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(18,40,76,0.08)' }}>
+                  <FileText className="w-4 h-4 flex-shrink-0" style={{ color: d.type === 'pdf' ? '#dc2626' : '#2441E5' }} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-medium truncate" style={{ color:'#1e293b' }}>{d.name}</div>
-                    <div className="text-[10px] uppercase tracking-wide" style={{ color:'#64748b' }}>{d.label}</div>
+                    <div className="text-[13px] font-medium truncate" style={{ color:'#12284C' }}>{d.name}</div>
+                    <div className="text-[10px] uppercase tracking-wide" style={{ color:'#5C6E8C' }}>{d.label}</div>
                   </div>
                   {(d.url || d.path) && (
                     <button onClick={() => openDocument(d)} className="text-xs font-semibold underline" style={{ color:ROLE_COLOR, background:'none', border:'none', cursor:'pointer' }}>Open</button>
@@ -416,8 +416,8 @@ function OrderDetailPage() {
           {order.workflow?.invoiceVisibleToClient ? (
             <InvoiceCard order={order} />
           ) : (
-            <div className="glass-card p-4 text-sm" style={{ color:'#64748b' }}>
-              <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#64748b' }}>Billing</div>
+            <div className="glass-card p-4 text-sm" style={{ color:'#5C6E8C' }}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Billing</div>
               No invoice yet — it becomes available once the order is delivered.
             </div>
           )}
@@ -448,15 +448,15 @@ function OrderDetailPage() {
       {tab === 'activity' && (
         <div className="glass-card p-4">
           {activity.length === 0 ? (
-            <div className="text-sm text-center py-8" style={{ color:'#64748b' }}>No activity on this order yet.</div>
+            <div className="text-sm text-center py-8" style={{ color:'#5C6E8C' }}>No activity on this order yet.</div>
           ) : (
             <div className="space-y-0">
               {activity.map((n, i) => (
-                <div key={n.id || i} className="flex gap-3 py-3 border-b last:border-b-0" style={{ borderColor:'rgba(30,41,59,0.07)' }}>
-                  <span className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: ACTIVITY_DOT[n.type] || '#64748b' }} />
+                <div key={n.id || i} className="flex gap-3 py-3 border-b last:border-b-0" style={{ borderColor:'rgba(18,40,76,0.07)' }}>
+                  <span className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: ACTIVITY_DOT[n.type] || '#5C6E8C' }} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px]" style={{ color:'#1e293b' }}>{n.action}</div>
-                    {n.time && <div className="text-[11px] mt-0.5" style={{ color:'#94a3b8' }}>{n.time}</div>}
+                    <div className="text-[13px]" style={{ color:'#12284C' }}>{n.action}</div>
+                    {n.time && <div className="text-[11px] mt-0.5" style={{ color:'#9AA8BF' }}>{n.time}</div>}
                   </div>
                 </div>
               ))}
@@ -568,11 +568,11 @@ function PlaceOrderPage() {
   // Demo is a read-only sandbox — no real orders created.
   if (user?.demo) return (
     <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[60vh] text-center">
-      <div className="w-16 h-16 rounded-full flex items-center justify-center mb-5" style={{ background:'rgba(77,124,47,0.14)' }}>
+      <div className="w-16 h-16 rounded-full flex items-center justify-center mb-5" style={{ background:'rgba(36,65,229,0.14)' }}>
         <PlusCircle className="w-8 h-8" style={{ color:ROLE_COLOR }} />
       </div>
-      <h2 className="text-xl font-bold mb-2" style={{ color:'#1e293b' }}>Placing orders is disabled in the demo</h2>
-      <p className="text-sm mb-6" style={{ color:'#475569' }}>
+      <h2 className="text-xl font-bold mb-2" style={{ color:'#12284C' }}>Placing orders is disabled in the demo</h2>
+      <p className="text-sm mb-6" style={{ color:'#3D5171' }}>
         You're exploring a read-only sandbox. Create a free account to place and track real title orders.
       </p>
       <button onClick={() => navigate('/client/orders')} className="btn-primary text-sm px-5 py-2.5">
@@ -585,14 +585,14 @@ function PlaceOrderPage() {
     <motion.div initial={{ opacity:0, scale:0.95 }} animate={{ opacity:1, scale:1 }}
       className="flex flex-col items-center justify-center min-h-[60vh] text-center">
       <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6"
-        style={{ background:'rgba(109,188,120,0.18)' }}>
+        style={{ background:'rgba(0,184,217,0.18)' }}>
         <CheckCircle className="w-10 h-10" style={{ color:'#15803d' }} />
       </div>
-      <h2 className="text-2xl font-bold mb-2" style={{ color:'#1e293b' }}>Order Submitted!</h2>
-      <p className="text-sm mb-1" style={{ color:'#475569' }}>
+      <h2 className="text-2xl font-bold mb-2" style={{ color:'#12284C' }}>Order Submitted!</h2>
+      <p className="text-sm mb-1" style={{ color:'#3D5171' }}>
         Assigned <span className="font-mono font-bold" style={{ color:ROLE_COLOR }}>{createdId || 'RTS-10049'}</span>
       </p>
-      <p className="text-xs mb-8" style={{ color:'#64748b' }}>
+      <p className="text-xs mb-8" style={{ color:'#5C6E8C' }}>
         We'll email a quote to {form.email || 'your email'} within 1 business hour.
       </p>
       <div className="flex gap-3">
@@ -606,8 +606,8 @@ function PlaceOrderPage() {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-1" style={{ color:'#1e293b' }}>Place a New Order</h1>
-        <p className="text-sm" style={{ color:'#64748b' }}>Title search across all 50 states · Confirmation within minutes</p>
+        <h1 className="text-2xl font-bold mb-1" style={{ color:'#12284C' }}>Place a New Order</h1>
+        <p className="text-sm" style={{ color:'#5C6E8C' }}>Title search across all 50 states · Confirmation within minutes</p>
       </div>
       {/* Steps indicator */}
       <div className="flex items-center gap-2 mb-8">
@@ -616,18 +616,18 @@ function PlaceOrderPage() {
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => i+1 < step && setStep(i+1)}>
               <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all"
                 style={i+1 < step
-                  ? { background:'#3d7020', color:'#f5f7f2' }
+                  ? { background:'#2441E5', color:'#FFFFFF' }
                   : i+1 === step
-                  ? { background:'#3d7020', color:'#f5f7f2', boxShadow:`0 0 0 3px rgba(90,140,62,0.25)` }
-                  : { background:'rgba(30,41,59,0.07)', color:'#64748b' }}>
+                  ? { background:'#2441E5', color:'#FFFFFF', boxShadow:`0 0 0 3px rgba(90,140,62,0.25)` }
+                  : { background:'rgba(18,40,76,0.07)', color:'#5C6E8C' }}>
                 {i+1 < step ? <CheckCircle className="w-3.5 h-3.5" /> : i+1}
               </div>
               <span className="text-xs font-medium hidden sm:block"
-                style={{ color: i+1===step ? '#1e293b' : '#64748b' }}>{s}</span>
+                style={{ color: i+1===step ? '#12284C' : '#5C6E8C' }}>{s}</span>
             </div>
             {i < STEPS.length-1 && (
               <div className="flex-1 h-0.5 rounded-full"
-                style={{ background: i+1 < step ? '#4d8c2a' : 'rgba(30,41,59,0.10)' }} />
+                style={{ background: i+1 < step ? '#1B34C4' : 'rgba(18,40,76,0.10)' }} />
             )}
           </React.Fragment>
         ))}
@@ -638,38 +638,38 @@ function PlaceOrderPage() {
           <form onSubmit={e => { e.preventDefault(); submit() }}>
             {step===1 && (
               <div className="space-y-4">
-                <h2 className="text-lg font-semibold mb-4" style={{ color:'#1e293b' }}>Property Information</h2>
+                <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Property Information</h2>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Property State *</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Property State *</label>
                   <select value={form.state} onChange={e=>set('state',e.target.value)} className="input-field text-sm" required>
                     <option value="">Select state…</option>
                     {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>County *</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>County *</label>
                   <input value={form.county} onChange={e=>set('county',e.target.value)} placeholder="e.g. Miami-Dade" className="input-field text-sm" required/>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Property Address</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Property Address</label>
                   <input value={form.address} onChange={e=>set('address',e.target.value)} placeholder="123 Main St, City, State 00000" className="input-field text-sm"/>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>City</label>
+                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>City</label>
                     <input value={form.city} onChange={e=>set('city',e.target.value)} placeholder="Springfield" className="input-field text-sm"/>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>ZIP <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
+                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>ZIP <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
                     <input value={form.zip} onChange={e=>set('zip',e.target.value)} placeholder="62701" className="input-field text-sm"/>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Parcel / APN # <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Parcel / APN # <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
                   <input value={form.parcelId} onChange={e=>set('parcelId',e.target.value)} placeholder="14-25-376-012" className="input-field text-sm"/>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Parties <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Parties <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
                   <div className="space-y-2">
                     {[
                       { label:'Buyer',    first:'buyerFirst',    last:'buyerLast' },
@@ -677,7 +677,7 @@ function PlaceOrderPage() {
                       { label:'Seller',   first:'sellerFirst',   last:'sellerLast' },
                     ].map(p => (
                       <div key={p.label} className="grid grid-cols-1 sm:grid-cols-[80px,1fr,1fr] gap-2 sm:items-center">
-                        <span className="text-xs font-medium" style={{ color:'#475569' }}>{p.label}</span>
+                        <span className="text-xs font-medium" style={{ color:'#3D5171' }}>{p.label}</span>
                         <input value={form[p.first]} onChange={e=>set(p.first,e.target.value)} placeholder="First Name" className="input-field text-sm"/>
                         <input value={form[p.last]}  onChange={e=>set(p.last,e.target.value)}  placeholder="Last Name"  className="input-field text-sm"/>
                       </div>
@@ -688,9 +688,9 @@ function PlaceOrderPage() {
             )}
             {step===2 && (
               <div className="space-y-4">
-                <h2 className="text-lg font-semibold mb-4" style={{ color:'#1e293b' }}>Search Details</h2>
+                <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Search Details</h2>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color:'#64748b' }}>Titled Products *</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color:'#5C6E8C' }}>Titled Products *</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {PRODUCTS.map(p => {
                       const active = form.searchType === p.name
@@ -699,84 +699,84 @@ function PlaceOrderPage() {
                           className="p-3 rounded-xl text-left border transition-all"
                           style={active
                             ? { border:`1px solid ${ROLE_COLOR}66`, background:`${ROLE_COLOR}14`, boxShadow:`0 0 0 1px ${ROLE_COLOR}44` }
-                            : { border:'1px solid #e2e8f0', background:'#fff' }}>
+                            : { border:'1px solid #DDE3EC', background:'#fff' }}>
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-semibold text-sm" style={{ color:'#1e293b' }}>{p.name}</span>
+                            <span className="font-semibold text-sm" style={{ color:'#12284C' }}>{p.name}</span>
                             {p.price != null && <span className="font-bold text-sm" style={{ color:'#b45309' }}>${p.price}</span>}
                           </div>
-                          <p className="text-[11px] mt-1 leading-snug" style={{ color:'#64748b' }}>{p.desc}</p>
-                          {p.tat && <span className="inline-block mt-2 text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ background:'#f1f5f9', color:'#475569' }}>⏱ {p.tat}</span>}
+                          <p className="text-[11px] mt-1 leading-snug" style={{ color:'#5C6E8C' }}>{p.desc}</p>
+                          {p.tat && <span className="inline-block mt-2 text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ background:'#EDF0F5', color:'#3D5171' }}>⏱ {p.tat}</span>}
                         </button>
                       )
                     })}
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color:'#64748b' }}>Turnaround</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color:'#5C6E8C' }}>Turnaround</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {TURNAROUND.map(t => (
                       <button key={t.key} type="button" onClick={() => set('priority', t.key)}
                         className="p-3 rounded-xl text-left border transition-all"
                         style={form.priority===t.key
                           ? { border:`1px solid ${ROLE_COLOR}66`, background:`${ROLE_COLOR}14` }
-                          : { border:'1px solid #e2e8f0', background:'#fff' }}>
+                          : { border:'1px solid #DDE3EC', background:'#fff' }}>
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold text-sm" style={{ color:'#1e293b' }}>{t.label}</span>
-                          <span className="text-xs font-bold" style={{ color: t.fee ? '#b45309' : '#64748b' }}>+${t.fee}</span>
+                          <span className="font-semibold text-sm" style={{ color:'#12284C' }}>{t.label}</span>
+                          <span className="text-xs font-bold" style={{ color: t.fee ? '#b45309' : '#5C6E8C' }}>+${t.fee}</span>
                         </div>
-                        <div className="text-xs mt-0.5" style={{ color:'#64748b' }}>{t.desc}</div>
+                        <div className="text-xs mt-0.5" style={{ color:'#5C6E8C' }}>{t.desc}</div>
                       </button>
                     ))}
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Special Instructions</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Special Instructions</label>
                   <textarea value={form.notes} onChange={e=>set('notes',e.target.value)} rows={3} className="input-field text-sm resize-none" placeholder="Any notes for the search team…"/>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Attachments <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
-                  <p className="text-[11px] mb-2" style={{ color:'#64748b' }}>Deed scans, prior title policies, payoff letters, or anything else the search team should reference.</p>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Attachments <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
+                  <p className="text-[11px] mb-2" style={{ color:'#5C6E8C' }}>Deed scans, prior title policies, payoff letters, or anything else the search team should reference.</p>
                   <ClientAttach value={attachments} onChange={setAttachments} />
                 </div>
               </div>
             )}
             {step===3 && (
               <div className="space-y-4">
-                <h2 className="text-lg font-semibold mb-4" style={{ color:'#1e293b' }}>Contact Information</h2>
+                <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Contact Information</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>First Name *</label>
+                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>First Name *</label>
                     <input value={form.firstName} onChange={e=>set('firstName',e.target.value)} placeholder="First name" className="input-field text-sm" required/>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Last Name *</label>
+                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Last Name *</label>
                     <input value={form.lastName} onChange={e=>set('lastName',e.target.value)} placeholder="Last name" className="input-field text-sm" required/>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Work Email *</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Work Email *</label>
                   <input type="email" value={form.email} onChange={e=>set('email',e.target.value)} placeholder="you@company.com" className="input-field text-sm" required/>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#64748b' }}>Company</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Company</label>
                   <input value={form.company} onChange={e=>set('company',e.target.value)} placeholder="Company name" className="input-field text-sm"/>
                 </div>
               </div>
             )}
             {step===4 && (
               <div className="space-y-4">
-                <h2 className="text-lg font-semibold mb-4" style={{ color:'#1e293b' }}>Review & Submit</h2>
+                <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Review & Submit</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[['State',form.state||'—'],['County',form.county||'—'],['Search Type',form.searchType||'—'],
                     ['Priority',form.priority.toUpperCase()],['Contact',`${form.firstName} ${form.lastName}`.trim()||'—'],['Email',form.email||'—']].map(([k,v]) => (
                     <div key={k} className="glass p-3 rounded-xl">
-                      <div className="text-xs mb-0.5" style={{ color:'#64748b' }}>{k}</div>
-                      <div className="font-medium text-sm" style={{ color:'#1e293b' }}>{v}</div>
+                      <div className="text-xs mb-0.5" style={{ color:'#5C6E8C' }}>{k}</div>
+                      <div className="font-medium text-sm" style={{ color:'#12284C' }}>{v}</div>
                     </div>
                   ))}
                 </div>
                 {attachments.length > 0 && (
-                  <div className="flex items-center gap-2 text-sm px-3 py-2.5 rounded-xl" style={{ background:'rgba(77,124,47,0.08)', border:'1px solid rgba(77,124,47,0.20)', color:'#3d7020' }}>
+                  <div className="flex items-center gap-2 text-sm px-3 py-2.5 rounded-xl" style={{ background:'rgba(36,65,229,0.08)', border:'1px solid rgba(36,65,229,0.20)', color:'#2441E5' }}>
                     <Paperclip className="w-4 h-4 flex-shrink-0" />
                     {attachments.length} {attachments.length === 1 ? 'file' : 'files'} attached
                   </div>
@@ -823,8 +823,8 @@ function ClientHome() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color:'#1e293b' }}>Client Portal</h1>
-          <p className="text-sm" style={{ color:'#475569' }}>Welcome back, Taylor Brooks</p>
+          <h1 className="text-2xl font-bold" style={{ color:'#12284C' }}>Client Portal</h1>
+          <p className="text-sm" style={{ color:'#3D5171' }}>Welcome back, Taylor Brooks</p>
         </div>
         <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }} onClick={() => navigate('/client/order')}
           className="btn-primary flex items-center gap-2 text-sm">
@@ -842,13 +842,13 @@ function ClientHome() {
             <div className="w-9 h-9 rounded-xl mb-3 flex items-center justify-center" style={{ background:`${s.color}22` }}>
               <s.icon className="w-4 h-4" style={{ color:s.color }} />
             </div>
-            <div className="text-2xl font-bold" style={{ color:'#1e293b' }}>{s.value}</div>
-            <div className="text-sm" style={{ color:'#475569' }}>{s.label}</div>
+            <div className="text-2xl font-bold" style={{ color:'#12284C' }}>{s.value}</div>
+            <div className="text-sm" style={{ color:'#3D5171' }}>{s.label}</div>
           </motion.div>
         ))}
       </div>
       <div className="space-y-4">
-        <h2 className="font-semibold" style={{ color:'#1e293b' }}>Order Tracking</h2>
+        <h2 className="font-semibold" style={{ color:'#12284C' }}>Order Tracking</h2>
         {myOrders.map(o => (
           <React.Fragment key={o.id}>
             <TrackOrder order={o} onOpen={() => navigate(`/client/orders/${o.id}`)} />
@@ -889,9 +889,9 @@ function MessagesPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold" style={{ color:'#1e293b' }}>Messages</h1>
+      <h1 className="text-2xl font-bold" style={{ color:'#12284C' }}>Messages</h1>
       {orders.length === 0 ? (
-        <div className="glass-card p-8 text-center text-sm" style={{ color:'#64748b' }}>No orders yet — messages are tied to an order.</div>
+        <div className="glass-card p-8 text-center text-sm" style={{ color:'#5C6E8C' }}>No orders yet — messages are tied to an order.</div>
       ) : (
         <div className="grid gap-4" style={{ gridTemplateColumns:'minmax(220px, 300px) 1fr' }}>
           {/* order list */}
@@ -900,13 +900,13 @@ function MessagesPage() {
               const last = lastOf(o); const isActive = active && o.id === active.id
               return (
                 <button key={o.id} onClick={() => setActiveId(o.id)}
-                  className="w-full text-left p-3 border-b" style={{ borderColor:'rgba(30,41,59,0.08)', background: isActive ? 'rgba(77,124,47,0.08)' : 'transparent', cursor:'pointer' }}>
+                  className="w-full text-left p-3 border-b" style={{ borderColor:'rgba(18,40,76,0.08)', background: isActive ? 'rgba(36,65,229,0.08)' : 'transparent', cursor:'pointer' }}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-xs font-semibold" style={{ color:ROLE_COLOR }}>{o.id}</span>
                     {last && last.from === 'support' && <span className="w-2 h-2 rounded-full" style={{ background:'#dc2626' }} title="New reply" />}
                   </div>
-                  <div className="text-[13px] font-medium truncate" style={{ color:'#1e293b' }}>{o.type}</div>
-                  <div className="text-[11px] truncate" style={{ color:'#94a3b8' }}>
+                  <div className="text-[13px] font-medium truncate" style={{ color:'#12284C' }}>{o.type}</div>
+                  <div className="text-[11px] truncate" style={{ color:'#9AA8BF' }}>
                     {last ? `${last.from === 'client' ? 'You: ' : ''}${last.text || (last.attachment ? '📎 ' + last.attachment.name : '')}` : 'No messages yet'}
                   </div>
                 </button>
@@ -916,9 +916,9 @@ function MessagesPage() {
           {/* thread */}
           <div className="glass-card p-4">
             {active && (
-              <div className="mb-3 pb-3" style={{ borderBottom:'1px solid #e2e8f0' }}>
+              <div className="mb-3 pb-3" style={{ borderBottom:'1px solid #DDE3EC' }}>
                 <div className="font-mono text-xs font-semibold" style={{ color:ROLE_COLOR }}>{active.id}</div>
-                <div className="font-bold" style={{ color:'#1e293b' }}>{active.type} · {active.county}, {active.state}</div>
+                <div className="font-bold" style={{ color:'#12284C' }}>{active.type} · {active.county}, {active.state}</div>
               </div>
             )}
             {active && (
@@ -949,15 +949,15 @@ function SupportPage() {
   }
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold" style={{ color:'#1e293b' }}>Support</h1>
+      <h1 className="text-2xl font-bold" style={{ color:'#12284C' }}>Support</h1>
       <div className="glass-card overflow-hidden flex flex-col" style={{ height:500 }}>
-        <div className="p-4 flex items-center gap-3" style={{ borderBottom:'1px solid rgba(138,194,104,0.09)' }}>
+        <div className="p-4 flex items-center gap-3" style={{ borderBottom:'1px solid rgba(36,65,229,0.09)' }}>
           <div className="w-8 h-8 rounded-xl flex items-center justify-center"
             style={{ background:`${ROLE_COLOR}30` }}>
             <MessageSquare className="w-4 h-4" style={{ color:ROLE_COLOR }} />
           </div>
           <div>
-            <div className="font-semibold text-sm" style={{ color:'#1e293b' }}>Resolute Support</div>
+            <div className="font-semibold text-sm" style={{ color:'#12284C' }}>Resolute Support</div>
             <div className="flex items-center gap-1.5 text-xs" style={{ color:'#15803d' }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ background:'#15803d' }} />
               We reply from the portal — you'll see responses here.
@@ -969,15 +969,15 @@ function SupportPage() {
             <div key={m.id || i} className={`flex ${m.from==='client' ? 'justify-end' : 'justify-start'}`}>
               <div className="max-w-xs px-4 py-2.5 rounded-2xl text-sm"
                 style={m.from==='client'
-                  ? { background:'#3d7020', color:'#f5f7f2' }
-                  : { background:'rgba(30,41,59,0.07)', color:'#1e293b', border:'1px solid rgba(138,194,104,0.12)' }}>
+                  ? { background:'#2441E5', color:'#FFFFFF' }
+                  : { background:'rgba(18,40,76,0.07)', color:'#12284C', border:'1px solid rgba(36,65,229,0.12)' }}>
                 {m.text}
-                {m.time && <div className="text-xs mt-1" style={{ color: m.from==='client' ? '#c7d9b8' : '#64748b' }}>{m.time}</div>}
+                {m.time && <div className="text-xs mt-1" style={{ color: m.from==='client' ? '#c7d9b8' : '#5C6E8C' }}>{m.time}</div>}
               </div>
             </div>
           ))}
         </div>
-        <div className="p-3 flex gap-2" style={{ borderTop:'1px solid rgba(138,194,104,0.09)' }}>
+        <div className="p-3 flex gap-2" style={{ borderTop:'1px solid rgba(36,65,229,0.09)' }}>
           <input value={msg} onChange={e=>setMsg(e.target.value)}
             placeholder="Type a message…" className="input-field text-sm flex-1 py-2" />
           <button onClick={send} className="btn-primary px-4 py-2 text-sm flex items-center gap-1.5">
@@ -1006,9 +1006,9 @@ function MyOrdersPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold" style={{ color: '#1e293b' }}>My Orders</h1>
+        <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>My Orders</h1>
         <div className="relative" style={{ minWidth: 260 }}>
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#9AA8BF' }} />
           <input value={q} onChange={e => setQ(e.target.value)}
             placeholder="Search order #, property, status…"
             className="input-field text-sm pl-9 w-full" />
@@ -1022,7 +1022,7 @@ function MyOrdersPage() {
           </React.Fragment>
         ))}
         {shown.length === 0 && (
-          <div className="glass-card p-8 text-center text-sm" style={{ color: '#64748b' }}>
+          <div className="glass-card p-8 text-center text-sm" style={{ color: '#5C6E8C' }}>
             {myOrders.length === 0 ? 'No orders yet.' : `No orders match “${q}”.`}
           </div>
         )}
@@ -1042,7 +1042,7 @@ export default function ClientDashboard() {
     <Layout navItems={NAV} role="client" roleColor={ROLE_COLOR}>
       {user?.demo && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm"
-          style={{ background:'rgba(77,124,47,0.10)', border:'1px solid rgba(77,124,47,0.28)', color:'#3d7020' }}>
+          style={{ background:'rgba(36,65,229,0.10)', border:'1px solid rgba(36,65,229,0.28)', color:'#2441E5' }}>
           <Zap className="w-4 h-4 flex-shrink-0" />
           <span><strong>Demo mode</strong> — sample data, read-only. Nothing here is real, and it resets when you refresh.</span>
         </div>

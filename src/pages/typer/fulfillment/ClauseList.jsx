@@ -125,7 +125,7 @@ export default function ClauseList({
           style={{
             color: noneFlag ? T.accentBright : T.faint,
             border: `1px solid ${noneFlag ? T.borderStrong : T.border}`,
-            background: noneFlag ? 'rgba(124,191,78,0.10)' : 'transparent',
+            background: noneFlag ? 'rgba(36,65,229,0.10)' : 'transparent',
           }}>
           <Check className="w-3.5 h-3.5" /> {noneLabel}
         </button>
@@ -161,7 +161,7 @@ function RowAct({ icon: Icon, onClick, children }) {
 function Chip({ children, warn }) {
   return (
     <span className="text-[10px] font-semibold uppercase tracking-[0.1em] px-1.5 py-0.5 rounded"
-      style={{ color: warn ? T.warn : T.accentBright, background: warn ? 'rgba(196,164,78,0.12)' : 'rgba(124,191,78,0.10)' }}>
+      style={{ color: warn ? T.warn : T.accentBright, background: warn ? 'rgba(196,164,78,0.12)' : 'rgba(36,65,229,0.10)' }}>
       {children}
     </span>
   )

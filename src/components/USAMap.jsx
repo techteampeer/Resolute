@@ -28,12 +28,13 @@ const NAMES = {
   VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',
 }
 
-function getOliveColor(count) {
-  if (!count || count === 0) return 'rgba(61, 112, 32, 0.18)'
-  if (count <= 4)  return 'rgba(61, 112, 32, 0.38)'
-  if (count <= 9)  return 'rgba(77, 140, 42, 0.56)'
-  if (count <= 18) return 'rgba(106, 171, 66, 0.74)'
-  return 'rgba(143, 194, 104, 0.90)'
+// Order density along the brand ramp: navy (sparse) → indigo → cyan (dense).
+function getDensityColor(count) {
+  if (!count || count === 0) return 'rgba(18, 40, 76, 0.14)'
+  if (count <= 4)  return 'rgba(27, 58, 140, 0.42)'
+  if (count <= 9)  return 'rgba(36, 65, 229, 0.62)'
+  if (count <= 18) return 'rgba(18, 104, 168, 0.78)'
+  return 'rgba(0, 184, 217, 0.92)'
 }
 
 const W = 960, H = 560
@@ -85,8 +86,8 @@ export default function USAMap({ compact = false }) {
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center gap-3">
           <div className="w-5 h-5 border-2 rounded-full animate-spin"
-            style={{ borderColor: 'rgba(143,194,104,0.25)', borderTopColor: 'rgba(143,194,104,0.8)' }} />
-          <span className="text-xs" style={{ color: '#64748b' }}>Loading map…</span>
+            style={{ borderColor: 'rgba(36,65,229,0.25)', borderTopColor: 'rgba(36,65,229,0.8)' }} />
+          <span className="text-xs" style={{ color: '#5C6E8C' }}>Loading map…</span>
         </div>
       )}
 
@@ -114,10 +115,10 @@ export default function USAMap({ compact = false }) {
             <g key={st.fips}>
               <path
                 d={st.d}
-                fill={isHovered ? 'rgba(168, 210, 128, 0.88)' : getOliveColor(orders)}
+                fill={isHovered ? 'rgba(0, 184, 217, 0.95)' : getDensityColor(orders)}
                 stroke={isHovered
-                  ? 'rgba(220, 240, 180, 0.9)'
-                  : 'rgba(138, 194, 104, 0.30)'}
+                  ? 'rgba(255, 255, 255, 0.9)'
+                  : 'rgba(36, 65, 229, 0.28)'}
                 strokeWidth={isHovered ? 1.8 : 0.8}
                 style={{
                   cursor: 'pointer',
@@ -136,7 +137,7 @@ export default function USAMap({ compact = false }) {
                   dominantBaseline="middle"
                   fontSize={orders > 10 ? 9 : 7}
                   fontWeight={orders > 10 ? '600' : '400'}
-                  fill={isHovered ? 'rgba(30,41,59,0.95)' : '#475569'}
+                  fill={isHovered ? 'rgba(18,40,76,0.95)' : '#3D5171'}
                   style={{ pointerEvents: 'none', userSelect: 'none' }}
                 >
                   {st.abbrev}
@@ -151,7 +152,7 @@ export default function USAMap({ compact = false }) {
           .filter(st => (STATE_ORDERS[st.abbrev] || 0) >= 20 && st.cx && st.cy)
           .map(st => (
             <g key={`pulse-${st.fips}`} style={{ pointerEvents: 'none' }}>
-              <circle cx={st.cx} cy={st.cy - 14} r="4" fill="#8fc268" opacity="0.85">
+              <circle cx={st.cx} cy={st.cy - 14} r="4" fill="#00B8D9" opacity="0.85">
                 <animate attributeName="r"       values="4;9;4"     dur="2.2s" repeatCount="indefinite"/>
                 <animate attributeName="opacity" values="0.85;0;0.85" dur="2.2s" repeatCount="indefinite"/>
               </circle>
@@ -177,18 +178,18 @@ export default function USAMap({ compact = false }) {
             }}
           >
             <div className="glass-card px-4 py-3 min-w-[170px]"
-              style={{ border: '1px solid rgba(143,194,104,0.35)' }}>
-              <div className="font-semibold text-sm mb-0.5" style={{ color: '#1e293b' }}>
+              style={{ border: '1px solid rgba(36,65,229,0.35)' }}>
+              <div className="font-semibold text-sm mb-0.5" style={{ color: '#12284C' }}>
                 {NAMES[hovered] || hovered}
               </div>
-              <div className="text-xs font-medium mb-2" style={{ color: '#4d7c2f' }}>
+              <div className="text-xs font-medium mb-2" style={{ color: '#2441E5' }}>
                 {STATE_ORDERS[hovered] || 0} active orders
               </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(30,41,59,0.10)' }}>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(18,40,76,0.10)' }}>
                 <div className="h-full rounded-full"
                   style={{
                     width: `${((STATE_ORDERS[hovered] || 0) / maxOrders) * 100}%`,
-                    background: 'linear-gradient(90deg, #3d7020, #8fc268)',
+                    background: 'linear-gradient(90deg, #2441E5, #00B8D9)',
                     transition: 'width 0.3s ease',
                   }} />
               </div>
@@ -200,16 +201,16 @@ export default function USAMap({ compact = false }) {
       {/* Legend */}
       {!compact && (
         <div className="absolute bottom-1 right-3 flex items-center gap-3 flex-wrap">
-          <span className="text-xs" style={{ color: '#64748b' }}>Orders</span>
+          <span className="text-xs" style={{ color: '#5C6E8C' }}>Orders</span>
           {[
-            ['rgba(61,112,32,0.38)',  '1–4'],
-            ['rgba(77,140,42,0.56)',  '5–9'],
-            ['rgba(106,171,66,0.74)', '10–18'],
-            ['rgba(143,194,104,0.90)','19+'],
+            ['rgba(27,58,140,0.42)',  '1–4'],
+            ['rgba(36,65,229,0.62)',  '5–9'],
+            ['rgba(18,104,168,0.78)', '10–18'],
+            ['rgba(0,184,217,0.92)',  '19+'],
           ].map(([c, l]) => (
             <div key={l} className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-sm" style={{ background: c, border: '1px solid rgba(143,194,104,0.25)' }} />
-              <span className="text-xs" style={{ color: '#64748b' }}>{l}</span>
+              <div className="w-3 h-3 rounded-sm" style={{ background: c, border: '1px solid rgba(36,65,229,0.25)' }} />
+              <span className="text-xs" style={{ color: '#5C6E8C' }}>{l}</span>
             </div>
           ))}
         </div>
