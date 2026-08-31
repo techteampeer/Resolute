@@ -13,7 +13,7 @@ import {
 } from '../data/fulfillment'
 import { LOGO_SVG } from '../components/CommitmentDocument'
 
-const GREEN = '#2441E5'
+const ACCENT = '#2441E5'
 const TEXT   = '#12284C'
 const MUTED  = '#5C6E8C'
 const BORDER = '#DDE3EC'
@@ -130,7 +130,7 @@ export function commitmentDocDefinition(order, f) {
         },
       ],
     },
-    { canvas: [{ type: 'line', x1: 0, y1: 4, x2: 511, y2: 4, lineWidth: 2, lineColor: GREEN }] },
+    { canvas: [{ type: 'line', x1: 0, y1: 4, x2: 511, y2: 4, lineWidth: 2, lineColor: ACCENT }] },
 
     heading('Search Information'),
     grid([
@@ -202,11 +202,11 @@ export function commitmentDocDefinition(order, f) {
     content,
     styles: {
       h1: { fontSize: 15, bold: true, color: TEXT },
-      h2: { fontSize: 10, bold: true, color: GREEN, characterSpacing: 0.5 },
+      h2: { fontSize: 10, bold: true, color: ACCENT, characterSpacing: 0.5 },
       meta: { fontSize: 8, color: MUTED, margin: [0, 2, 0, 0] },
       k: { fontSize: 7.5, color: MUTED, characterSpacing: 0.3 },
       v: { fontSize: 8.5, bold: true, color: TEXT },
-      th: { fontSize: 7.5, bold: true, color: '#33501a', fillColor: '#f0f7ea' },
+      th: { fontSize: 7.5, bold: true, color: '#12284C', fillColor: '#EEF1FE' },
       disclaimer: { fontSize: 7, color: MUTED, lineHeight: 1.35 },
     },
     defaultStyle: { font: 'Roboto', fontSize: 9.5, color: TEXT, lineHeight: 1.35 },

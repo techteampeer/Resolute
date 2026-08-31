@@ -86,7 +86,7 @@ export function buildCommitmentHtml(order, f) {
   .grid .k { color: #5C6E8C; text-transform: uppercase; font-size: 8pt; letter-spacing: 0.04em; }
   .grid .v { color: #12284C; font-weight: 600; text-align: right; }
   table { width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 9pt; margin-top: 4px; }
-  th { background: #f0f7ea; color: #33501a; text-align: left; padding: 5px 7px; border: 1px solid #d9e7cc; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.03em; }
+  th { background: #EEF1FE; color: #12284C; text-align: left; padding: 5px 7px; border: 1px solid #C6CFFA; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.03em; }
   td { padding: 5px 7px; border: 1px solid #DDE3EC; vertical-align: top; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   p.legal { white-space: pre-wrap; text-align: justify; }

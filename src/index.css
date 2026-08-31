@@ -95,7 +95,10 @@
 
   /* Olive green → deep gold gradient text (reads on light) */
   .gradient-text {
-    background: linear-gradient(135deg, #2441E5 0%, #6aab42 45%, #a87630 100%);
+    /* Brand indigo → deep cyan. Both ends clear 4.5:1 on the page ground, so the
+       whole run stays legible — the finalised cyan (#00B8D9) is 2.2:1 and is
+       reserved for fills, never text. */
+    background: linear-gradient(135deg, #2441E5 0%, #0E7490 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
