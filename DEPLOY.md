@@ -49,3 +49,55 @@ npm install
 npm run build      # outputs to dist/
 npm run preview    # serve the production build locally
 ```
+
+A green local build is **not** enough on its own — see the next section.
+
+## vercel.json: no comments, and it is validated before the build
+
+Vercel validates `vercel.json` against its schema *before* it starts building.
+An invalid file fails the deployment at that point, so there is no build log to
+read — the deploy just never happens, and the last good build keeps serving.
+That is a silent failure mode: the site looks fine, it is simply frozen.
+
+This happened. A `"comment"` key was added to each `headers[]` entry to explain
+the caching rules. `headers[]` items allow only `source`, `headers`, `has` and
+`missing`, with `additionalProperties: false`, so every deployment failed from
+that commit onward — for three weeks, while `npm run build` passed locally the
+whole time.
+
+**JSON has no comments. Explanations go here, not in the file.**
+
+### Why the cache headers exist
+
+`vercel.json` rewrites every non-`/api` path to `/index.html`. Without cache
+rules the shell could be served from cache, and `index.html` is the only file
+that names the current hashed bundle — so a cached shell keeps loading the
+*previous* deploy's JS and the app stays on old code indefinitely, immune to a
+plain refresh.
+
+- `/assets/*` is content-hashed, so the filename changes whenever the content
+  does: safe to cache for a year, `immutable`.
+- Everything else is the shell: `max-age=0, must-revalidate`.
+
+### Checking the file before you push
+
+```bash
+curl -s https://openapi.vercel.sh/vercel.json -o /tmp/vercel-schema.json
+python3 -c "
+import json; from jsonschema import Draft7Validator
+errs = list(Draft7Validator(json.load(open('/tmp/vercel-schema.json'))).iter_errors(json.load(open('vercel.json'))))
+print('valid' if not errs else [f\"{'/'.join(map(str,e.path))}: {e.message}\" for e in errs])
+"
+```
+
+### Confirming a deploy actually shipped
+
+Compare what the live site serves against what you expect, rather than trusting
+the dashboard:
+
+```bash
+curl -s https://<your-app>/ | grep -oE '/assets/[^"]+\.css'   # current bundle
+curl -s https://<your-app>/assets/index-XXXX.css | grep -c '#2441E5'
+```
+
+`0` means the deployment predates the current palette.
