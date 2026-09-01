@@ -6,11 +6,13 @@
 -- Backfill the existing rows from their action text. Idempotent: it only
 -- promotes rows still sitting at the default.
 
--- The column itself was originally added out-of-band (applied straight to the
--- project, never written to a migration), so the repo could not rebuild the
--- schema from scratch — this file failed on a fresh database, and every
--- migration after it went unapplied. Adding it here makes the history
--- self-contained. On any project that already has the column this is a no-op.
+-- The column was introduced on the branch claude/supabase-mcp-integration-6ten6w
+-- (20260729000000_order_events_audience.sql), which was applied to the project
+-- but never merged — so the project had the column while this history did not,
+-- and the file failed on a fresh database, taking every later migration with
+-- it. Adding it here makes this file self-contained; on a project that already
+-- has the column it is a no-op. The policy and trigger that migration also
+-- carried are restored in 20260901200000.
 alter table public.order_events
   add column if not exists audience text not null default 'staff';
 do $$ begin
