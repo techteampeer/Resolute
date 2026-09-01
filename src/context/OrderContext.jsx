@@ -38,7 +38,12 @@ export function OrderProvider({ children }) {
   // trail (orderId/actor ride on the entry when the caller knows them).
   const log = (entry) => {
     setActivityLog(a => [entry, ...a])
-    if (isSupabaseConfigured) logEvent({ orderId: entry.orderId, action: entry.action, type: entry.type, actor: entry.actor, audience: entry.audience || 'staff' })
+    if (isSupabaseConfigured) logEvent({
+      orderId: entry.orderId, action: entry.action, type: entry.type, actor: entry.actor,
+      // Whoever performed the action does not need to be told about it.
+      actorEmail: entry.actorEmail || user?.email || null,
+      audience: entry.audience || 'staff',
+    })
   }
   const persist = (order) => { if (isSupabaseConfigured) saveOrder(order) }
 
@@ -205,6 +210,9 @@ export function OrderProvider({ children }) {
       state: data.state || '', county: data.county || '', type: data.type || 'Full Search',
       status: 'received', priority: data.priority || 'normal', payment: data.payment || 'Check',
       clarification: null, assignedTo: 'admin',
+      // The client's own reference. Display only — it leads the subject line of
+      // every notification so the team can match mail to the client's system.
+      clientFileNo: (data.clientFileNo || '').trim() || null,
       screener: null, examiner: null, typer: null, delivery: null,
       progress: 5, created: todayISO(), eta: data.eta || '', completed: null,
       completedDates: {}, completedBy: {},

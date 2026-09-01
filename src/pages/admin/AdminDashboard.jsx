@@ -449,6 +449,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                   <Detail label="Property" value={intake.propertyAddress} wide />
                   <Detail label="County / State" value={[order.county, order.state].filter(Boolean).join(', ')} />
                   <Detail label="Parcel / APN" value={intake.parcelNumberAPN} />
+                  <Detail label="Client file #" value={order.clientFileNo} />
                   <Detail label="Buyer" value={intake.buyer} />
                   <Detail label="Borrower" value={intake.borrowerName} />
                   <Detail label="Seller" value={intake.seller} />
@@ -815,7 +816,11 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
 
   const filtered = orders.filter(o => {
     const q = search.toLowerCase()
-    const matchSearch = !q || displayClient(o.client, user).toLowerCase().includes(q) || o.id.toLowerCase().includes(q)
+    // Include the client's own file number: it is the reference they quote on
+    // the phone and in email subjects, so it has to be searchable here.
+    const matchSearch = !q || displayClient(o.client, user).toLowerCase().includes(q)
+      || o.id.toLowerCase().includes(q)
+      || (o.clientFileNo || '').toLowerCase().includes(q)
     const matchTab    = activeTab === 'all' || lifecycleOf(o) === activeTab
     const matchRegion = region === 'all'  || regionOf(o.state) === region
     const matchState  = stateF === 'all'  || o.state === stateF

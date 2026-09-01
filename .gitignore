@@ -17,3 +17,6 @@ supabase/.temp/
 
 # local UI-audit scripts (not part of the app)
 .audit/
+
+# Generated notification previews (scripts/preview-notifications.mjs)
+preview/

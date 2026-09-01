@@ -16,6 +16,7 @@ const toAppOrder = (r) => ({
   state: r.state, county: r.county, type: r.type,
   status: r.status, priority: r.priority, payment: r.payment,
   clarification: r.clarification,
+  clientFileNo: r.client_file_no,
   assignedTo: r.assigned_to,
   screener: r.screener, examiner: r.examiner, typer: r.typer, delivery: r.delivery,
   progress: r.progress,
@@ -31,6 +32,7 @@ const toAppOrder = (r) => ({
 const dateOrNull = (v) => (v ? v : null)
 const toOrderRow = (o) => ({
   status: o.status, priority: o.priority, payment: o.payment, clarification: o.clarification,
+  client_file_no: o.clientFileNo || null,
   assigned_to: o.assignedTo,
   screener: o.screener, examiner: o.examiner, typer: o.typer, delivery: o.delivery,
   progress: o.progress, eta: dateOrNull(o.eta), completed: dateOrNull(o.completed),
@@ -242,8 +244,10 @@ export async function fetchActivity(limit = 50) {
 // 'client' (client-facing), or 'all'. It gates client visibility in RLS
 // (order_events_client_read) — without it a client sees none of their own
 // order history — so it outlived the email system it was first added for.
-export async function logEvent({ orderId = null, action, type = 'status', actor = null, audience = 'staff' }) {
-  const { error } = await supabase.from('order_events').insert({ order_id: orderId, action, type, actor, audience })
+// actorEmail is what stops someone being notified about their own action — the
+// fan-out trigger excludes it. Distinct from `actor`, which is a display name.
+export async function logEvent({ orderId = null, action, type = 'status', actor = null, actorEmail = null, audience = 'staff' }) {
+  const { error } = await supabase.from('order_events').insert({ order_id: orderId, action, type, actor, actor_email: actorEmail, audience })
   if (error) console.error('[logEvent]', error.message)
 }
 

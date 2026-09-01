@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth, toErrorMessage } from '../context/AuthContext'
 import {
@@ -39,7 +39,17 @@ const SHOW_DEMO = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO_CREDS ==
 // same auth backend; the split is UX + not advertising internal roles to clients.
 export default function LoginPage({ variant = 'client' }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { login, loginAsDemo } = useAuth()
+
+  // Where to land after signing in. ProtectedRoute stashes the page the user
+  // was trying to reach (a notification's deep link, typically); honour it only
+  // when it belongs to the role that just signed in, otherwise ProtectedRoute
+  // would immediately bounce them and the redirect would be a wasted hop.
+  const destinationFor = (role) => {
+    const from = location.state?.from
+    return (typeof from === 'string' && from.startsWith(`/${role}/`)) ? from : `/${role}`
+  }
   const isStaff = variant === 'staff'
   const showPicker = isStaff && SHOW_DEMO
   const [selectedRole, setSelectedRole] = useState(null)
@@ -72,7 +82,7 @@ export default function LoginPage({ variant = 'client' }) {
     try {
       await new Promise(r => setTimeout(r, 250))
       const result = await login(email, password)
-      if (result?.success) navigate(`/${result.role}`)
+      if (result?.success) navigate(destinationFor(result.role), { replace: true })
       else setError(toErrorMessage(result?.error))
     } catch (err) {
       setError(toErrorMessage(err))
