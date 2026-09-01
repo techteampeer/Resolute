@@ -367,6 +367,7 @@ function OrderDetailPage() {
             <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Order details</div>
             <Row k="Property" v={intake?.propertyAddress} />
             <Row k="Parcel / APN" v={intake?.parcelNumberAPN} />
+            <Row k="Your file #" v={order.clientFileNo} />
             <Row k="Buyer" v={intake?.buyer} />
             <Row k="Borrower" v={intake?.borrowerName} />
             <Row k="Seller" v={intake?.seller} />
@@ -493,7 +494,7 @@ function PlaceOrderPage() {
   // prefill from the signed-in profile (still editable per order).
   const [first = '', ...rest] = (user?.name || '').split(' ')
   const [form, setForm] = useState({
-    searchType:'', state:'', county:'', address:'', city:'', zip:'', parcelId:'',
+    searchType:'', state:'', county:'', address:'', city:'', zip:'', parcelId:'', clientFileNo:'',
     buyerFirst:'', buyerLast:'', borrowerFirst:'', borrowerLast:'', sellerFirst:'', sellerLast:'',
     priority:'normal',
     firstName: first, lastName: rest.join(' '),
@@ -526,6 +527,7 @@ function PlaceOrderPage() {
       const order = await createOrder({
         state: form.state, county: form.county, type: form.searchType || 'Full Search',
         priority: form.priority,
+        clientFileNo: form.clientFileNo,
         // Attribute to the signed-in client so the order is trackable in My
         // Orders and readable back under RLS (client_code = my_client_code()).
         clientCode: user?.clientCode || null,
@@ -664,9 +666,16 @@ function PlaceOrderPage() {
                     <input value={form.zip} onChange={e=>set('zip',e.target.value)} placeholder="62701" className="input-field text-sm"/>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Parcel / APN # <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
-                  <input value={form.parcelId} onChange={e=>set('parcelId',e.target.value)} placeholder="14-25-376-012" className="input-field text-sm"/>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Parcel / APN # <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
+                    <input value={form.parcelId} onChange={e=>set('parcelId',e.target.value)} placeholder="14-25-376-012" className="input-field text-sm"/>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Your file # <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
+                    <input value={form.clientFileNo} onChange={e=>set('clientFileNo',e.target.value)} placeholder="ABC-2291" className="input-field text-sm"/>
+                    <div className="text-[11px] mt-1" style={{ color:'#9AA8BF' }}>Your own reference — we quote it back on every update.</div>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Parties <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
@@ -768,6 +777,7 @@ function PlaceOrderPage() {
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Review & Submit</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[['State',form.state||'—'],['County',form.county||'—'],['Search Type',form.searchType||'—'],
+                    ['Your file #',form.clientFileNo||'—'],
                     ['Priority',form.priority.toUpperCase()],['Contact',`${form.firstName} ${form.lastName}`.trim()||'—'],['Email',form.email||'—']].map(([k,v]) => (
                     <div key={k} className="glass p-3 rounded-xl">
                       <div className="text-xs mb-0.5" style={{ color:'#5C6E8C' }}>{k}</div>

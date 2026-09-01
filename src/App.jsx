@@ -1,5 +1,5 @@
 import React from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { OrderProvider } from './context/OrderContext'
 import { FulfillmentProvider } from './context/FulfillmentContext'
@@ -15,7 +15,15 @@ import OperatorDashboard from './pages/operator/OperatorDashboard'
 
 function ProtectedRoute({ children, allowedRole }) {
   const { user } = useAuth()
-  if (!user) return <Navigate to="/login" replace />
+  const location = useLocation()
+  if (!user) {
+    // Carry the destination through the login round-trip. Without this, a link
+    // from a notification email ("Approve and assign →") drops the signed-out
+    // recipient on their dashboard and they have to hunt for the order — which
+    // makes deep links in mail pointless.
+    const from = location.pathname + location.search
+    return <Navigate to={allowedRole === 'client' ? '/login' : '/staff'} replace state={{ from }} />
+  }
   if (user.role !== allowedRole) return <Navigate to={`/${user.role}`} replace />
   return children
 }

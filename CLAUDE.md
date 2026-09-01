@@ -55,18 +55,29 @@ Verify every new feature against these constraints before implementing.
 - Client identities: non-super-admins see client codes, not names
   (`displayClient`).
 
-## Email — REMOVED, to be rebuilt from scratch
+## Email — outbound rebuilt; inbound still removed
 
-- Both halves are gone: outbound notifications (`api/notify.js`,
-  `api/_lib/mailer.js`) and the inbound email→order ingest
-  (`api/webhooks/inbound-email.js`, `services/email_ingest/`). No mail
-  dependencies remain in `package.json`, and no `SMTP_*` / `IMAP_*` /
-  `MAIL_*` / `NOTIFY_*` / `PORTAL_URL` var is read by the app.
-- Do NOT reintroduce email piecemeal. When it is rebuilt, design the whole
-  cycle first. The previous implementation is in git history if any of it is
-  worth reusing.
-- Supabase Database Webhooks must not point at this app — there is no endpoint
-  to receive them.
+- **Outbound notifications: rebuilt as one cycle** in `services/notify/`
+  (see its README). Event → `enqueue_notification()` fans out to
+  `notification_outbox`, one row per recipient → `runNotifications({ mode })`
+  renders and sends. Routing (who, how often) lives in the DB
+  (`notification_types` + per-user `notification_preferences`); wording lives in
+  `types.js`. Modes: `immediate`, and a daily `digest` so nobody gets forty
+  mails a day.
+- **Staff-only recipients.** Notifications go to Resolute team members by role.
+  Clients are never notified by email — portal-only still governs client
+  contact. Templates mask client names for non-admin recipients, mirroring
+  `displayClient`.
+- **The provider is one file.** `providers/ses.js` (SigV4 over `node:crypto`,
+  no SDK) and `providers/preview.js`. `NOTIFY_PROVIDER` defaults to `preview`,
+  which writes files and mails nobody — an unconfigured deploy cannot mail real
+  colleagues. Nothing in `services/notify/` knows where it runs, so the AWS move
+  replaces the caller, not the code.
+- **Inbound email→order ingest stays removed** (`api/webhooks/inbound-email.js`,
+  `services/email_ingest/`). Do not reintroduce it piecemeal; it is the half
+  that carried the AI extraction seam and is blocked until post-AWS.
+- Supabase Database Webhooks must not point at this app — there is still no
+  endpoint to receive them.
 
 ## Client communication policy
 
