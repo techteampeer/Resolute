@@ -15,7 +15,11 @@ Verify every new feature against these constraints before implementing.
 - Do NOT add or extend AI/LLM logic that runs on Vercel. No new AI libraries in
   `package.json` for the Vercel deployment.
 - The email→order ingest that carried the old extraction seam has been removed
-  (see "Email" below), so there is no dormant AI path left in the app.
+  (see "Email" below), so there is no dormant AI path left in the app. Email
+  intake now arrives *already extracted* — Google Apps Script + Vertex AI /
+  Gemini do the parsing outside this repo and POST structured JSON to
+  `/api/orders/email-intake` — so the rule above still holds: no AI runs on
+  Vercel and no AI library is in `package.json`.
 - Post-migration goal (unchanged): email stream → parse attachments (invoices /
   search packages) with AWS-native AI (Textract / Comprehend / Bedrock) →
   auto-draft order in the portal. Rebuild the extraction behind one
@@ -55,7 +59,7 @@ Verify every new feature against these constraints before implementing.
 - Client identities: non-super-admins see client codes, not names
   (`displayClient`).
 
-## Email — outbound rebuilt; inbound still removed
+## Email — outbound rebuilt; the inbound mail READER stays removed
 
 - **Outbound notifications: rebuilt as one cycle** in `services/notify/`
   (see its README). Event → `enqueue_notification()` fans out to
@@ -73,9 +77,19 @@ Verify every new feature against these constraints before implementing.
   which writes files and mails nobody — an unconfigured deploy cannot mail real
   colleagues. Nothing in `services/notify/` knows where it runs, so the AWS move
   replaces the caller, not the code.
-- **Inbound email→order ingest stays removed** (`api/webhooks/inbound-email.js`,
-  `services/email_ingest/`). Do not reintroduce it piecemeal; it is the half
-  that carried the AI extraction seam and is blocked until post-AWS.
+- **The app still reads no mail.** The old in-app ingest
+  (`api/webhooks/inbound-email.js`, `services/email_ingest/`) stays removed and
+  must not be reintroduced — it carried the on-Vercel AI extraction seam.
+- **Email order intake: `services/email_intake/`** (see its README) is the
+  approved replacement for the client-facing half. Google Apps Script + Vertex
+  AI / Gemini read the inbox and extract outside this repo, then POST already
+  structured JSON to `POST /api/orders/email-intake` (shared secret in
+  `x-intake-secret`; unset ⇒ 503, never open). The endpoint validates,
+  resolves the client by `clients.code`, deduplicates on the source
+  `Message-ID`, and inserts ONE normal order in the existing initial Admin
+  state — no email-only lifecycle, and the audit event plus the `order.new`
+  notification come from the existing `orders_log_created` trigger. Client
+  identity is never inferred from a sender address.
 - Supabase Database Webhooks must not point at this app — there is still no
   endpoint to receive them.
 
