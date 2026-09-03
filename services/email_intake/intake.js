@@ -10,7 +10,7 @@
 // email-only lifecycle — the order parks with Admin exactly like any other and
 // the existing orders_log_created trigger writes the audit event and raises the
 // 'order.new' notification off the insert itself.
-import { validateIntake, PARTY_FIELD } from './schema.js'
+import { validateIntake } from './schema.js'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
@@ -20,13 +20,15 @@ const isDuplicateKey = (err) =>
   err?.code === '23505' || /duplicate key value violates unique constraint/i.test(err?.message || '')
 
 // Compose the special-instructions text Admin and the Screener actually read.
-// Parties whose role we could not map have no field to live in, and no portal
-// screen renders workflow.intake.parties, so they are appended here rather than
-// silently dropped. (Changing a screen to render them would be a frontend
-// change, which this feature does not make.)
-function instructionsFor({ instructions, parties }) {
-  const unroled = parties.filter(p => !p.field).map(p => (p.role ? `${p.role}: ${p.name}` : p.name))
-  const lines = [instructions, unroled.length ? `Parties: ${unroled.join(', ')}` : null].filter(Boolean)
+// order_number and customer_link have no field on any portal screen, so they
+// are appended here rather than silently dropped — surfacing them in a rendered
+// field is what keeps this feature free of frontend changes.
+function instructionsFor(value) {
+  const refs = [
+    value.orderNumber ? `Client order number: ${value.orderNumber}` : null,
+    value.customerLink ? `Customer link: ${value.customerLink}` : null,
+  ].filter(Boolean)
+  const lines = [value.specialInstructions, refs.length ? refs.join('\n') : null].filter(Boolean)
   return lines.length ? lines.join('\n\n') : null
 }
 
@@ -34,27 +36,24 @@ function instructionsFor({ instructions, parties }) {
 // insertOrder() writes, with the defaults src/context/OrderContext.jsx
 // createOrder() applies. Exported so tests can assert the shape directly.
 export function buildOrderRow(value, client, id, today = todayISO()) {
-  const parties = value.parties.map(p => ({ ...p, field: PARTY_FIELD[p.role] || null }))
-  const byField = (field) => parties.find(p => p.field === field)?.name || ''
-
   return {
     id,
     client_code: client.code,
-    state: value.state,
+    state: value.propertyState,
     county: value.county,
     type: value.searchType,
     // Same initial state as a website order: parked with Admin, unconfirmed,
     // for acknowledgement and pricing before it enters production.
     status: 'received',
-    priority: value.priority,
-    payment: 'Check',            // createOrder's default; Admin sets the real terms
+    priority: value.priority,       // from turnaround: Standard → normal, Rush → rush
+    payment: 'Check',               // createOrder's default; Admin sets the real terms
     clarification: null,
-    client_file_no: value.clientFileNo,
+    client_file_no: value.clientFileNumber,
     assigned_to: 'admin',
     screener: null, examiner: null, typer: null, delivery: null,
     progress: 5,
     created: today,
-    eta: null,                   // no ETA until Admin confirms
+    eta: null,                      // no ETA until Admin confirms
     completed: null,
     completed_dates: {},
     completed_by: {},
@@ -63,22 +62,32 @@ export function buildOrderRow(value, client, id, today = todayISO()) {
         // 'email' is a source the portal already understands — FulfillmentScreen
         // renders the "via email" marker and the From/Subject block for it.
         source: 'email',
-        propertyAddress: value.propertyAddress,
+        // One line from the four address parts, composed exactly as the Place
+        // Order form composes [address, city, state, zip].
+        propertyAddress: [value.propertyAddress, value.city, value.propertyState, value.zip]
+          .filter(Boolean).join(', '),
         parcelNumberAPN: value.parcelNumberAPN,
-        borrowerName: byField('borrowerName'),
-        buyer: byField('buyer'),
-        seller: byField('seller'),
+        borrowerName: value.borrower,
+        buyer: value.buyer,
+        seller: value.seller,
         orderType: value.searchType,
-        from: value.sourceEmail,
-        subject: value.subject,
-        company: client.name || null,
-        specialInstructions: instructionsFor({ instructions: value.instructions, parties }),
+        // "First Last <email>", the same shape the web form writes.
+        from: `${value.contactFirstName} ${value.contactLastName} <${value.contactEmail}>`,
+        subject: value.emailSubject,
+        company: value.company || client.name || null,
+        specialInstructions: instructionsFor(value),
+        requestedTurnaround: value.requestedTurnaround,
+        // Kept structurally as well as in the instructions above, so a future
+        // screen can render them without re-parsing prose.
+        orderNumber: value.orderNumber,
+        customerLink: value.customerLink,
+        // The envelope sender, for provenance only. Never used to establish
+        // client identity — see resolveClient below.
+        sourceEmail: value.sourceEmail,
         // Idempotency key. The partial unique index on
         // workflow->'intake'->>'messageId' makes a replayed POST a database
         // conflict rather than a second order.
         messageId: value.messageId,
-        receivedAt: value.receivedAt,
-        parties: parties.map(({ role, name }) => ({ role, name })),
       },
     },
   }
@@ -103,7 +112,9 @@ export async function processIntake(payload, deps) {
 
   // 2. Client identity. `orders.client_code` is a foreign key to clients(code),
   //    so an unresolvable identifier is rejected here rather than becoming a
-  //    constraint violation — or worse, an order attributed to nobody.
+  //    constraint violation — or worse, an order attributed to nobody. The
+  //    caller must send a real clients.code: the company name and the sender
+  //    address are recorded but never consulted for identity.
   const client = await resolveClient(value.clientIdentifier)
   if (!client) {
     return {

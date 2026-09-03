@@ -7,7 +7,8 @@ to this app. Nothing here reads Gmail, and no AI library is added to the Vercel
 deployment.
 
 ```
-client email → Gmail → Apps Script → Vertex AI / Gemini
+client email → Gmail (label:resolute is:unread, subject contains RES-)
+             → Vertex AI / Gemini → CLIENT_CODE_MAP → [optional Sheet test log]
                                           ↓ structured JSON
                           POST /api/orders/email-intake   (x-intake-secret)
                                           ↓
@@ -15,6 +16,24 @@ client email → Gmail → Apps Script → Vertex AI / Gemini
                                           ↓
                      one normal Resolute order, parked with Admin
 ```
+
+The Gmail and Vertex half is the project-lead Apps Script, unchanged: the
+`label:resolute is:unread` queue, the `RES-` subject filter (which is what
+decides a message is an order — there is no AI gate), both the plain and HTML
+bodies sent to the model so `customerLink` survives as a real href, the
+OAuth-token Vertex call, and the 5-minute time-driven trigger.
+
+The Google Sheet is a **testing aid only** — it records what was extracted and
+what the API answered so a pilot run can be eyeballed. Nothing is read back out
+of it and a logging failure changes nothing; there is no Sheet in the production
+path.
+
+Unread mail is the work queue. Apps Script marks a message read **only** after
+the API returns `201 created` or `200 duplicate`. An extraction failure, an
+unmapped customer, a validation rejection or a transport error all leave it
+unread, so nothing is silently lost. (The lead script marked every message read
+unconditionally; that is the one behaviour deliberately changed, because it
+dropped anything that failed.)
 
 ## The order is a normal order
 
@@ -35,16 +54,22 @@ Admin. Nothing in this module knows about either. Clients are never emailed.
 
 ## Client identity
 
-`client_identifier` must be a **`clients.code`** (`CL01`, …). That is the repo's
-only deterministic client mapping: `clients.code` is the primary key and
-`orders.client_code` is its foreign key. An unresolvable code is rejected (422)
-and no order is created.
+`client_identifier` must be a **`clients.code`** (`CL01`, …), matched exactly.
+That is the repo's only deterministic client mapping: `clients.code` is the
+primary key and `orders.client_code` is its foreign key. An unresolvable code is
+rejected (422) and no order is created.
 
-The sender address is recorded at `workflow.intake.from` for reference and is
-**never** used to establish identity. There is no reliable address→client
-mapping in the schema — `clients.email` is a single contact field with no
-uniqueness constraint — and trusting a sender address would also mean trusting
-a spoofable one.
+**Gemini never produces a client code.** It has no way to know that "Lakewood
+Title Group" is `CL01`, and a hallucinated code would attach a real order to the
+wrong client's billing. The model returns the company/customer name it read, and
+Apps Script maps that to a code through an explicit, operator-maintained
+`CLIENT_CODE_MAP` script property. An unmapped company is **not posted at all**
+and its email is left unread for a human to map.
+
+The company name (`workflow.intake.company`) and the sender address
+(`workflow.intake.sourceEmail`) are recorded for reference and are **never**
+consulted for identity — `clients.email` has no uniqueness constraint, and a
+sender address is spoofable.
 
 ## Layout
 
@@ -53,26 +78,91 @@ a spoofable one.
 | `schema.js` | Validate + normalise the payload. Pure; no Supabase, no env. Owns `SEARCH_CATALOG`, derived from `src/data/products.js`. |
 | `intake.js` | `processIntake(payload, deps)` — the pipeline. Pure; every side effect is injected. Also exports `buildOrderRow()`. |
 | `store.js` | `createDeps()` — the only file that touches Supabase (service-role client). |
-| `apps-script-example.gs` | Reference only. The Google-side half, ~40 lines. Not deployed from here. |
+| `apps-script-example.gs` | Reference only. The Google-side half: poll → extract → map company to code → post → mark read. Not deployed from here. |
 | `__tests__/intake.test.js` | `node:test`. Runs with no database and no network. |
 
 Nothing in `services/email_intake/` knows it runs on Vercel — `api/orders/email-intake.js`
 is a ~60-line adapter, so the AWS move replaces the adapter and not the logic.
 
-## Payload
+## Payload → existing schema
 
-Required: `email_message_id`, `client_identifier`, `search_type`,
-`property_address`, `county`.
-Optional: `state` (2-letter), `parcel_apn`, `parties`, `instructions`,
-`source_email`, `subject`, `client_file_no`, `priority` (`normal`|`rush`),
-`received_at`. Unknown keys are ignored.
+No column was added to mirror an intake field name. Everything lands on the
+columns and the `workflow.intake` keys the portal already writes and renders.
 
-`search_type` must be exactly one of the portal's catalog names. An off-catalog
-value is **rejected, never defaulted** — a guessed search type is a mispriced,
-mis-scoped order. `parties` accepts `["Jane Doe"]` or
-`[{ "role": "buyer", "name": "Jane Doe" }]`; recognised roles fill
-`intake.buyer` / `intake.seller` / `intake.borrowerName`, and anything else is
-appended to `intake.specialInstructions` so Admin still sees it.
+**Required**
+
+| Field | Lands on |
+|---|---|
+| `property_state` | `orders.state` — 2-letter code, upper-cased; anything else is rejected |
+| `county` | `orders.county` |
+| `property_address` | `intake.propertyAddress`, composed with the three fields below |
+| `city` | part of `intake.propertyAddress` |
+| `search_type` | `orders.type` + `intake.orderType` (see below) |
+| `turnaround` | `orders.priority` (see below); wording kept at `intake.requestedTurnaround` |
+| `contact_first_name` | `intake.from`, as `"First Last <email>"` |
+| `contact_last_name` | `intake.from` |
+| `contact_email` | `intake.from`; validated with the same rule the Place Order form uses |
+| `client_identifier` | `orders.client_code` — an exact `clients.code` |
+| `email_message_id` | `intake.messageId` (the idempotency key) |
+
+**Optional**
+
+| Field | Lands on |
+|---|---|
+| `zip` | part of `intake.propertyAddress` |
+| `parcel_apn` | `intake.parcelNumberAPN` |
+| `client_file_number` | `orders.client_file_no` |
+| `buyer` | `intake.buyer` |
+| `borrower` | `intake.borrowerName` |
+| `seller` | `intake.seller` |
+| `special_instructions` | `intake.specialInstructions` |
+| `company` | `intake.company` (falls back to the resolved client's name) |
+| `order_number` | `intake.orderNumber`, **and** appended to `intake.specialInstructions` |
+| `customer_link` | `intake.customerLink`, **and** appended to `intake.specialInstructions` |
+| `email_subject` | `intake.subject` |
+| `source_email` | `intake.sourceEmail` (provenance only) |
+
+Unknown keys are ignored, so a later Gemini revision adding a field cannot break
+intake. The four address parts are joined into one line exactly as the Place
+Order form joins its own — city and zip are therefore preserved inside
+`intake.propertyAddress` rather than in columns of their own.
+
+`order_number` and `customer_link` also ride along in `specialInstructions`
+because no portal screen renders them; surfacing them in a field Admin already
+reads is what keeps this feature free of frontend changes.
+
+### Turnaround → the existing priority enum
+
+The portal has exactly two priorities, so the client's two options map straight
+onto them — no new column, no new enum value:
+
+| `turnaround` | `orders.priority` |
+|---|---|
+| `Standard (48 hours)` | `normal` |
+| `Rush (24 hours)` | `rush` |
+
+Common variants (`standard`, `48 hours`, `rush`, `24 hrs`, …) are normalised.
+Anything else — `same day`, `72 hours`, `ASAP` — is **rejected**, never
+defaulted to standard.
+
+### Search type → an existing product
+
+`search_type` must resolve to a real Resolute product. Resolution is an explicit
+three-step lookup on a folded key (case, punctuation and spacing ignored):
+
+1. the current catalog — the products the Place Order form offers
+2. a hand-checked alias table (`full`, `bringdown`, `ofac`, `doc retrieval`, …)
+3. legacy short names, for products that only exist under one
+
+Because folding punctuation makes the legacy `Two-Owner` and the current
+`Two Owner Search` one key, steps 1 and 2 outrank step 3: a legacy spelling
+normalises *forward* to the name the website would write today — the same
+product at the same price. Legacy-only products (`Lien Search`,
+`Tax Certificate`, `HOA Estoppel`) still resolve to themselves.
+
+An unlisted wording is **rejected, never guessed at** — a guessed search type is
+a mispriced, mis-scoped order. A typo in the alias table fails at import rather
+than accepting a product the portal cannot price.
 
 ## Responses
 
@@ -114,8 +204,17 @@ genuinely different messages into one order.
 | Var | Purpose |
 |---|---|
 | `EMAIL_INTAKE_API_SECRET` | Shared secret for the `x-intake-secret` header. **Server-only.** Unset ⇒ the endpoint is disabled (503), never open. |
-| `TEST_INTAKE_EMAIL` | The temporary inbox Apps Script watches during the pilot. Read by the Google side only; this app never reads it. Replaced by the real intake address later. |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Existing server-only vars; the service-role client bypasses RLS. |
+
+On the Google side, the portal connection lives in **script properties**, so
+rotating the secret or repointing the API is never a code change:
+`INTAKE_API_URL`, `EMAIL_INTAKE_API_SECRET`, and `CLIENT_CODE_MAP`. The secret
+is sent as a header and is never logged or written to the sheet.
+
+Gmail, Vertex and the test sheet stay as top-level constants in the lead
+script's own style — `GCP_PROJECT_ID`, `GCP_REGION`, `VERTEX_AI_MODEL`,
+`GMAIL_SEARCH_QUERY`, `SUBJECT_MUST_CONTAIN`, and `SPREADSHEET_ID` /
+`TARGET_SHEET_NAME` (set `SPREADSHEET_ID` to `""` to disable logging).
 
 ## Manual test
 
@@ -124,19 +223,45 @@ curl -sS -X POST "$PORTAL_URL/api/orders/email-intake" \
   -H 'content-type: application/json' \
   -H "x-intake-secret: $EMAIL_INTAKE_API_SECRET" \
   -d '{
-    "email_message_id": "<CAB-1234@mail.gmail.com>",
-    "source_email":     "dana@lakewoodtitle.com",
-    "client_identifier":"CL01",
-    "search_type":      "Full Search",
-    "property_address": "880 Main St, Houston, TX 77002",
-    "county":           "Harris",
-    "state":            "TX",
-    "parcel_apn":       "0660110000021",
-    "parties":          [{"role":"buyer","name":"Taylor Brooks"}],
-    "instructions":     "Closing is tight."
+    "property_state":     "TX",
+    "county":             "Harris",
+    "property_address":   "880 Main St",
+    "city":               "Houston",
+    "search_type":        "Full Search",
+    "turnaround":         "Standard (48 hours)",
+    "contact_first_name": "Dana",
+    "contact_last_name":  "Whitfield",
+    "contact_email":      "dana@lakewoodtitle.com",
+    "client_identifier":  "CL01",
+    "email_message_id":   "18f2c9a4b1d0e5f7",
+
+    "zip":                "77002",
+    "parcel_apn":         "0660110000021",
+    "client_file_number": "LOAN-42",
+    "buyer":              "Taylor Brooks",
+    "borrower":           "Jordan Reyes",
+    "seller":             "Avery Banks",
+    "special_instructions": "Closing is tight.",
+    "company":            "Lakewood Title Group",
+    "order_number":       "ORD-9911",
+    "customer_link":      "https://client.example/orders/9911",
+    "email_subject":      "Title search request — 880 Main St",
+    "source_email":       "Dana Whitfield <dana@lakewoodtitle.com>"
   }'
 ```
 
 First call → `201 {"ok":true,"duplicate":false,"orderId":"RTS-…","status":"received","assignedTo":"admin"}`.
 Re-run the identical command → `200` with `"duplicate":true` and the same
 `orderId`. The order appears in Admin's **Awaiting Approval** tab.
+
+## Open items
+
+- **Attachments.** Not handled. Gemini sees the message body only, and moving a
+  client's PDFs onto the order (the private `documents` bucket, path
+  `orders/<id>/…`) is still to be built.
+- **The Gemini prompt.** `extractWithGemini()` in the Apps Script reference is
+  deliberately unimplemented; it must emit exactly the official field names and
+  must never produce a client code.
+- **The production mail queue.** The pilot watches the `resolute` Gmail label.
+  Moving to a dedicated intake mailbox is an Apps Script config change
+  (`GMAIL_SEARCH_QUERY`) — there is no portal-side variable for it.

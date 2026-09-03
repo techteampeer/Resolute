@@ -32,7 +32,9 @@ payload, the response table and the manual curl.
 | Var | Purpose |
 |---|---|
 | `EMAIL_INTAKE_API_SECRET` | **Server-only** shared secret for `x-intake-secret`. Unset ⇒ endpoint disabled. |
-| `TEST_INTAKE_EMAIL` | Temporary pilot inbox, read by the Apps Script side only. |
+
+There is no intake-mailbox variable: the queue is a Gmail label configured in
+the Apps Script project, and this app never reads mail.
 
 ## Email — the inbound mail reader is still removed
 
