@@ -557,9 +557,7 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
     <div>
       {showDoc && <CommitmentDocumentModal order={order} onClose={() => setShowDoc(false)} />}
       <p className="text-[12.5px] mb-3" style={{ color: T.faint }}>
-        {singleSeating
-          ? 'When you submit, the order is sent to Admin for approval before delivery.'
-          : 'When you submit, the order is sent to the customer for review.'}
+        When you submit, the order is sent to Admin for approval before delivery.
       </p>
       {!ready && (
         <div className="rounded-lg px-3 py-2.5 mb-3 flex items-start gap-2" style={{ background: 'rgba(196,164,78,0.08)', border: '1px solid rgba(196,164,78,0.25)' }}>
@@ -571,7 +569,7 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
       )}
       <div className="flex items-center gap-2 flex-wrap">
         <GhostButton icon={FileText} onClick={() => setShowDoc(true)}>Generate Commitment Document</GhostButton>
-        <AccentButton icon={Send} disabled={!ready || submitting} onClick={submit}>{submitting ? 'Generating…' : singleSeating ? 'Submit for Admin Approval' : 'Submit to Customer Review'}</AccentButton>
+        <AccentButton icon={Send} disabled={!ready || submitting} onClick={submit}>{submitting ? 'Generating…' : 'Submit for Admin Approval'}</AccentButton>
       </div>
     </div>
   )

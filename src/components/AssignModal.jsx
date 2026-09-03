@@ -44,6 +44,17 @@ export default function AssignModal({ order, user, onClose }) {
   const cd = order.completedDates || {}
   const cb = order.completedBy || {}
 
+  // Stages run in a fixed order, so a stage BEYOND the next one that still needs
+  // to act cannot be assigned: skipping typing and going straight to delivery left
+  // the order with a delivery stamp but no commitment, and it could never finish.
+  // Earlier stages stay open — sending work back for rework is legitimate.
+  const nextIdx = STAGES.findIndex(s => s.key === nextRoleFor(order))
+  const skipsAhead = (key) => {
+    const i = STAGES.findIndex(s => s.key === key)
+    return i !== -1 && nextIdx !== -1 && i > nextIdx
+  }
+  const blockedLabel = nextIdx === -1 ? '' : STAGES[nextIdx].label
+
   const pickQueue = (key) => { setQueue(key); setPersonName('') }   // reset pin on stage change
 
   const confirm = () => {
@@ -91,12 +102,22 @@ export default function AssignModal({ order, user, onClose }) {
           <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
             letterSpacing:'0.05em', color:Q.faint, marginBottom:8 }}>Stage</label>
           <div style={{ display:'flex', gap:8, marginBottom:18, flexWrap:'wrap' }}>
-            {QUEUES.map(s => (
-              <button key={s.key} onClick={() => pickQueue(s.key)} style={radioStyle(queue === s.key)}>
-                {s.label}
-              </button>
-            ))}
+            {QUEUES.map(s => {
+              const blocked = skipsAhead(s.key)
+              return (
+                <button key={s.key} onClick={() => !blocked && pickQueue(s.key)} disabled={blocked}
+                  title={blocked ? `${blockedLabel} has not completed yet — stages run in order.` : undefined}
+                  style={{ ...radioStyle(queue === s.key), ...(blocked ? { opacity:0.4, cursor:'not-allowed' } : null) }}>
+                  {s.label}
+                </button>
+              )
+            })}
           </div>
+          {nextIdx !== -1 && (
+            <div style={{ fontSize:12, color:Q.muted, marginTop:-10, marginBottom:18 }}>
+              Next stage due: <span style={{ color:ROLE_COLOR, fontWeight:600 }}>{blockedLabel}</span>. Later stages unlock once it is complete.
+            </div>
+          )}
 
           {/* Person */}
           <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',

@@ -96,6 +96,18 @@ export const ROLE_SEQUENCE = ['screener', 'examiner', 'typer', 'delivery']
 export const nextRoleFor = (order) =>
   ROLE_SEQUENCE.find(r => !(order.completedDates && order.completedDates[r])) || null
 
+// The role that FOLLOWS a stage that has just been completed (null after delivery).
+// Distinct from nextRoleFor, which finds the first *incomplete* stage: that answers
+// "who should act next on this order", and using it to route a completion sends the
+// order BACKWARDS whenever an earlier stage was skipped (delivery completing on an
+// un-typed order returned 'typer', dropping status/progress from delivery/80 to
+// typing/60 while the event log announced "delivered"). Handing off follows the
+// fixed sequence, so it can only ever move forward.
+export const roleAfter = (role) => {
+  const i = ROLE_SEQUENCE.indexOf(role)
+  return i === -1 || i === ROLE_SEQUENCE.length - 1 ? null : ROLE_SEQUENCE[i + 1]
+}
+
 // The single source of truth for status: it follows the owning role.
 // null role (all stages done) → 'delivered'.
 // BUG_010: a delivered order must never read "80% complete". Progress is
