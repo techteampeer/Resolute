@@ -64,9 +64,28 @@ const SUBJECT_MUST_CONTAIN = "RES-";
 const RES_ORDER_NUMBER = /RES-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/;
 
 // --- OPTIONAL TEST LOG (testing only, never production logic) ---
-// Set to "" to disable. Nothing is ever read back out of this sheet.
+// Set SPREADSHEET_ID to "" to disable. Nothing is ever read back out of this
+// sheet to make a decision; it exists so a pilot run can be eyeballed.
 const SPREADSHEET_ID = "1bAT4nKzk1cIqND2sFtTaghEdEct-fxnYMY09HzWaUGw";
 const TARGET_SHEET_NAME = "Sheet1";
+
+// Written to row 1 when the sheet is empty. NOTE: this layout adds Gmail
+// Message ID and Client Email to the original six columns, so a sheet already
+// populated under the old layout should be given a fresh tab rather than mixed.
+const SHEET_HEADERS = [
+  "Processing Timestamp",
+  "Gmail Message ID",
+  "Order Number",
+  "Customer",
+  "Client Email",
+  "Customer File",
+  "Customer Link",
+  "Property Address",
+  "API Result / Detail"
+];
+
+// 1-based position of "Gmail Message ID" in SHEET_HEADERS — the dedupe key.
+const MESSAGE_ID_COLUMN = 2;
 
 // --- PORTAL CONNECTION (script properties, so nothing sensitive is in code) ---
 // File → Project properties → Script properties:
@@ -176,7 +195,7 @@ function processResoluteMessage(message, subject) {
 
     if (!extractedJsonData) {
       Logger.log(`Warning: Failed to extract structured data for subject: ${subject}`);
-      logToTestSheet(null, "extraction-failed", "");
+      logToTestSheet(messageId, null, "extraction-failed", "");
       return;                                    // stays UNREAD
     }
 
@@ -196,13 +215,13 @@ function processResoluteMessage(message, subject) {
     if (!clientCode) {
       // Do not call the API at all: there is nothing to attach the order to.
       Logger.log(`Warning: no CLIENT_CODE_MAP entry for customer "${extractedJsonData.customer}" — not posted.`);
-      logToTestSheet(extractedJsonData, "unmapped-customer", "");
+      logToTestSheet(messageId, extractedJsonData, "unmapped-customer", "");
       return;                                    // stays UNREAD
     }
 
     payload = buildIntakePayload(extractedJsonData, message, messageId, clientCode);
     const outcome = postToPortal(payload);
-    logToTestSheet(extractedJsonData, outcome.state, outcome.detail);
+    logToTestSheet(messageId, extractedJsonData, outcome.state, outcome.detail);
 
     // The one and only place mail is marked read.
     if (outcome.state === 'created' || outcome.state === 'duplicate') {
@@ -213,7 +232,7 @@ function processResoluteMessage(message, subject) {
     }
   } catch (executionError) {
     Logger.log("Exception caught while processing message: " + executionError.toString());
-    logToTestSheet(null, "error", executionError.toString());
+    logToTestSheet(messageId, null, "error", executionError.toString());
     // stays UNREAD
   }
 }
@@ -446,37 +465,76 @@ function extractEntitiesViaVertexAI(emailText) {
 
 // --- OPTIONAL TEST LOG (NOT production logic) ---
 /**
- * Appends one row per message to the tracking spreadsheet when SPREADSHEET_ID
- * is set. The lead script's six columns are preserved and in the same order;
- * the outcome columns are appended to the right so an existing sheet keeps
- * working.
+ * One row per Gmail message in the tracking spreadsheet, when SPREADSHEET_ID is
+ * set. The lead script's original columns all survive; Gmail Message ID and
+ * Client Email are added, and the outcome is one "API Result / Detail" column.
+ *
+ * Deduplicated on the Gmail message id. A message can be logged more than once
+ * — an API failure on one run, a success on the next, or simply a re-run of the
+ * trigger — and a second row is never appended for it. The existing row is
+ * updated in place instead, so the sheet stays one line per email AND still
+ * shows the latest outcome rather than a stale first attempt.
+ *
+ * This is the SHEET's own duplicate protection and is entirely separate from
+ * the API's, which is a unique index in Postgres. Neither affects the other:
+ * order creation is decided by the portal, never by anything read from here.
  *
  * Purely observational: set SPREADSHEET_ID to "" and the flow is unchanged.
  * Wrapped so a Sheets failure can never affect whether an order was posted or a
  * message was marked read.
  *
- * Deliberately not logged: the API secret, the OAuth token, and the payload's
+ * Deliberately not logged: the API secret, the OAuth token, and the request
  * headers.
  */
-function logToTestSheet(extracted, state, detail) {
+function logToTestSheet(messageId, extracted, state, detail) {
   if (!SPREADSHEET_ID) return;
   try {
     const targetSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(TARGET_SHEET_NAME);
     if (!targetSheet) return;
+
     const x = extracted || {};
-    targetSheet.appendRow([
+    const row = [
       new Date(), // Processing Timestamp
+      messageId || "",
       x.orderNumber || "",
       x.customer || "",
+      // The CLIENT's work email as extracted from the email content. Never
+      // message.getFrom(): a forwarded order carries the forwarder's address
+      // (Ashly's, for the Fwd: messages), not the client contact's.
+      x.contactEmail || "",
       x.customerFile || "",
       x.customerLink || "Link not found",
       x.propertyAddress || "N/A",
-      state || "",
-      detail || ""
-    ]);
+      `${state || ""}${detail ? ` — ${detail}` : ""}`
+    ];
+
+    if (targetSheet.getLastRow() === 0) targetSheet.appendRow(SHEET_HEADERS);
+
+    const existingRow = findRowByMessageId(targetSheet, messageId);
+    if (existingRow) {
+      targetSheet.getRange(existingRow, 1, 1, row.length).setValues([row]);
+      return;
+    }
+
+    targetSheet.appendRow(row);
   } catch (loggingError) {
     Logger.log("Info: test log unavailable: " + loggingError.toString());
   }
+}
+
+/**
+ * 1-based index of the row already logged for this Gmail message, or 0 when the
+ * message has not been logged yet.
+ */
+function findRowByMessageId(targetSheet, messageId) {
+  if (!messageId) return 0;
+  const lastRow = targetSheet.getLastRow();
+  if (lastRow < 1) return 0;
+  const ids = targetSheet.getRange(1, MESSAGE_ID_COLUMN, lastRow, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(messageId)) return i + 1;
+  }
+  return 0;
 }
 
 /**

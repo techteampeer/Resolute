@@ -364,6 +364,137 @@ test('the Sheet log is optional and cannot affect the flow', () => {
   // Opened lazily inside the logger's own try/catch, not up front.
   assert.equal((GS.match(/SpreadsheetApp\.openById/g) || []).length, 1)
   assert.match(GS, /catch \(loggingError\)/)
+  // Every call site — not the definition — passes the message id as the key.
+  const calls = [...GS.matchAll(/(?<!function )logToTestSheet\((\w+),/g)].map(m => m[1])
+  assert.equal(calls.length, 4)
+  assert.deepEqual([...new Set(calls)], ['messageId'])
+})
+
+// ── The test sheet's own duplicate protection ────────────────────────────────
+// The logger is lifted out of the .gs and executed against a fake Spreadsheet,
+// so these assert real behaviour rather than the shape of the source.
+function loadSheetLogger(sheet) {
+  const pick = (re, what) => {
+    const m = GS.match(re)
+    assert.ok(m, `${what} not found in apps-script-example.gs`)
+    return m[0]
+  }
+  const src = [
+    pick(/const SHEET_HEADERS = \[[\s\S]*?\n\];/, 'SHEET_HEADERS'),
+    pick(/const MESSAGE_ID_COLUMN = \d+;/, 'MESSAGE_ID_COLUMN'),
+    pick(/function logToTestSheet\([\s\S]*?\n\}/, 'logToTestSheet'),
+    pick(/function findRowByMessageId\([\s\S]*?\n\}/, 'findRowByMessageId'),
+  ].join('\n')
+  const factory = new Function(
+    'SpreadsheetApp', 'Logger', 'SPREADSHEET_ID', 'TARGET_SHEET_NAME',
+    `${src}\nreturn { logToTestSheet, SHEET_HEADERS };`,
+  )
+  return factory(
+    { openById: () => ({ getSheetByName: () => sheet }) },
+    { log: () => {} },
+    'sheet-id', 'Sheet1',
+  )
+}
+
+function fakeSheet() {
+  const rows = []
+  return {
+    rows,
+    getLastRow: () => rows.length,
+    appendRow: (r) => rows.push(r),
+    getRange: (row, col, numRows, numCols) => ({
+      getValues: () => rows.slice(row - 1, row - 1 + numRows).map(r => r.slice(col - 1, col - 1 + numCols)),
+      setValues: (vals) => vals.forEach((v, i) => { rows[row - 1 + i] = v }),
+    }),
+  }
+}
+
+const EXTRACTED = {
+  orderNumber: 'RES-2026-1937',
+  customer: 'Atlantic Closing & Escrow, LLC',
+  contactEmail: 'dana@lakewoodtitle.com',
+  customerFile: 'ACE-26-13155',
+  customerLink: 'https://client.example/orders/9911',
+  propertyAddress: '880 Main St',
+}
+
+test('the same Gmail message id logged twice produces one sheet row', () => {
+  const sheet = fakeSheet()
+  const { logToTestSheet } = loadSheetLogger(sheet)
+  logToTestSheet('18f2c9a4b1d0e5f7', EXTRACTED, 'unavailable', 'HTTP 500')
+  logToTestSheet('18f2c9a4b1d0e5f7', EXTRACTED, 'created', 'RTS-10049')
+  // header + exactly one data row
+  assert.equal(sheet.rows.length, 2)
+  // …and the row carries the LATEST outcome, not the stale first attempt.
+  assert.match(sheet.rows[1][8], /created — RTS-10049/)
+})
+
+test('different Gmail message ids produce separate rows', () => {
+  const sheet = fakeSheet()
+  const { logToTestSheet } = loadSheetLogger(sheet)
+  logToTestSheet('id-one', EXTRACTED, 'created', 'RTS-1')
+  logToTestSheet('id-two', EXTRACTED, 'created', 'RTS-2')
+  logToTestSheet('id-three', EXTRACTED, 'rejected', 'HTTP 422')
+  assert.equal(sheet.rows.length, 4)                      // header + 3
+  assert.deepEqual(sheet.rows.slice(1).map(r => r[1]), ['id-one', 'id-two', 'id-three'])
+})
+
+test('the sheet records the Gmail message id and the extracted client email', () => {
+  const sheet = fakeSheet()
+  const { logToTestSheet, SHEET_HEADERS } = loadSheetLogger(sheet)
+  logToTestSheet('18f2c9a4b1d0e5f7', EXTRACTED, 'created', 'RTS-10049')
+  assert.deepEqual(sheet.rows[0], SHEET_HEADERS)
+  assert.deepEqual(SHEET_HEADERS, [
+    'Processing Timestamp', 'Gmail Message ID', 'Order Number', 'Customer',
+    'Client Email', 'Customer File', 'Customer Link', 'Property Address',
+    'API Result / Detail',
+  ])
+  const row = sheet.rows[1]
+  assert.ok(row[0] instanceof Date)
+  assert.equal(row[1], '18f2c9a4b1d0e5f7')
+  assert.equal(row[2], 'RES-2026-1937')
+  assert.equal(row[3], 'Atlantic Closing & Escrow, LLC')
+  assert.equal(row[4], 'dana@lakewoodtitle.com', 'Client Email comes from the extracted contactEmail')
+  assert.equal(row[5], 'ACE-26-13155')
+  assert.equal(row[6], 'https://client.example/orders/9911')
+  assert.equal(row[7], '880 Main St')
+})
+
+test('a message with no extracted contact email logs a blank, never the sender', () => {
+  const sheet = fakeSheet()
+  const { logToTestSheet } = loadSheetLogger(sheet)
+  logToTestSheet('id-x', { ...EXTRACTED, contactEmail: undefined }, 'rejected', 'HTTP 400')
+  assert.equal(sheet.rows[1][4], '')
+})
+
+test('a header-less legacy sheet is not given a header row mid-stream', () => {
+  const sheet = fakeSheet()
+  const { logToTestSheet } = loadSheetLogger(sheet)
+  sheet.rows.push(['old', 'row', 'from', 'a', 'previous', 'layout', '', '', ''])
+  logToTestSheet('id-new', EXTRACTED, 'created', 'RTS-1')
+  assert.equal(sheet.rows.length, 2)
+  assert.equal(sheet.rows[1][1], 'id-new')
+})
+
+test('message.getFrom() is never the client email or the client identity', () => {
+  // getFrom() is used in exactly one line of code — comments aside — and that
+  // line is source_email, envelope provenance only. A forwarded order carries
+  // the forwarder's address, not the client's.
+  const codeUses = GS.split('\n')
+    .filter(line => !/^\s*(\/\/|\*|\/\*)/.test(line) && line.includes('message.getFrom()'))
+  assert.equal(codeUses.length, 1)
+  assert.match(codeUses[0], /source_email:/)
+  assert.equal(/contact_email:\s+message\.getFrom\(\)/.test(GS), false)
+  // The sheet's Client Email cell reads the extracted value.
+  assert.match(GS, /x\.contactEmail \|\| ""/)
+  // Identity still comes from the mapped code alone.
+  assert.match(GS, /client_identifier:\s+clientCode/)
+})
+
+test('contactEmail remains a required extraction field', () => {
+  assert.ok(REQUIRED_FIELDS.includes('contact_email'))
+  assert.equal(validateIntake(required({ contact_email: undefined })).field, 'contact_email')
+  assert.match(GS_PROMPT_SCHEMA[1], /"contactEmail"/)
 })
 
 test('the Apps Script marks mail read in exactly one place, and only on success', () => {

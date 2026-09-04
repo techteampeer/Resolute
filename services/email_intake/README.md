@@ -25,8 +25,22 @@ OAuth-token Vertex call, and the 5-minute time-driven trigger.
 
 The Google Sheet is a **testing aid only** — it records what was extracted and
 what the API answered so a pilot run can be eyeballed. Nothing is read back out
-of it and a logging failure changes nothing; there is no Sheet in the production
-path.
+of it to make a decision and a logging failure changes nothing; there is no
+Sheet in the production path.
+
+Columns: Processing Timestamp · Gmail Message ID · Order Number · Customer ·
+Client Email · Customer File · Customer Link · Property Address ·
+API Result / Detail. **Client Email is the extracted `contactEmail`, never
+`message.getFrom()`** — a forwarded order carries the forwarder's address, not
+the client's.
+
+The sheet keeps one row per Gmail message: a message logged again (an API
+failure then a later success, or a re-run of the trigger) updates its existing
+row in place rather than appending a second. That is the *sheet's* duplicate
+protection and is entirely separate from the API's Postgres unique index —
+neither affects the other, and order creation is never decided by anything in
+the sheet. Note the layout adds two columns to the original six, so an existing
+pilot sheet should get a fresh tab rather than mixing layouts.
 
 Unread mail is the work queue. Apps Script marks a message read **only** after
 the API returns `201 created` or `200 duplicate`. An extraction failure, an
