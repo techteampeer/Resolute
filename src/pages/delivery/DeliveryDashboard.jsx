@@ -174,7 +174,7 @@ function DeliveryHome() {
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="font-medium text-sm truncate" style={{ color:'#12284C' }}>{displayClient(o.client, user)}</span>
+                  <span className="font-medium text-sm truncate" style={{ color:'#12284C' }}>{displayClient(o, user)}</span>
                   {clientByName(o.client)?.activity === 'low' && (
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0"
                       style={{ background:'rgba(196,120,62,0.18)', color:'#b45309' }}>LOW ACTIVITY</span>
@@ -211,7 +211,7 @@ function DeliveryHome() {
               onMouseOut={e=>e.currentTarget.style.background='transparent'}>
               <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color:'#15803d' }} />
               <span className="font-mono text-xs flex-shrink-0" style={{ color:'#3D5171' }}>{o.id}</span>
-              <span className="text-xs flex-1 truncate" style={{ color:'#3D5171' }}>{displayClient(o.client, user)}</span>
+              <span className="text-xs flex-1 truncate" style={{ color:'#3D5171' }}>{displayClient(o, user)}</span>
               <span className="text-xs flex-shrink-0" style={{ color:'#5C6E8C' }}>Completed {o.completed || o.eta}</span>
             </div>
           ))}

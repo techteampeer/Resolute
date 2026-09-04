@@ -116,7 +116,30 @@ from auth.users u
 where u.email like '%@resolute.com'
   and not exists (select 1 from auth.identities i where i.user_id = u.id and i.provider = 'email');
 
--- Fields the trigger doesn't set: super admins + the demo client's code.
+-- Fields the trigger doesn't set: the role, super admins, the demo client's code.
+--
+-- handle_new_user() deliberately provisions every new profile as 'client' and
+-- ignores the role in raw_user_meta_data — otherwise anyone could POST to the
+-- public /auth/v1/signup endpoint with {"data":{"role":"admin"}} and mint an
+-- administrator (see 20260901220000_close_signup_privilege_escalation.sql). Real
+-- accounts get their role from an admin through api/admin/users.js, which runs as
+-- the service role; these demo logins get theirs here. Without this every seeded
+-- login lands on the client portal.
+update public.profiles p set role = d.role::user_role
+from (values
+  ('rajni@resolute.com',    'admin'),
+  ('saravanan@resolute.com','admin'),
+  ('vivek@resolute.com',    'admin'),
+  ('admin@resolute.com',    'admin'),
+  ('screener@resolute.com', 'screener'),
+  ('examiner@resolute.com', 'examiner'),
+  ('typer@resolute.com',    'typer'),
+  ('delivery@resolute.com', 'delivery'),
+  ('client@resolute.com',   'client'),
+  ('operator@resolute.com', 'operator')
+) as d(email, role)
+where p.email = d.email;
+
 update public.profiles set super_admin = true
 where email in ('rajni@resolute.com','saravanan@resolute.com','vivek@resolute.com');
 update public.profiles set client_code = 'CL01' where email = 'client@resolute.com';

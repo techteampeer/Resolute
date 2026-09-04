@@ -44,7 +44,26 @@ export const clientCode   = (name) => CODE_BY_NAME[name] || name
 export const clientName   = (code) => NAME_BY_CODE[code] || null
 export const clientByName = (name) => CLIENTS.find(c => c.name === name) || null
 // Returns the real client name for super admins, otherwise the stable client code.
-export const displayClient = (name, user) => (user && user.superAdmin) ? name : (CODE_BY_NAME[name] || name)
+//
+// Takes an order (or support thread) row rather than a bare name, because the row
+// carries the authoritative `client_code`. The old signature took only the name and
+// mapped it through CODE_BY_NAME, which is built from the demo CLIENTS array above
+// — and fell back to returning the name unchanged on a miss. Every real client is
+// absent from that array by definition, so the masking rule held only for the seven
+// demo clients and leaked the full legal name of exactly the clients that matter:
+// a screener's queue rendered "Northgate Pilot Escrow LLC" beside a correctly
+// masked "CL04". There is deliberately no name fallback now — an unmappable client
+// shows a placeholder rather than an identity.
+//
+// A bare name string is still accepted for the mock-data paths that have no row.
+export const displayClient = (row, user) => {
+  const isRow = row && typeof row === 'object'
+  const name = isRow ? (row.client ?? row.clientName ?? null) : (row ?? null)
+  const code = (isRow ? (row.clientCode ?? row.client_code ?? null) : null)
+    || CODE_BY_NAME[name] || null
+  if (user && user.superAdmin) return name || code || '—'
+  return code || '—'
+}
 
 export const STATE_ORDERS = {
   AL:2, AK:1, AZ:14, AR:3, CA:28, CO:9, CT:5, DE:2, FL:31, GA:18,
@@ -95,6 +114,18 @@ export const ROLE_SEQUENCE = ['screener', 'examiner', 'typer', 'delivery']
 // The next role that still needs to act on an order (null once all four are done).
 export const nextRoleFor = (order) =>
   ROLE_SEQUENCE.find(r => !(order.completedDates && order.completedDates[r])) || null
+
+// The role that FOLLOWS a stage that has just been completed (null after delivery).
+// Distinct from nextRoleFor, which finds the first *incomplete* stage: that answers
+// "who should act next on this order", and using it to route a completion sends the
+// order BACKWARDS whenever an earlier stage was skipped (delivery completing on an
+// un-typed order returned 'typer', dropping status/progress from delivery/80 to
+// typing/60 while the event log announced "delivered"). Handing off follows the
+// fixed sequence, so it can only ever move forward.
+export const roleAfter = (role) => {
+  const i = ROLE_SEQUENCE.indexOf(role)
+  return i === -1 || i === ROLE_SEQUENCE.length - 1 ? null : ROLE_SEQUENCE[i + 1]
+}
 
 // The single source of truth for status: it follows the owning role.
 // null role (all stages done) → 'delivered'.

@@ -66,7 +66,7 @@ export default function FulfillmentScreen() {
             <div className="text-[13px] mt-1 flex items-center gap-1.5 flex-wrap" style={{ color: T.faint }}>
               <span style={{ color: T.muted }}>{order.type}</span>
               <span>·</span>
-              <span>{displayClient(order.client, user)}</span>
+              <span>{displayClient(order, user)}</span>
               <span>·</span>
               <button className="transition-colors" style={{ color: T.accentBright }}>Follow-up to #{order.id.replace(/\d+$/, m => String(+m - 1))}</button>
             </div>
@@ -557,9 +557,7 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
     <div>
       {showDoc && <CommitmentDocumentModal order={order} onClose={() => setShowDoc(false)} />}
       <p className="text-[12.5px] mb-3" style={{ color: T.faint }}>
-        {singleSeating
-          ? 'When you submit, the order is sent to Admin for approval before delivery.'
-          : 'When you submit, the order is sent to the customer for review.'}
+        When you submit, the order is sent to Admin for approval before delivery.
       </p>
       {!ready && (
         <div className="rounded-lg px-3 py-2.5 mb-3 flex items-start gap-2" style={{ background: 'rgba(196,164,78,0.08)', border: '1px solid rgba(196,164,78,0.25)' }}>
@@ -571,7 +569,7 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
       )}
       <div className="flex items-center gap-2 flex-wrap">
         <GhostButton icon={FileText} onClick={() => setShowDoc(true)}>Generate Commitment Document</GhostButton>
-        <AccentButton icon={Send} disabled={!ready || submitting} onClick={submit}>{submitting ? 'Generating…' : singleSeating ? 'Submit for Admin Approval' : 'Submit to Customer Review'}</AccentButton>
+        <AccentButton icon={Send} disabled={!ready || submitting} onClick={submit}>{submitting ? 'Generating…' : 'Submit for Admin Approval'}</AccentButton>
       </div>
     </div>
   )
@@ -597,7 +595,7 @@ function ContextRail({ order, f, user }) {
         </RailCard>
 
         <RailCard icon={Building2} title="Customer">
-          <div className="text-[13px] font-medium" style={{ color: T.text }}>{displayClient(order.client, user)}</div>
+          <div className="text-[13px] font-medium" style={{ color: T.text }}>{displayClient(order, user)}</div>
           {showName && client && <>
             <div className="text-[12px] mt-0.5" style={{ color: T.faint }}>{client.contact}</div>
             <div className="text-[12px] tabular-nums" style={{ color: T.faint }}>{client.phone}</div>
@@ -701,7 +699,7 @@ function OverviewTab({ order, f, user }) {
       <Card title="Order">
         <Row k="Order No." v={order.id} mono />
         <Row k="Product / Type" v={m.productType || order.type} />
-        <Row k="Customer" v={displayClient(order.client, user)} />
+        <Row k="Customer" v={displayClient(order, user)} />
         <Row k="Priority" v={(order.priority || '').toUpperCase()} />
         <Row k="Status" v={order.status} />
         <Row k="ETA" v={order.eta} mono />

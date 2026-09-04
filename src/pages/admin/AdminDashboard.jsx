@@ -75,7 +75,7 @@ const STATUS_MAP = {
 // from Reports, where the order-level export was less relevant).
 export function exportOrdersCsv(orders, user) {
   downloadCsv('orders.csv', [
-    { label: 'Order', get: o => o.id }, { label: 'Client', get: o => displayClient(o.client, user) },
+    { label: 'Order', get: o => o.id }, { label: 'Client', get: o => displayClient(o, user) },
     { label: 'State', get: o => o.state }, { label: 'County', get: o => o.county },
     { label: 'Type', get: o => o.type }, { label: 'Status', get: o => STATUS_MAP[o.status]?.label || o.status },
     { label: 'Priority', get: o => o.priority }, { label: 'Payment', get: o => o.payment },
@@ -361,7 +361,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
           padding:'12px 22px 18px' }}>
           <div>
             <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:ROLE_COLOR }}>{order.id}</div>
-            <div style={{ fontSize:20, fontWeight:700, color:Q.text }}>{displayClient(order.client, user)}</div>
+            <div style={{ fontSize:20, fontWeight:700, color:Q.text }}>{displayClient(order, user)}</div>
             <div style={{ fontSize:12, color:Q.muted }}>{orderSubtitle(order)}</div>
           </div>
           {order.priority === 'rush' && (
@@ -434,7 +434,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
               <div style={{ display:'flex', alignItems:'center', gap:8, background:Q.bg,
                 border:`1px solid ${Q.border}`, borderRadius:10, padding:'12px 14px', color:Q.muted, fontSize:13 }}>
                 <Lock style={{ width:14, height:14, color:Q.faint }} />
-                Client <strong style={{ color:Q.text }}>{cli?.code || displayClient(order.client, user)}</strong> — detailed info restricted to super admins.
+                Client <strong style={{ color:Q.text }}>{cli?.code || displayClient(order, user)}</strong> — detailed info restricted to super admins.
               </div>
             )}
           </div>
@@ -818,7 +818,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
     const q = search.toLowerCase()
     // Include the client's own file number: it is the reference they quote on
     // the phone and in email subjects, so it has to be searchable here.
-    const matchSearch = !q || displayClient(o.client, user).toLowerCase().includes(q)
+    const matchSearch = !q || displayClient(o, user).toLowerCase().includes(q)
       || o.id.toLowerCase().includes(q)
       || (o.clientFileNo || '').toLowerCase().includes(q)
     const matchTab    = activeTab === 'all' || lifecycleOf(o) === activeTab
@@ -985,7 +985,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       )}
                     </div>
                   </td>
-                  <td style={{ padding:'10px 16px', fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o.client, user)}</td>
+                  <td style={{ padding:'10px 16px', fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o, user)}</td>
                   <td style={{ padding:'10px 16px', color:Q.muted, whiteSpace:'nowrap' }}>{o.county}, {o.state}</td>
                   <td style={{ padding:'10px 16px', color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{o.type}</td>
                   <td style={{ padding:'10px 16px', whiteSpace:'nowrap' }}>
@@ -1474,7 +1474,7 @@ function AdminReports() {
     region:  o => regionOf(o.state),
     status:  o => STATUS_MAP[o.status]?.label || o.status,
     type:    o => o.type,
-    client:  o => displayClient(o.client, user),
+    client:  o => displayClient(o, user),
     payment: o => o.payment,
   }[dim]
 
@@ -1503,7 +1503,7 @@ function AdminReports() {
   const exportSummary = () => downloadCsv(`report-${dim}.csv`,
     [{ label: dimLabel, get: r => r[0] }, { label: 'Orders', get: r => r[1] }], rows)
   const exportOrders = () => downloadCsv('orders.csv', [
-    { label: 'Order', get: o => o.id }, { label: 'Client', get: o => displayClient(o.client, user) },
+    { label: 'Order', get: o => o.id }, { label: 'Client', get: o => displayClient(o, user) },
     { label: 'State', get: o => o.state }, { label: 'County', get: o => o.county },
     { label: 'Type', get: o => o.type }, { label: 'Status', get: o => STATUS_MAP[o.status]?.label || o.status },
     { label: 'Priority', get: o => o.priority }, { label: 'Payment', get: o => o.payment },
@@ -1648,7 +1648,7 @@ function AdminSupport() {
                     borderBottom:`1px solid ${Q.border}`, background: isActive ? `${ROLE_COLOR}0f` : 'transparent' }}>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
                     <span style={{ fontSize:13, fontWeight:600, color:Q.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                      {displayClient(t.clientName, user)}
+                      {displayClient(t, user)}
                     </span>
                     {awaitingReply(t) && <span style={{ width:8, height:8, borderRadius:99, background:'#dc2626', flexShrink:0 }} title="Awaiting reply" />}
                   </div>
@@ -1665,7 +1665,7 @@ function AdminSupport() {
             {active ? (
               <>
                 <div style={{ padding:'14px 16px', borderBottom:`1px solid ${Q.border}`, fontSize:14, fontWeight:600, color:Q.text }}>
-                  {displayClient(active.clientName, user)}
+                  {displayClient(active, user)}
                 </div>
                 <div style={{ flex:1, overflowY:'auto', padding:16, display:'flex', flexDirection:'column', gap:10 }}>
                   {active.messages.map((m, i) => (

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { ORDERS, ACTIVITY, nextRoleFor, statusForRole } from '../data/mockData'
+import { ORDERS, ACTIVITY, nextRoleFor, roleAfter, statusForRole } from '../data/mockData'
 import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
 import { useAuth } from './AuthContext'
 
@@ -75,13 +75,15 @@ export function OrderProvider({ children }) {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
       const newDates = { ...o.completedDates, [role]: todayISO() }
-      const nextRole = nextRoleFor({ completedDates: newDates })
+      // The stage that follows the one just completed — never the first incomplete
+      // stage, which would route the order backwards (see roleAfter).
+      const nextRole = roleAfter(role)
       advancedTo = nextRole
       const allDone = nextRole === null
       const nextStatus = statusForRole(nextRole)   // owner and status stay in lockstep
       const next = {
         ...o, status: nextStatus, assignedTo: nextRole,
-        progress: allDone ? 100 : progressFor(nextStatus),
+        progress: allDone ? 100 : Math.max(o.progress || 0, progressFor(nextStatus)),
         completed: allDone ? (o.completed || todayISO()) : o.completed,
         completedDates: newDates, completedBy: { ...o.completedBy, [role]: userName },
       }
@@ -105,14 +107,16 @@ export function OrderProvider({ children }) {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
       const newDates = { ...o.completedDates, [role]: todayISO() }
-      const nextRole = nextRoleFor({ completedDates: newDates })
+      // The stage that follows the one just completed — never the first incomplete
+      // stage, which would route the order backwards (see roleAfter).
+      const nextRole = roleAfter(role)
       const nextStatus = statusForRole(nextRole)
       const next = {
         ...o,
         status: nextStatus,
         assignedTo: 'admin',
         // Pipeline finished → 100, never progressFor('delivery') = 80.
-        progress: nextRole === null ? 100 : progressFor(nextStatus),
+        progress: nextRole === null ? 100 : Math.max(o.progress || 0, progressFor(nextStatus)),
         completedDates: newDates,
         completedBy: { ...o.completedBy, [role]: userName },
         workflow: { ...o.workflow, ...extra },
