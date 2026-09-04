@@ -66,7 +66,7 @@ function TyperHome() {
                       style={{ background:'rgba(220,80,60,0.18)', color:'#dc2626' }}>RUSH</span>
                   )}
                 </div>
-                <div className="font-medium text-sm truncate" style={{ color:'#12284C' }}>{displayClient(o.client, user)}</div>
+                <div className="font-medium text-sm truncate" style={{ color:'#12284C' }}>{displayClient(o, user)}</div>
                 <div className="text-xs" style={{ color:'#5C6E8C' }}>{o.type} · {o.state}, {o.county}</div>
               </div>
               <div className="text-right flex-shrink-0">

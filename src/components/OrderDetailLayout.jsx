@@ -40,7 +40,7 @@ export default function OrderDetailLayout({
         <div className="min-w-0">
           <div className="font-mono font-semibold text-sm" style={{ color: accent }}>{order.id}</div>
           <div className="font-bold text-xl truncate" style={{ color: '#12284C' }}>
-            {headline || displayClient(order.client, user)}
+            {headline || displayClient(order, user)}
           </div>
           <div className="text-xs" style={{ color: '#5C6E8C' }}>{orderSubtitle(order)}</div>
         </div>

@@ -66,7 +66,7 @@ export default function FulfillmentScreen() {
             <div className="text-[13px] mt-1 flex items-center gap-1.5 flex-wrap" style={{ color: T.faint }}>
               <span style={{ color: T.muted }}>{order.type}</span>
               <span>·</span>
-              <span>{displayClient(order.client, user)}</span>
+              <span>{displayClient(order, user)}</span>
               <span>·</span>
               <button className="transition-colors" style={{ color: T.accentBright }}>Follow-up to #{order.id.replace(/\d+$/, m => String(+m - 1))}</button>
             </div>
@@ -595,7 +595,7 @@ function ContextRail({ order, f, user }) {
         </RailCard>
 
         <RailCard icon={Building2} title="Customer">
-          <div className="text-[13px] font-medium" style={{ color: T.text }}>{displayClient(order.client, user)}</div>
+          <div className="text-[13px] font-medium" style={{ color: T.text }}>{displayClient(order, user)}</div>
           {showName && client && <>
             <div className="text-[12px] mt-0.5" style={{ color: T.faint }}>{client.contact}</div>
             <div className="text-[12px] tabular-nums" style={{ color: T.faint }}>{client.phone}</div>
@@ -699,7 +699,7 @@ function OverviewTab({ order, f, user }) {
       <Card title="Order">
         <Row k="Order No." v={order.id} mono />
         <Row k="Product / Type" v={m.productType || order.type} />
-        <Row k="Customer" v={displayClient(order.client, user)} />
+        <Row k="Customer" v={displayClient(order, user)} />
         <Row k="Priority" v={(order.priority || '').toUpperCase()} />
         <Row k="Status" v={order.status} />
         <Row k="ETA" v={order.eta} mono />
