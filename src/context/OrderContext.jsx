@@ -132,6 +132,12 @@ export function OrderProvider({ children }) {
     persist(updated)
   }
 
+  // Record an admin action in the durable audit trail. Hold, resume and
+  // clarification all changed the row and messaged the client but wrote no
+  // order_events row, so none of them appeared in the order's history.
+  const logAction = ({ orderId, action, type = 'status', audience = 'all', actor }) =>
+    log({ id: Date.now(), orderId, actor, action, time: 'Just now', type, audience })
+
   // Client marks an invoice paid. Clients can't UPDATE orders directly (RLS), so
   // persist through the client_mark_payment RPC; the row's other fields are
   // untouched. Staff/admin confirmation still flows through updateOrder.
@@ -234,7 +240,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, logAction, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )

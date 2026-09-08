@@ -33,6 +33,18 @@ export const TYPES = {
       + 'It is parked with Admin for confirmation and pricing — it has not entered production.',
     cta: 'Confirm and assign',
   },
+  'order.assigned': {
+    label: 'Work assigned to you',
+    accent: '#2441E5',
+    subject: (p, role) => `Assigned to you · ${orderRef(p)} · ${clientLabel(p, role)}`,
+    headline: () => 'Work landed in your queue',
+    lead: (p, role) =>
+      `Admin assigned ${p.orderType || 'an order'} for ${clientLabel(p, role)}`
+      + `${place(p) ? ` in ${place(p)}` : ''} to your desk`
+      + `${p.priority === 'rush' ? ' — this one is RUSH' : ''}`
+      + `${p.eta ? `, committed for ${p.eta}` : ''}.`,
+    cta: 'Open the order',
+  },
   'order.progress': {
     label: 'Stage completed',
     accent: '#00B8D9',

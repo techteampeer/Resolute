@@ -334,6 +334,7 @@ function AdminOrderPage() {
 // wrapper above and this component always receives a real order.
 function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCancel, updateOrder }) {
   const navigate = useNavigate()
+  const { logAction } = useOrders()
   const { getOrderThread, getOrderNotes, sendMessage } = useSupport()
   const cli = clientByName(order.client)
   // BUG_003: a client requested cancellation of an in-progress order; Admin
@@ -391,6 +392,14 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
     const reason = on ? (window.prompt('Reason for holding this order (optional):', '') ?? null) : null
     updateOrder({ ...order, workflow: { ...order.workflow, onHold: on, holdReason: on ? (reason || null) : null } })
     notify(on ? `Your order was placed on hold${reason ? `: ${reason}` : ''}.` : 'Your order has resumed.')
+    // Neither hold nor resume was recorded in the audit trail, so an order could
+    // sit paused for days with nothing in its history explaining why.
+    logAction({
+      orderId: order.id, actor: user?.name || 'Admin',
+      action: on
+        ? `${user?.name || 'Admin'} put ${order.id} on hold${reason ? ` — ${reason}` : ''}`
+        : `${user?.name || 'Admin'} resumed ${order.id}`,
+    })
     onClose()
   }
   const requestClarification = () => {
@@ -398,6 +407,10 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
     if (note == null) return
     updateOrder({ ...order, clarification: 'pending' })
     notify(`Clarification needed: ${note}`)
+    logAction({
+      orderId: order.id, actor: user?.name || 'Admin',
+      action: `${user?.name || 'Admin'} requested clarification from the client on ${order.id}${note ? ` — ${note}` : ''}`,
+    })
     onClose()
   }
   // Confirm step: portal orders (source 'web') are a one-click acknowledgment;
