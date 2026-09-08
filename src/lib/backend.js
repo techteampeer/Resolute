@@ -47,6 +47,10 @@ const mapUser = (authUser, prof) => ({
   avatar: initials(prof?.name || authUser.email),
   superAdmin: !!prof?.super_admin,
   clientCode: prof?.client_code || null,
+  // Whether this account may confirm money (client payments, vendor payouts,
+  // subscriptions). Held by the billing owner only, and enforced by database
+  // triggers as well — this is just what the UI hides behind.
+  canConfirmPayments: !!prof?.can_confirm_payments,
 })
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -259,7 +263,7 @@ export async function logEvent({ orderId = null, action, type = 'status', actor 
 export async function fetchProfiles() {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id,name,email,role,super_admin,client_code,status')
+    .select('id,name,email,role,super_admin,client_code,status,can_confirm_payments')
     .order('name')
   if (error) { console.error('[fetchProfiles]', error.message); return null }
   return data

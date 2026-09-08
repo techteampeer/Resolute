@@ -15,6 +15,8 @@ import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument } from '../../lib/backend'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import { useProfiles, namesForRole, invalidateProfiles } from '../../lib/useProfiles'
+import { PRODUCT_PRICE } from '../../data/products'
+import { money } from '../../lib/billing'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
 import { orderSubtitle } from '../../components/OrderDetailLayout'
@@ -243,6 +245,70 @@ function InternalNotes({ order, notes, user, clientCode }) {
   )
 }
 
+
+// Confirming an order is the moment it gets a price and a committed date. Both
+// used to be skipped for portal orders: the price fell through to the catalogue
+// (or a flat $125 for the quote-only products) and the ETA was never set at all.
+function ConfirmOrderModal({ order, onCancel, onConfirm }) {
+  const catalogue = PRODUCT_PRICE[order.type]
+  const quoteOnly = catalogue == null
+  const [price, setPrice] = useState(String(order.workflow?.invoiceAmount ?? catalogue ?? ''))
+  const [eta, setEta] = useState(order.eta || (() => {
+    // A rush order promises a tighter date than a normal one.
+    const d = new Date(); d.setDate(d.getDate() + (order.priority === 'rush' ? 2 : 4))
+    return d.toISOString().slice(0, 10)
+  })())
+  const n = Number(price)
+  const priceValid = price !== '' && !Number.isNaN(n) && n >= 0
+  const field = { width:'100%', padding:'9px 11px', borderRadius:8, border:`1px solid ${Q.border}`,
+                  background:Q.bg, color:Q.text, fontSize:13, outline:'none' }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background:'rgba(12,29,56,0.45)' }} onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background:Q.card, borderRadius:12, width:'100%', maxWidth:420, boxShadow:'0 20px 50px rgba(0,0,0,0.25)' }}>
+        <div style={{ padding:'18px 22px', borderBottom:`1px solid ${Q.border}` }}>
+          <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:ROLE_COLOR }}>{order.id}</div>
+          <div style={{ fontSize:17, fontWeight:700, color:Q.text }}>Confirm &amp; price order</div>
+          <div style={{ fontSize:12, color:Q.muted }}>{order.type}{order.county ? ` · ${order.county}, ${order.state}` : ''}</div>
+        </div>
+        <div style={{ padding:'18px 22px', display:'grid', gap:14 }}>
+          <div>
+            <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
+              letterSpacing:'0.05em', color:Q.faint, marginBottom:6 }}>Agreed price (USD)</label>
+            <input style={field} value={price} inputMode="decimal"
+              onChange={e => setPrice(e.target.value.replace(/[^0-9.]/g, ''))} />
+            <div style={{ fontSize:11.5, color: quoteOnly ? '#b45309' : Q.muted, marginTop:5 }}>
+              {quoteOnly
+                ? `${order.type} is quote-only — there is no catalogue price, so this must be set here.`
+                : `Catalogue price for ${order.type} is ${money(catalogue)}${order.priority === 'rush' ? ' (rush adds $50 at invoicing)' : ''}.`}
+            </div>
+          </div>
+          <div>
+            <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
+              letterSpacing:'0.05em', color:Q.faint, marginBottom:6 }}>Committed date (ETA)</label>
+            <input style={field} type="date" value={eta} onChange={e => setEta(e.target.value)} />
+            <div style={{ fontSize:11.5, color:Q.muted, marginTop:5 }}>
+              Shown to the client on their order. {order.priority === 'rush' ? 'Rush order — defaulted to two days out.' : 'Defaulted to four days out.'}
+            </div>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:10, padding:'0 22px 20px' }}>
+          <button disabled={!priceValid} onClick={() => onConfirm({ price: n, eta })}
+            style={{ flex:1, padding:'10px', background: priceValid ? ROLE_COLOR : Q.border, border:'none',
+              borderRadius:8, color:'#fff', fontSize:13, fontWeight:600, cursor: priceValid ? 'pointer' : 'not-allowed' }}>
+            Confirm order
+          </button>
+          <button onClick={onCancel} style={{ padding:'10px 18px', background:Q.bg,
+            border:`1px solid ${Q.border}`, borderRadius:8, color:Q.muted, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Full-page order detail (replaces the old modal). Route: /admin/orders/:id
 function AdminOrderPage() {
   const { id } = useParams()
@@ -337,17 +403,31 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
   // Confirm step: portal orders (source 'web') are a one-click acknowledgment;
   // website/email orders need a negotiated price entered before confirming.
   const confirmed = !!order.workflow?.confirmed
-  const needsPrice = (order.workflow?.intake?.source || 'web') !== 'web'
-  const confirmOrder = () => {
-    let price = null
-    if (needsPrice) {
-      const raw = window.prompt('Enter the agreed price for this order (USD):', order.workflow?.invoiceAmount ?? '')
-      if (raw == null) return
-      price = Number(raw)
-      if (Number.isNaN(price) || price < 0) { window.alert('Please enter a valid price.'); return }
-    }
-    updateOrder({ ...order, workflow: { ...order.workflow, confirmed: true, confirmedAt: new Date().toISOString().slice(0, 10), confirmedBy: user?.name || 'Admin', ...(price != null ? { invoiceAmount: price } : {}) } })
-    notify(`Your order ${order.id} has been received and confirmed${price != null ? ` — total $${price}` : ''}. We'll begin work shortly.`)
+  // Confirming an order is where it gets priced and given a committed date.
+  // Previously a price was only asked for when the order did NOT come through the
+  // portal, so every client-placed order was confirmed silently and
+  // workflow.invoiceAmount stayed unset — billing then fell back to the catalogue
+  // price, or a flat $125 for the four quote-only products (Tax Search, Patriot
+  // Name Search, Bankruptcy Name Search, Document Retrieval), so the client was
+  // billed a number nobody had chosen. ETA had the same problem from the other
+  // side: no screen set it for a portal order, so it stayed NULL from placement
+  // to delivery and the client's order detail rendered "ETA:" with nothing after.
+  const [confirming, setConfirming] = useState(false)
+  const confirmOrder = () => setConfirming(true)
+  const applyConfirm = ({ price, eta }) => {
+    updateOrder({
+      ...order,
+      eta: eta || order.eta || null,
+      workflow: {
+        ...order.workflow,
+        confirmed: true,
+        confirmedAt: new Date().toISOString().slice(0, 10),
+        confirmedBy: user?.name || 'Admin',
+        ...(price != null ? { invoiceAmount: price } : {}),
+      },
+    })
+    notify(`Your order ${order.id} has been received and confirmed${price != null ? ` — total ${money(price)}` : ''}${eta ? `. Estimated completion ${eta}` : ''}. We'll begin work shortly.`)
+    setConfirming(false)
     onClose()
   }
   const files = orderFiles(order)
@@ -357,6 +437,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
 
   return (
     <div style={{ maxWidth:900, margin:'0 auto' }}>
+      {confirming && <ConfirmOrderModal order={order} onCancel={() => setConfirming(false)} onConfirm={applyConfirm} />}
       <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.18 }}
         style={{ background:Q.card, borderRadius:12, border:`1px solid ${Q.border}`, overflow:'hidden' }}>
         <div style={{ padding:'16px 22px 0' }}>
@@ -570,7 +651,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
               {!confirmed && (
                 <button onClick={confirmOrder} style={{ padding:'8px 14px', borderRadius:8, fontSize:12.5, fontWeight:700, cursor:'pointer',
                   background:ROLE_COLOR, border:'none', color:'#fff' }}>
-                  {needsPrice ? 'Confirm & set price' : 'Confirm order'}
+                  Confirm &amp; price order
                 </button>
               )}
               {confirmed && (

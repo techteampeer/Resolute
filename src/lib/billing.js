@@ -49,7 +49,15 @@ export async function hydrateClientTerms() {
 }
 
 // ── Who may confirm payments (deposit reconciliation) ────────────────────────
-export const canConfirmPayments = (user) => user?.email?.toLowerCase() === 'vivek@resolute.com'
+// Reads the capability off the profile (profiles.can_confirm_payments) instead of
+// comparing a hardcoded address, so the person who reconciles deposits can change
+// without a deploy. This is the UI mirror only: the same rule is enforced by
+// triggers on orders, vendor_payouts and subscriptions, because it used to be a
+// UI check with nothing behind it and every admin could confirm money over the
+// REST API. The email fallback keeps mock mode (no profile) working.
+export const canConfirmPayments = (user) =>
+  user?.canConfirmPayments === true ||
+  (user?.canConfirmPayments === undefined && user?.email?.toLowerCase() === 'vivek@resolute.com')
 
 // ── Invoices ─────────────────────────────────────────────────────────────────
 // Estimate from the shared product catalog (the price the client saw when
