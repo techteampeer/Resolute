@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { X, UserCheck } from 'lucide-react'
-import { USERS, displayClient, nextRoleFor } from '../data/mockData'
+import { displayClient, nextRoleFor } from '../data/mockData'
+import { useProfiles, namesForRole } from '../lib/useProfiles'
 import { useOrders } from '../context/OrderContext'
 
 const ROLE_COLOR = '#2441E5'
@@ -40,7 +41,10 @@ export default function AssignModal({ order, user, onClose }) {
     || nextRoleFor(order) || defaultStageFor(order.status))
   const [personName, setPersonName] = useState('')
 
-  const people = USERS.filter(u => u.role === queue)
+  // Real staff only. This filtered mockData's USERS fixture, which offers six
+  // people who have no profiles row and no login, so Admin could assign an order
+  // to someone who does not exist and the row recorded their name.
+  const people = namesForRole(useProfiles(), queue)
   const cd = order.completedDates || {}
   const cb = order.completedBy || {}
 
@@ -124,7 +128,7 @@ export default function AssignModal({ order, user, onClose }) {
             letterSpacing:'0.05em', color:Q.faint, marginBottom:8 }}>Person</label>
           <select style={selectStyle} value={personName} onChange={e => setPersonName(e.target.value)}>
             <option value="">Any available</option>
-            {people.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+            {people.map(n => <option key={n} value={n}>{n}</option>)}
           </select>
 
           {/* Per-stage completion history */}

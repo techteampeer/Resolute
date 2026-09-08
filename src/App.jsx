@@ -13,9 +13,19 @@ import DeliveryDashboard from './pages/delivery/DeliveryDashboard'
 import ClientDashboard from './pages/client/ClientDashboard'
 import OperatorDashboard from './pages/operator/OperatorDashboard'
 
+// Shown only while the stored session is being checked — a fraction of a second
+// on a cold load. Rendering nothing here would flash the page white; redirecting
+// (what used to happen) threw the user out of their own session.
+function SessionGate() {
+  return <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center', color: '#5C6E8C', fontSize: 13 }}>Loading…</div>
+}
+
 function ProtectedRoute({ children, allowedRole }) {
-  const { user } = useAuth()
+  const { user, ready } = useAuth()
   const location = useLocation()
+  // Wait for the session check. Treating "not resolved yet" as "signed out" is
+  // what made every refresh and every emailed deep link land on the login page.
+  if (!ready) return <SessionGate />
   if (!user) {
     // Carry the destination through the login round-trip. Without this, a link
     // from a notification email ("Approve and assign →") drops the signed-out
@@ -29,7 +39,8 @@ function ProtectedRoute({ children, allowedRole }) {
 }
 
 function RoleRedirect() {
-  const { user } = useAuth()
+  const { user, ready } = useAuth()
+  if (!ready) return <SessionGate />
   if (!user) return <Navigate to="/login" replace />
   return <Navigate to={`/${user.role}`} replace />
 }

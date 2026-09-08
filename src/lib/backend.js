@@ -251,6 +251,20 @@ export async function logEvent({ orderId = null, action, type = 'status', actor 
   if (error) console.error('[logEvent]', error.message)
 }
 
+// ── Staff roster ─────────────────────────────────────────────────────────────
+// The real people who can be assigned work. Admin's Assign modal used to offer
+// mockData's USERS fixture, which contains six staff with no profiles row and no
+// login — so an order could be assigned to someone who does not exist, and the
+// row recorded their name. profiles_read lets any staff member read the roster.
+export async function fetchProfiles() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,name,email,role,super_admin,client_code,status')
+    .order('name')
+  if (error) { console.error('[fetchProfiles]', error.message); return null }
+  return data
+}
+
 // ── Server-generated order IDs ────────────────────────────────────────────────
 export async function nextOrderId() {
   const { data, error } = await supabase.rpc('next_order_id')

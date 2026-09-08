@@ -34,14 +34,25 @@ const MOCK_USERS = {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
+  // Whether the stored session has been checked yet. Restoring it is async, so
+  // on a cold load `user` is null for the first render — and a route guard that
+  // reads null as "signed out" redirects before the session arrives. That is why
+  // a refresh, a bookmark, or the "Approve and assign →" deep link in every
+  // notification email landed on the login page instead of the order. Guards
+  // must wait for this, not for `user`.
+  // Mock mode has nothing to restore, so it starts ready.
+  const [ready, setReady] = useState(!isSupabaseConfigured)
 
   // With Supabase: restore the session on load and track auth changes.
   useEffect(() => {
     if (!isSupabaseConfigured) return
     let unsub = () => {}
     // Only restore a session that has a resolved role; never auto-land on client.
-    getCurrentUser().then(u => setUser(u && u.role ? u : null))
-    unsub = onAuthChange(u => setUser(u && u.role ? u : null))
+    getCurrentUser()
+      .then(u => setUser(u && u.role ? u : null))
+      .catch(() => setUser(null))
+      .finally(() => setReady(true))
+    unsub = onAuthChange(u => { setUser(u && u.role ? u : null); setReady(true) })
     return () => unsub()
   }, [])
 
@@ -79,7 +90,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, loginAsDemo, logout }}>
+    <AuthContext.Provider value={{ user, ready, login, loginAsDemo, logout }}>
       {children}
     </AuthContext.Provider>
   )

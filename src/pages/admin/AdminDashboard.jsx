@@ -14,6 +14,8 @@ import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument } from '../../lib/backend'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
+import { useProfiles, namesForRole, invalidateProfiles } from '../../lib/useProfiles'
+import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
 import { orderSubtitle } from '../../components/OrderDetailLayout'
 import OrderThread from '../../components/OrderThread'
@@ -27,12 +29,16 @@ import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-const TEAM = {
-  screener: USERS.filter(u => u.role === 'screener').map(u => u.name),
-  examiner: USERS.filter(u => u.role === 'examiner').map(u => u.name),
-  typer:    USERS.filter(u => u.role === 'typer').map(u => u.name),
-  delivery: USERS.filter(u => u.role === 'delivery').map(u => u.name),
-}
+// Staff names per pipeline role, from the real profiles table (see useProfiles).
+// This was built from mockData's USERS fixture, which offers six people who have
+// no profiles row and no login, so an order could be assigned to someone who does
+// not exist.
+const teamFrom = (profiles) => ({
+  screener: namesForRole(profiles, 'screener'),
+  examiner: namesForRole(profiles, 'examiner'),
+  typer:    namesForRole(profiles, 'typer'),
+  delivery: namesForRole(profiles, 'delivery'),
+})
 
 const ROLE_COLOR  = '#2441E5'
 const ROLE_HOVER  = '#1B34C4'
@@ -260,6 +266,7 @@ function AdminOrderPage() {
 // Hooks below must run unconditionally, so the not-found guard lives in the
 // wrapper above and this component always receives a real order.
 function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCancel, updateOrder }) {
+  const navigate = useNavigate()
   const { getOrderThread, getOrderNotes, sendMessage } = useSupport()
   const cli = clientByName(order.client)
   // BUG_003: a client requested cancellation of an in-progress order; Admin
@@ -275,6 +282,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
   // the status with it, so the two can't silently drift. Status stays editable
   // afterwards for a deliberate correction.
   const STAGES = ['screener', 'examiner', 'typer', 'delivery']
+  const TEAM = teamFrom(useProfiles())
   const set = (k, v) => setForm(f => {
     if (k !== 'assignedTo') return { ...f, [k]: v }
     const derived = statusForRole(STAGES.includes(v) ? v : nextRoleFor(order))
@@ -392,6 +400,22 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 Keep order active
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Admin can work the commitment itself, not only approve the finished PDF.
+            Opens the same sectioned fulfillment form the typer and Single Seating
+            desk use; submitting there stamps the typing stage and parks the order
+            back here for the delivery hand-off. */}
+        {order.status !== 'cancelled' && (
+          <div style={{ padding:'0 22px 14px' }}>
+            <button onClick={() => navigate(`/admin/order/${order.id}`)}
+              style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'8px 14px', borderRadius:8,
+                fontSize:12.5, fontWeight:600, cursor:'pointer', background:Q.bg,
+                border:`1px solid ${Q.border}`, color:ROLE_COLOR }}>
+              <FileText style={{ width:14, height:14 }} />
+              {order.completedDates?.typer ? 'Review commitment' : 'Open fulfillment form'}
+            </button>
           </div>
         )}
 
@@ -1706,11 +1730,12 @@ function AdminSupport() {
 export default function AdminDashboard() {
   const { pendingCount } = useSupport()
   const { orders } = useOrders()
+  const roster = useProfiles()
   const pending = pendingCount ? pendingCount() : 0
   // Every nav badge is live. Orders counts what still needs work (closed orders
   // aren't actionable), Users the real roster, Support the awaiting replies.
   const openOrders = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').length
-  const badges = { '/admin/orders': openOrders, '/admin/users': USERS.length, '/admin/support': pending }
+  const badges = { '/admin/orders': openOrders, '/admin/users': roster.length, '/admin/support': pending }
   const navItems = NAV.map(n => (badges[n.path] ? { ...n, badge: badges[n.path] } : n))
   return (
     <Layout navItems={navItems} role="admin" roleColor={ROLE_COLOR} lightTheme>
@@ -1718,6 +1743,9 @@ export default function AdminDashboard() {
         <Route index            element={<AdminHome />} />
         <Route path="orders"     element={<AdminOrders />} />
         <Route path="orders/:id" element={<AdminOrderPage />} />
+        {/* Admin can open and fill the commitment itself, not just approve the
+            generated PDF. Same screen the typer and the Single Seating desk use. */}
+        <Route path="order/:id"  element={<FulfillmentScreen />} />
         <Route path="users"    element={<AdminUsers />} />
         <Route path="billing"  element={<AdminBilling />} />
         <Route path="support"  element={<AdminSupport />} />
