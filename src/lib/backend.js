@@ -179,6 +179,23 @@ export async function saveFulfillment(orderId, data) {
 }
 
 // ── Client payment terms ──────────────────────────────────────────────────────
+// The client registry as the database holds it. Two admin screens used to read
+// the hardcoded CLIENTS fixture instead, which meant an admin could only create
+// an order for one of the seven demo clients and billing rendered a bare code
+// for anyone else. `name` comes back only where RLS permits it, so the masking
+// rule still decides what a given user can actually see.
+export async function fetchClients() {
+  const { data, error } = await supabase
+    .from('clients')
+    .select('code, name, contact, email, phone, payment_terms, activity, registered')
+    .order('code')
+  if (error) { console.error('[fetchClients]', error.message); return null }
+  return data.map(c => ({
+    code: c.code, name: c.name, contact: c.contact, email: c.email, phone: c.phone,
+    paymentTerms: c.payment_terms, activity: c.activity, registered: c.registered,
+  }))
+}
+
 export async function fetchClientTerms() {
   const { data, error } = await supabase.from('clients').select('code, payment_terms')
   if (error) { console.error('[terms]', error.message); return null }

@@ -19,7 +19,7 @@ import { orderSubtitle } from '../../components/OrderDetailLayout'
 import OrderThread from '../../components/OrderThread'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS,
-  CLIENTS, STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode,
+  STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode,
   REGIONS, regionOf, nextRoleFor, statusForRole,
 } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
@@ -677,8 +677,8 @@ const awaitingApproval = (o) =>
 // Admin-side intake. Orders placed here land in Admin's own queue
 // (createOrder parks with assignedTo 'admin'), exactly like a client-placed
 // order, so the approval path is identical.
-function NewOrderModal({ onClose }) {
-  const { createOrder } = useOrders()
+function NewOrderModal({ onClose, user }) {
+  const { createOrder, clients } = useOrders()
   const [f, setF] = useState({ client: '', state: '', county: '', type: 'Full Search', priority: 'normal', eta: '' })
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF(p => ({ ...p, [k]: v }))
@@ -688,7 +688,11 @@ function NewOrderModal({ onClose }) {
     setBusy(true)
     try {
       await createOrder({
-        client: f.client, clientCode: clientCode(f.client) || null,
+        client: f.client,
+        // The picked option's value is the name when one is readable and the code
+        // otherwise, so resolve against the live registry before falling back to
+        // the fixture lookup.
+        clientCode: (clients.find(c => (c.name || c.code) === f.client)?.code) || clientCode(f.client) || null,
         state: f.state.toUpperCase(), county: f.county, type: f.type,
         priority: f.priority, eta: f.eta || '',
         intake: { source: 'admin', propertyAddress: '', orderType: f.type },
@@ -712,7 +716,11 @@ function NewOrderModal({ onClose }) {
             <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>CLIENT</div>
             <select value={f.client} onChange={e => set('client', e.target.value)} style={field}>
               <option value="">Select a client…</option>
-              {CLIENTS.map(c => <option key={c.code} value={c.name}>{c.code} · {c.name}</option>)}
+              {clients.map(c => (
+                <option key={c.code} value={c.name || c.code}>
+                  {user?.superAdmin && c.name ? `${c.code} · ${c.name}` : c.code}
+                </option>
+              ))}
             </select>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
@@ -852,7 +860,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   return (
     <div className="space-y-4">
       {assigning && <AssignModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
-      {newOrder && <NewOrderModal onClose={() => setNewOrder(false)} />}
+      {newOrder && <NewOrderModal onClose={() => setNewOrder(false)} user={user} />}
       {/* Toolbar — row 1: search · date range · new order */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative" style={{ flex:'1 1 260px', minWidth: 240 }}>

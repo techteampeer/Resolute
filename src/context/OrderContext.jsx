@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { ORDERS, ACTIVITY, nextRoleFor, roleAfter, statusForRole } from '../data/mockData'
-import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
+import { ORDERS, ACTIVITY, CLIENTS, nextRoleFor, roleAfter, statusForRole } from '../data/mockData'
+import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc, fetchClients } from '../lib/backend'
 import { useAuth } from './AuthContext'
 
 const OrderContext = createContext(null)
@@ -18,6 +18,10 @@ export function OrderProvider({ children }) {
   const { user } = useAuth()
   const [orders, setOrders]           = useState(ORDERS)
   const [activityLog, setActivityLog] = useState(ACTIVITY)
+  // The client registry. Mock fixtures until Supabase is configured, then the
+  // real rows — two admin screens read the fixture directly before this, so an
+  // admin could only ever act on the seven demo clients.
+  const [clients, setClients]         = useState(CLIENTS)
 
   // Hydrate from Supabase + live updates when configured; otherwise keep mock.
   // Keyed on the signed-in identity: the provider mounts on the login page
@@ -30,6 +34,7 @@ export function OrderProvider({ children }) {
     const load = () => fetchOrders().then(rows => { if (rows) setOrders(rows) })
     load()
     fetchActivity().then(rows => { if (rows) setActivityLog(rows) })
+    fetchClients().then(rows => { if (rows?.length) setClients(rows) })
     unsub = subscribeOrders(load)
     return () => unsub()
   }, [user?.email, user?.demo])
@@ -234,7 +239,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, clients, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )
