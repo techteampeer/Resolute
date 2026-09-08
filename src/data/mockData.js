@@ -86,7 +86,40 @@ const REGION_BY_STATE = {
   AZ:'West', CO:'West', ID:'West', MT:'West', NV:'West', NM:'West', UT:'West',
   WY:'West', AK:'West', CA:'West', HI:'West', OR:'West', WA:'West',
 }
-export const regionOf = (state) => REGION_BY_STATE[state] || '—'
+// Canonical state list. Orders store the two-letter CODE — everything keyed on
+// state (regionOf, STATE_ORDERS, the coverage map, the by-state report) uses it.
+// The Place Order wizard had its own list of full NAMES and used the name as the
+// option value, so every client-placed order stored "Florida" while every other
+// order stored "FL": the by-state report counted them as two states, regionOf
+// returned '—', and the coverage map could never match them.
+export const US_STATES = [
+  ['AL','Alabama'],['AK','Alaska'],['AZ','Arizona'],['AR','Arkansas'],['CA','California'],
+  ['CO','Colorado'],['CT','Connecticut'],['DE','Delaware'],['DC','District of Columbia'],
+  ['FL','Florida'],['GA','Georgia'],['HI','Hawaii'],['ID','Idaho'],['IL','Illinois'],
+  ['IN','Indiana'],['IA','Iowa'],['KS','Kansas'],['KY','Kentucky'],['LA','Louisiana'],
+  ['ME','Maine'],['MD','Maryland'],['MA','Massachusetts'],['MI','Michigan'],['MN','Minnesota'],
+  ['MS','Mississippi'],['MO','Missouri'],['MT','Montana'],['NE','Nebraska'],['NV','Nevada'],
+  ['NH','New Hampshire'],['NJ','New Jersey'],['NM','New Mexico'],['NY','New York'],
+  ['NC','North Carolina'],['ND','North Dakota'],['OH','Ohio'],['OK','Oklahoma'],['OR','Oregon'],
+  ['PA','Pennsylvania'],['RI','Rhode Island'],['SC','South Carolina'],['SD','South Dakota'],
+  ['TN','Tennessee'],['TX','Texas'],['UT','Utah'],['VT','Vermont'],['VA','Virginia'],
+  ['WA','Washington'],['WV','West Virginia'],['WI','Wisconsin'],['WY','Wyoming'],
+].map(([code, name]) => ({ code, name }))
+
+const CODE_BY_STATE_NAME = Object.fromEntries(US_STATES.map(s => [s.name.toLowerCase(), s.code]))
+const NAME_BY_STATE_CODE = Object.fromEntries(US_STATES.map(s => [s.code, s.name]))
+
+// Coerce either representation to the two-letter code, so rows written before
+// the wizard was fixed still group and filter correctly.
+export const stateCode = (v) => {
+  if (!v) return ''
+  const s = String(v).trim()
+  if (NAME_BY_STATE_CODE[s.toUpperCase()]) return s.toUpperCase()
+  return CODE_BY_STATE_NAME[s.toLowerCase()] || s
+}
+export const stateName = (v) => NAME_BY_STATE_CODE[stateCode(v)] || String(v || '')
+
+export const regionOf = (state) => REGION_BY_STATE[stateCode(state)] || '—'
 
 export const USERS = [
   { id: 1, name: 'Sam Carter',     email: 'screener@resolute.com',   role: 'screener', status: 'active',   orders: 47, joined: '2025-01-15' },

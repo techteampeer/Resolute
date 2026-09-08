@@ -92,6 +92,7 @@ function ScreenerOrderPage() {
     { key:'overview', label:'Overview', icon:FileText, render: () => (
       <div className="space-y-4">
         <DetailGrid items={[
+          ['Client file #', order.clientFileNo || '—'],
           ['State / County', `${order.state} · ${order.county}`],
           ['Search Type', order.type],
           ['Priority', order.priority?.toUpperCase()],

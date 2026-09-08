@@ -100,6 +100,7 @@ function DeliveryOrderPage() {
     )},
     { key:'overview', label:'Overview', icon:FileText, render: () => (
       <DetailGrid items={[
+        ['Client file #', order.clientFileNo || '—'],
         ['Search Type', order.type], ['County', order.county], ['State', order.state],
         ['Priority', order.priority?.toUpperCase()], ['ETA', order.eta], ['Placed', order.created],
       ]} />

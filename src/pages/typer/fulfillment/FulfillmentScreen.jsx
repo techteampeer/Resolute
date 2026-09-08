@@ -698,6 +698,7 @@ function OverviewTab({ order, f, user }) {
 
       <Card title="Order">
         <Row k="Order No." v={order.id} mono />
+        <Row k="Client file #" v={order.clientFileNo || '—'} mono />
         <Row k="Product / Type" v={m.productType || order.type} />
         <Row k="Customer" v={displayClient(order, user)} />
         <Row k="Priority" v={(order.priority || '').toUpperCase()} />

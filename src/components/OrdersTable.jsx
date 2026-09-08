@@ -51,7 +51,8 @@ export default function OrdersTable({ orders, showAssignees = false, onOrderClic
   const filtered = orders.filter(o => {
     const s = search.toLowerCase()
     const matchSearch = !s || o.id.toLowerCase().includes(s) ||
-      displayClient(o, user).toLowerCase().includes(s) || o.state.toLowerCase().includes(s)
+      displayClient(o, user).toLowerCase().includes(s) || (o.state || '').toLowerCase().includes(s) ||
+      (o.clientFileNo || '').toLowerCase().includes(s) || (o.county || '').toLowerCase().includes(s)
     const matchFilter = filter === 'all' || o.status === filter
     return matchSearch && matchFilter
   })
@@ -85,7 +86,7 @@ export default function OrdersTable({ orders, showAssignees = false, onOrderClic
         <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr style={{ borderBottom: '1px solid rgba(36,65,229,0.09)' }}>
-              {['Order ID','Client','Location','Type','Status','Progress',
+              {['Order ID','Client File #','Client','Location','Type','Status','Progress',
                 ...(showAssignees ? ['Assigned'] : []), 'Priority',''].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
                   style={{ color: '#5C6E8C' }}>
@@ -108,6 +109,9 @@ export default function OrdersTable({ orders, showAssignees = false, onOrderClic
                   onClick={() => onOrderClick?.(order)}>
                   <td className="px-4 py-3 font-mono font-semibold whitespace-nowrap" style={{ color: '#2441E5' }}>
                     {order.id}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs whitespace-nowrap" style={{ color: 'rgba(18,40,76,0.62)' }}>
+                    {order.clientFileNo || '—'}
                   </td>
                   <td className="px-4 py-3 font-medium whitespace-nowrap" style={{ color: '#12284C' }}>
                     {displayClient(order, user)}

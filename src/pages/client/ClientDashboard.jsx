@@ -8,7 +8,7 @@ import {
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign, Search,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye
 } from 'lucide-react'
-import { clientCode as codeByName, clientName, orderProgress, isOrderComplete } from '../../data/mockData'
+import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, US_STATES, stateName } from '../../data/mockData'
 import { PRODUCTS } from '../../data/products'
 import { isSupabaseConfigured, openDocument, uploadDocument } from '../../lib/backend'
 import { fileKind, uid } from '../../data/fulfillment'
@@ -72,15 +72,6 @@ function InvoiceCard({ order }) {
   )
 }
 
-const US_STATES = [
-  'Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut','Delaware',
-  'Florida','Georgia','Hawaii','Idaho','Illinois','Indiana','Iowa','Kansas','Kentucky',
-  'Louisiana','Maine','Maryland','Massachusetts','Michigan','Minnesota','Mississippi','Missouri',
-  'Montana','Nebraska','Nevada','New Hampshire','New Jersey','New Mexico','New York',
-  'North Carolina','North Dakota','Ohio','Oklahoma','Oregon','Pennsylvania','Rhode Island',
-  'South Carolina','South Dakota','Tennessee','Texas','Utah','Vermont','Virginia',
-  'Washington','West Virginia','Wisconsin','Wyoming',
-]
 
 // Client-facing stages: Placed (awaiting admin confirmation) → Received
 // (confirmed by admin) → In Progress (any internal stage) → Delivered. On-Hold
@@ -533,7 +524,7 @@ function PlaceOrderPage() {
         clientCode: user?.clientCode || null,
         client: clientName(user?.clientCode) || user?.name || 'Web Order',
         intake: {
-          source: 'web', propertyAddress: [form.address, form.city, form.state, form.zip].filter(Boolean).join(', '),
+          source: 'web', propertyAddress: [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', '),
           parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
           orderType: form.searchType, from: `${form.firstName} ${form.lastName} <${form.email}>`.trim(),
           company: form.company, role: form.role, specialInstructions: form.notes,
@@ -645,7 +636,7 @@ function PlaceOrderPage() {
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Property State *</label>
                   <select value={form.state} onChange={e=>set('state',e.target.value)} className="input-field text-sm" required>
                     <option value="">Select state…</option>
-                    {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    {US_STATES.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -776,7 +767,7 @@ function PlaceOrderPage() {
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Review & Submit</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[['State',form.state||'—'],['County',form.county||'—'],['Search Type',form.searchType||'—'],
+                  {[['State',stateName(form.state)||'—'],['County',form.county||'—'],['Search Type',form.searchType||'—'],
                     ['Your file #',form.clientFileNo||'—'],
                     ['Priority',form.priority.toUpperCase()],['Contact',`${form.firstName} ${form.lastName}`.trim()||'—'],['Email',form.email||'—']].map(([k,v]) => (
                     <div key={k} className="glass p-3 rounded-xl">

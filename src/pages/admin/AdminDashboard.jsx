@@ -21,7 +21,7 @@ import { orderSubtitle } from '../../components/OrderDetailLayout'
 import OrderThread from '../../components/OrderThread'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS,
-  CLIENTS, STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode,
+  CLIENTS, STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode, stateCode,
   REGIONS, regionOf, nextRoleFor, statusForRole,
 } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
@@ -81,7 +81,8 @@ const STATUS_MAP = {
 // from Reports, where the order-level export was less relevant).
 export function exportOrdersCsv(orders, user) {
   downloadCsv('orders.csv', [
-    { label: 'Order', get: o => o.id }, { label: 'Client', get: o => displayClient(o, user) },
+    { label: 'Order', get: o => o.id }, { label: 'Client File #', get: o => o.clientFileNo || '' },
+    { label: 'Client', get: o => displayClient(o, user) },
     { label: 'State', get: o => o.state }, { label: 'County', get: o => o.county },
     { label: 'Type', get: o => o.type }, { label: 'Status', get: o => STATUS_MAP[o.status]?.label || o.status },
     { label: 'Priority', get: o => o.priority }, { label: 'Payment', get: o => o.payment },
@@ -804,9 +805,9 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
 
   // Cascading geographic options: state list narrows by region, county by state.
   const inRegion = (o) => region === 'all' || regionOf(o.state) === region
-  const statesAvail   = [...new Set(orders.filter(inRegion).map(o => o.state))].sort()
+  const statesAvail   = [...new Set(orders.filter(inRegion).map(o => stateCode(o.state)))].sort()
   const countiesAvail = [...new Set(orders
-    .filter(o => inRegion(o) && (stateF === 'all' || o.state === stateF))
+    .filter(o => inRegion(o) && (stateF === 'all' || stateCode(o.state) === stateCode(stateF)))
     .map(o => o.county))].sort()
   const pickRegion = (v) => { setRegion(v); setStateF('all'); setCountyF('all') }
   const pickState  = (v) => { setStateF(v); setCountyF('all') }
@@ -847,7 +848,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
       || (o.clientFileNo || '').toLowerCase().includes(q)
     const matchTab    = activeTab === 'all' || lifecycleOf(o) === activeTab
     const matchRegion = region === 'all'  || regionOf(o.state) === region
-    const matchState  = stateF === 'all'  || o.state === stateF
+    const matchState  = stateF === 'all'  || stateCode(o.state) === stateCode(stateF)
     const matchCounty = countyF === 'all' || o.county === countyF
     const matchRush   = !rushOnly || o.priority === 'rush'
     const matchDate   = !cutoff || new Date(o.created) >= cutoff
@@ -977,7 +978,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:920 }}>
           <thead>
             <tr style={{ background:'#F9FBFD', borderBottom:`1px solid ${Q.border}` }}>
-              {['File #','Client','Location','Type','Status','Payment','Assignee','Completed','ETA / Done',''].map(h => (
+              {['Order','Client File #','Client','Location','Type','Status','Payment','Assignee','Completed','ETA / Done',''].map(h => (
                 <th key={h} style={{
                   padding:'10px 16px', textAlign:'left', fontSize:11,
                   fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em',
@@ -1009,6 +1010,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       )}
                     </div>
                   </td>
+                  <td style={{ padding:'10px 16px', fontFamily:'monospace', fontSize:11.5, color:Q.muted, whiteSpace:'nowrap' }}>{o.clientFileNo || '—'}</td>
                   <td style={{ padding:'10px 16px', fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o, user)}</td>
                   <td style={{ padding:'10px 16px', color:Q.muted, whiteSpace:'nowrap' }}>{o.county}, {o.state}</td>
                   <td style={{ padding:'10px 16px', color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{o.type}</td>
@@ -1452,7 +1454,7 @@ function AdminUsers() {
 function AdminMap() {
   const { orders } = useOrders()
   // Top five states by live order volume; no fabricated totals.
-  const byState = orders.reduce((m, o) => (o.state ? { ...m, [o.state]: (m[o.state] || 0) + 1 } : m), {})
+  const byState = orders.reduce((m, o) => (o.state ? { ...m, [stateCode(o.state)]: (m[stateCode(o.state)] || 0) + 1 } : m), {})
   const top = Object.entries(byState).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([s, c]) => ({ s, c }))
   return (
     <div className="space-y-5">
@@ -1493,8 +1495,8 @@ function AdminReports() {
     { key:'payment', label:'By Payment Mode' },
   ]
   const keyFn = {
-    state:   o => o.state,
-    county:  o => `${o.county}, ${o.state}`,
+    state:   o => stateCode(o.state),
+    county:  o => `${o.county}, ${stateCode(o.state)}`,
     region:  o => regionOf(o.state),
     status:  o => STATUS_MAP[o.status]?.label || o.status,
     type:    o => o.type,
@@ -1504,9 +1506,9 @@ function AdminReports() {
 
   // Geographic filters (cascading), applied before grouping.
   const inRegion = (o) => region === 'all' || regionOf(o.state) === region
-  const statesAvail   = [...new Set(orders.filter(inRegion).map(o => o.state))].sort()
+  const statesAvail   = [...new Set(orders.filter(inRegion).map(o => stateCode(o.state)))].sort()
   const countiesAvail = [...new Set(orders
-    .filter(o => inRegion(o) && (stateF === 'all' || o.state === stateF))
+    .filter(o => inRegion(o) && (stateF === 'all' || stateCode(o.state) === stateCode(stateF)))
     .map(o => o.county))].sort()
   const pickRegion = (v) => { setRegion(v); setStateF('all'); setCountyF('all') }
   const pickState  = (v) => { setStateF(v); setCountyF('all') }
@@ -1515,7 +1517,7 @@ function AdminReports() {
 
   const scoped = orders.filter(o =>
     (region === 'all'  || regionOf(o.state) === region) &&
-    (stateF === 'all'  || o.state === stateF) &&
+    (stateF === 'all'  || stateCode(o.state) === stateCode(stateF)) &&
     (countyF === 'all' || o.county === countyF)
   )
   const counts = {}
