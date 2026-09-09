@@ -531,6 +531,7 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
   // no longer prints ‹token› placeholders, but a blank in a legal instrument is
   // still the typer's to fill, so say so here rather than let it ship quietly.
   const gaps = useMemo(() => unfilledClauses(f), [f])
+  const isAdmin = user?.role === 'admin'
   // Every stage parks with Admin for approval before the next one (CLAUDE.md);
   // typing is no exception, from either the typer portal or the Single Seating
   // desk — so this path never calls completeStep.
@@ -546,30 +547,46 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
     const invoicedAt = new Date().toISOString().slice(0, 10)
     // Generate the commitment document and attach it to the order so it flows
     // to Admin and Delivery under Files, like every other stage's document.
+    //
+    // One write, not two. This used to call updateOrder() for the document and
+    // then returnToAdmin() for the stage move, as two independent un-awaited
+    // PATCHes carrying different statuses. A typer never saw the consequence,
+    // because once the move took the order off their desk RLS refused the stale
+    // write; an Admin may update any order, so the stale row landed last and
+    // undid the move — leaving "Rajni completed typing … → returned to Admin for
+    // assignment" in the audit trail against a row still on the typer's desk at
+    // 85%, with no error anywhere. returnToAdmin merges `extra` into workflow,
+    // so the document and the move travel together.
+    const extra = { invoiceAmount, invoicedAt }
     try {
       // BUG_011: this file is what the client downloads, so it must be a PDF.
       const blob = await commitmentPdfBlob(order, f)
       const file = new File([blob], commitmentFileName(order), { type: 'application/pdf' })
-      let ref
       if (isSupabaseConfigured) {
         const { url, path } = await uploadDocument(order.id, file)
-        ref = { id: uid(), name: file.name, type: 'pdf', url, path }
+        extra.commitmentDoc = { id: uid(), name: file.name, type: 'pdf', url, path }
       } else {
-        ref = { id: uid(), name: file.name, type: 'pdf', url: URL.createObjectURL(file) }
+        extra.commitmentDoc = { id: uid(), name: file.name, type: 'pdf', url: URL.createObjectURL(file) }
       }
-      updateOrder({ ...order, workflow: { ...order.workflow, commitmentDoc: ref, invoiceAmount, invoicedAt } })
     } catch (e) {
-      // Doc attach is best-effort — still stamp the invoice total.
-      updateOrder({ ...order, workflow: { ...order.workflow, invoiceAmount, invoicedAt } })
+      // Doc attach is best-effort — the invoice total is still stamped below.
+      console.error('[commitment]', e.message)
     }
-    returnToAdmin(order.id, 'typer', user?.name, 'Commitment typed, generated & verified')
+    returnToAdmin(order.id, 'typer', user?.name, 'Commitment typed, generated & verified', extra)
     navigate(-1)
   }
   return (
     <div>
       {showDoc && <CommitmentDocumentModal order={order} onClose={() => setShowDoc(false)} />}
+      {/* Admin can open and fill this form too, so the wording has to fit the
+          person reading it: told "sent to Admin for approval", an admin was
+          being asked to submit to themselves. Submitting records typing as
+          complete either way and parks the order with Admin for the delivery
+          assignment — for an admin that is their own Orders list. */}
       <p className="text-[12.5px] mb-3" style={{ color: T.faint }}>
-        When you submit, the order is sent to Admin for approval before delivery.
+        {isAdmin
+          ? 'When you submit, typing is recorded as complete and the order returns to your Orders list, ready to assign to Delivery.'
+          : 'When you submit, the order is sent to Admin for approval before delivery.'}
       </p>
       {!ready && (
         <div className="rounded-lg px-3 py-2.5 mb-3 flex items-start gap-2" style={{ background: 'rgba(196,164,78,0.08)', border: '1px solid rgba(196,164,78,0.25)' }}>
@@ -591,7 +608,9 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
       )}
       <div className="flex items-center gap-2 flex-wrap">
         <GhostButton icon={FileText} onClick={() => setShowDoc(true)}>Generate Commitment Document</GhostButton>
-        <AccentButton icon={Send} disabled={!ready || submitting} onClick={submit}>{submitting ? 'Generating…' : 'Submit for Admin Approval'}</AccentButton>
+        <AccentButton icon={Send} disabled={!ready || submitting} onClick={submit}>
+          {submitting ? 'Generating…' : isAdmin ? 'Mark typing complete' : 'Submit for Admin Approval'}
+        </AccentButton>
       </div>
     </div>
   )

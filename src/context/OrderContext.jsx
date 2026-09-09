@@ -87,7 +87,14 @@ export function OrderProvider({ children }) {
   }
 
   let advancedTo = null
-  const completeStep = (orderId, role, userName, notes) => {
+  // `extra` merges into workflow as part of the SAME write as the stage move.
+  // Callers used to do updateOrder() for their documents and then completeStep()
+  // for the move, as two independent un-awaited PATCHes; whichever landed last
+  // won, and the updateOrder one carries the pre-move status. It only ever
+  // appeared to work because RLS refused the stale write once the move took the
+  // order off the caller's desk (orders_update_assigned), which is not
+  // protection — it is luck, and it runs out for anyone with a broader policy.
+  const completeStep = (orderId, role, userName, notes, extra = {}) => {
     advancedTo = null
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
@@ -103,6 +110,7 @@ export function OrderProvider({ children }) {
         progress: allDone ? 100 : Math.max(o.progress || 0, progressFor(nextStatus)),
         completed: allDone ? (o.completed || todayISO()) : o.completed,
         completedDates: newDates, completedBy: { ...o.completedBy, [role]: userName },
+        workflow: { ...o.workflow, ...extra },
       }
       persist(next)
       return next

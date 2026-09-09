@@ -26,7 +26,7 @@ function DeliveryOrderPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { orders, completeStep, updateOrder, activityLog = [] } = useOrders()
+  const { orders, completeStep, activityLog = [] } = useOrders()
   const { getOrderThread, getOrderNotes } = useSupport()
   const order = orders.find(o => o.id === id)
   const cli = order ? clientByName(order.client) : null
@@ -43,9 +43,11 @@ function DeliveryOrderPage() {
   )
 
   const submit = () => {
-    updateOrder({ ...order, workflow: { ...order.workflow, deliveryMethod: method,
-      deliveryRecipient: recipient, invoiceVisibleToClient: method === 'portal' } })
-    completeStep(order.id, 'delivery', user?.name, `via ${method}${note ? ' · ' + note : ''}`)
+    // The delivery details ride along with the stage move as one write — see the
+    // note on completeStep's `extra`.
+    completeStep(order.id, 'delivery', user?.name, `via ${method}${note ? ' · ' + note : ''}`, {
+      deliveryMethod: method, deliveryRecipient: recipient, invoiceVisibleToClient: method === 'portal',
+    })
     navigate('/delivery/queue')
   }
   const msgCount = getOrderThread(order.id).length + getOrderNotes(order.id).length

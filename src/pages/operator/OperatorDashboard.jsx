@@ -37,7 +37,7 @@ function OperatorOrderPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { orders, completeStep, returnToAdmin, updateOrder, activityLog = [] } = useOrders()
+  const { orders, completeStep, returnToAdmin, activityLog = [] } = useOrders()
   const { getOrderThread, getOrderNotes } = useSupport()
   const order = orders.find(o => o.id === id)
   const role = order ? nextRoleFor(order) : null
@@ -59,8 +59,7 @@ function OperatorOrderPage() {
   // completing it delivers the order outright.
   const advance = (workflowPatch) => {
     if (role === 'delivery') {
-      if (workflowPatch) updateOrder({ ...order, workflow: { ...order.workflow, ...workflowPatch } })
-      completeStep(order.id, role, user?.name, notes || 'single seating')
+      completeStep(order.id, role, user?.name, notes || 'single seating', workflowPatch || {})
     } else {
       returnToAdmin(order.id, role, user?.name, notes || 'single seating', workflowPatch || {})
     }
