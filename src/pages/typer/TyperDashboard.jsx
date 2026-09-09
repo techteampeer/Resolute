@@ -5,15 +5,17 @@ import Layout from '../../components/Layout'
 import OrdersTable from '../../components/OrdersTable'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
-import { LayoutDashboard, Keyboard, CheckCircle, Clock, FileText, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, Keyboard, CheckCircle, Clock, FileText, ChevronRight, Bell } from 'lucide-react'
 import { displayClient } from '../../data/mockData'
 import FulfillmentScreen from './fulfillment/FulfillmentScreen'
+import NotificationSettings from '../../components/NotificationSettings'
 
 const ROLE_COLOR = '#2441E5'
 const NAV = [
   { path: '/typer',           label: 'Dashboard', icon: LayoutDashboard },
   { path: '/typer/queue',     label: 'To Type',   icon: Keyboard, badge: 2 },
   { path: '/typer/completed', label: 'Completed', icon: CheckCircle },
+  { path: '/typer/notifications', label: 'Notifications', icon: Bell },
 ]
 
 function TyperHome() {
@@ -94,6 +96,7 @@ export default function TyperDashboard() {
       <Routes>
         <Route index element={<TyperHome />} />
         <Route path="order/:id" element={<FulfillmentScreen />} />
+        <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
         <Route path="queue" element={<div className="space-y-6">
           <h1 className="text-2xl font-bold" style={{color:'#12284C'}}>To Type</h1>
           <div className="glass-card p-5"><OrdersTable orders={myOrders} onOrderClick={openOrder} /></div>

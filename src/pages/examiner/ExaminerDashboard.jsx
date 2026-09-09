@@ -3,7 +3,7 @@ import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrdersTable from '../../components/OrdersTable'
-import { LayoutDashboard, FileSearch, CheckCircle, Clock, AlertCircle, ChevronRight, Send, FileText, Inbox, Files } from 'lucide-react'
+import { LayoutDashboard, FileSearch, CheckCircle, Clock, AlertCircle, ChevronRight, Send, FileText, Inbox, Files, Bell } from 'lucide-react'
 import { displayClient } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
@@ -12,12 +12,14 @@ import DocUpload from '../../components/DocUpload'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
+import NotificationSettings from '../../components/NotificationSettings'
 
 const ROLE_COLOR = '#2441E5'
 const NAV = [
   { path: '/examiner',           label: 'Dashboard',  icon: LayoutDashboard },
   { path: '/examiner/examine',   label: 'To Examine', icon: FileSearch, badge: 2 },
   { path: '/examiner/completed', label: 'Completed',  icon: CheckCircle },
+  { path: '/examiner/notifications', label: 'Notifications', icon: Bell },
 ]
 
 const CHECKLIST = ['Chain of title verified', 'Tax status confirmed', 'Lien search completed',
@@ -221,6 +223,7 @@ export default function ExaminerDashboard() {
         <Route path="examine" element={<ExaminerQueue orders={myOrders} title="To Examine" />} />
         <Route path="completed" element={<ExaminerQueue orders={completed} title="Completed" />} />
         <Route path="order/:id" element={<ExaminerOrderPage />} />
+        <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
       </Routes>
     </Layout>
   )

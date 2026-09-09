@@ -3,7 +3,7 @@ import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrdersTable from '../../components/OrdersTable'
-import { LayoutDashboard, ClipboardList, CheckCircle, Clock, AlertTriangle, Search, ChevronRight, Send, FileText, Inbox, Files } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, CheckCircle, Clock, AlertTriangle, Search, ChevronRight, Send, FileText, Inbox, Files, Bell } from 'lucide-react'
 import { displayClient } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
@@ -12,6 +12,7 @@ import DocUpload from '../../components/DocUpload'
 import OrderMessages from '../../components/OrderMessages'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
+import NotificationSettings from '../../components/NotificationSettings'
 
 const ROLE_COLOR = '#2441E5'
 const ASSIGN_OPTS = [['in_house', 'In-House'], ['abs', 'ABS (Abstract)'], ['both', 'Both']]
@@ -19,6 +20,7 @@ const NAV = [
   { path: '/screener',           label: 'Dashboard',       icon: LayoutDashboard },
   { path: '/screener/queue',     label: 'Screening Queue', icon: ClipboardList, badge: 3 },
   { path: '/screener/completed', label: 'Completed',       icon: CheckCircle },
+  { path: '/screener/notifications', label: 'Notifications', icon: Bell },
 ]
 
 const STATUS_DOT = {
@@ -228,6 +230,7 @@ export default function ScreenerDashboard() {
         <Route path="queue" element={<ScreenerQueue orders={myOrders} title="Screening Queue" />} />
         <Route path="completed" element={<ScreenerQueue orders={completed} title="Completed Screenings" />} />
         <Route path="order/:id" element={<ScreenerOrderPage />} />
+        <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
       </Routes>
     </Layout>
   )

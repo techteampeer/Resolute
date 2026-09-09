@@ -7,16 +7,18 @@ import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
 import { displayClient, nextRoleFor } from '../../data/mockData'
-import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files } from 'lucide-react'
+import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files, Bell } from 'lucide-react'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
+import NotificationSettings from '../../components/NotificationSettings'
 
 const ROLE_COLOR = '#2441E5'
 const NAV = [
   { path: '/operator',          label: 'Dashboard', icon: LayoutDashboard },
   { path: '/operator/completed',label: 'Completed', icon: CheckCircle },
+  { path: '/operator/notifications', label: 'Notifications', icon: Bell },
 ]
 
 // Stage each order is currently waiting on (first uncompleted production role).
@@ -308,6 +310,7 @@ export default function OperatorDashboard() {
         <Route path="order/:id"  element={<FulfillmentScreen />} />
         <Route path="orders/:id" element={<OperatorOrderPage />} />
         <Route path="completed" element={<CompletedList />} />
+        <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
       </Routes>
     </Layout>
   )

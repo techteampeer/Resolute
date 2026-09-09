@@ -4,11 +4,12 @@ import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
 import AssignModal from '../../components/AssignModal'
+import NotificationSettings from '../../components/NotificationSettings'
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
   Package, CheckCircle, Clock, Search, Plus, Filter, Eye, DollarSign,
   ChevronDown, ChevronUp, FileText, ArrowUpRight, X, Lock, ShieldCheck, UserPlus, Download,
-  MessageSquare, Send, StickyNote,
+  MessageSquare, Send, StickyNote, Bell,
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
@@ -53,6 +54,7 @@ const NAV = [
   { path: '/admin/support',  label: 'Support',      icon: MessageSquare },
   { path: '/admin/map',      label: 'Coverage Map', icon: MapPin },
   { path: '/admin/reports',  label: 'Reports',      icon: BarChart3 },
+  { path: '/admin/notifications', label: 'Notifications', icon: Bell },
   { path: '/admin/settings', label: 'Settings',     icon: Settings },
 ]
 
@@ -1871,9 +1873,10 @@ export default function AdminDashboard() {
         <Route path="support"  element={<AdminSupport />} />
         <Route path="map"      element={<AdminMap />} />
         <Route path="reports"  element={<AdminReports />} />
+        <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
         <Route path="settings" element={
           <div style={{ padding:48, textAlign:'center', color:Q.faint, fontSize:14 }}>
-            Settings coming soon
+            Nothing here yet. Email notification preferences live under <b>Notifications</b>.
           </div>
         } />
       </Routes>

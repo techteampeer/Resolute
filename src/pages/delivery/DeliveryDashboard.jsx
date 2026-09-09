@@ -3,7 +3,7 @@ import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrdersTable from '../../components/OrdersTable'
-import { LayoutDashboard, Truck, Package, CheckCircle, Clock, Download, Send, Mail, ChevronRight, FileText, Inbox, Files } from 'lucide-react'
+import { LayoutDashboard, Truck, Package, CheckCircle, Clock, Download, Send, Mail, ChevronRight, FileText, Inbox, Files, Bell } from 'lucide-react'
 import { displayClient, clientByName } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
@@ -11,12 +11,14 @@ import { useSupport } from '../../context/SupportContext'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
+import NotificationSettings from '../../components/NotificationSettings'
 
 const ROLE_COLOR = '#2441E5'
 const NAV = [
   { path: '/delivery',         label: 'Dashboard',    icon: LayoutDashboard },
   { path: '/delivery/queue',   label: 'Ready to Send',icon: Package, badge: 2 },
   { path: '/delivery/sent',    label: 'Delivered',    icon: CheckCircle },
+  { path: '/delivery/notifications', label: 'Notifications', icon: Bell },
 ]
 
 // Full-page order detail (replaces the old modal). Route: /delivery/order/:id
@@ -245,6 +247,7 @@ export default function DeliveryDashboard() {
         <Route path="queue" element={<DeliveryQueue orders={readyOrders} title="Ready to Send" />} />
         <Route path="sent" element={<DeliveryQueue orders={deliveredOrders} title="Delivered Orders" />} />
         <Route path="order/:id" element={<DeliveryOrderPage />} />
+        <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
       </Routes>
     </Layout>
   )

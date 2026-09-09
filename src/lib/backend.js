@@ -41,6 +41,10 @@ const toOrderRow = (o) => ({
 })
 
 const mapUser = (authUser, prof) => ({
+  // profiles.id is the auth user's id. The Notifications screen writes
+  // notification_preferences.profile_id with it, and RLS checks it against
+  // auth.uid(), so a wrong value is refused rather than misfiled.
+  id: prof?.id || authUser.id || null,
   email: authUser.email,
   role: prof?.role || null,        // null when no profile/role — caller must handle, never silently 'client'
   name: prof?.name || authUser.email,
@@ -214,6 +218,66 @@ export async function saveFulfillment(orderId, data) {
     const msg = 'the database refused the change (this order may not be on your desk)'
     console.error('[saveFulfillment]', msg)
     return { ok: false, error: msg }
+  }
+  return { ok: true }
+}
+
+// ── Notification preferences ─────────────────────────────────────────────────
+// notification_types is the catalogue (what exists, who it can reach, and the
+// mode used when someone has expressed no preference); notification_preferences
+// holds one row per person per type, and only when they have chosen something.
+// No row means "the type's default", which is why turning a preference off again
+// deletes the row instead of writing the default into it.
+export async function fetchNotificationTypes() {
+  const { data, error } = await supabase
+    .from('notification_types')
+    .select('key,label,description,default_roles,default_mode,sort_order')
+    .order('sort_order')
+  if (error) { console.error('[notificationTypes]', error.message); return null }
+  return data
+}
+
+// RLS (notif_pref_own_read) scopes this to the caller, so no filter is needed —
+// but an admin may read everyone's, hence the explicit profile filter.
+export async function fetchNotificationPreferences(profileId) {
+  let q = supabase.from('notification_preferences').select('type_key,mode,updated_at')
+  if (profileId) q = q.eq('profile_id', profileId)
+  const { data, error } = await q
+  if (error) { console.error('[notificationPreferences]', error.message); return null }
+  return data
+}
+
+// Returns { ok, error } like the other writes: an RLS refusal comes back as 200
+// with no rows, and a settings toggle that silently does nothing is worse than
+// one that says why.
+export async function saveNotificationPreference(profileId, typeKey, mode) {
+  if (!profileId) return { ok: false, error: 'your profile is not linked to a login yet' }
+  const { data, error } = await supabase
+    .from('notification_preferences')
+    .upsert({ profile_id: profileId, type_key: typeKey, mode, updated_at: new Date().toISOString() })
+    .select('type_key')
+  if (error) {
+    console.error('[saveNotificationPreference]', error.message)
+    return { ok: false, error: refusalText(error.message, 'you may only change your own preferences') }
+  }
+  if (!data || data.length === 0) {
+    const msg = 'the database refused the change (you may only change your own preferences)'
+    console.error('[saveNotificationPreference]', msg)
+    return { ok: false, error: msg }
+  }
+  return { ok: true }
+}
+
+// Back to the type's default: remove the row rather than store a copy of the
+// default, so a later change to the default follows the person automatically.
+export async function clearNotificationPreference(profileId, typeKey) {
+  if (!profileId) return { ok: false, error: 'your profile is not linked to a login yet' }
+  const { error } = await supabase
+    .from('notification_preferences')
+    .delete().eq('profile_id', profileId).eq('type_key', typeKey)
+  if (error) {
+    console.error('[clearNotificationPreference]', error.message)
+    return { ok: false, error: refusalText(error.message, 'you may only change your own preferences') }
   }
   return { ok: true }
 }

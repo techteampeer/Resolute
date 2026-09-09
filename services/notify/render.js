@@ -26,19 +26,30 @@ const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial
 // text-only client (or any filter scoring the text part) got operational mail
 // with no explanation of why they were on it and no way off.
 //
-// It used to point at "Settings → Notifications". notification_preferences and
-// its per-user RLS exist, but no portal renders a screen for them — /admin/
-// settings is a "coming soon" stub and no other role has the route at all — so
-// the footer sent people somewhere that does not exist. Until that screen is
-// built it names a route that does: ask an admin.
+// The link is per-role because each portal mounts the screen under its own
+// prefix. Without a baseUrl (an unconfigured deploy) it degrades to naming the
+// screen rather than printing a broken link.
 const FOOTER_LINES = [
   'You are receiving this because of your role in the Resolute portal.',
-  'To change what you are notified about, ask a Resolute administrator.',
+  'Change what you are notified about under Notifications in the portal.',
 ]
-const footerText = () => ['', '—', ...FOOTER_LINES].join('\n')
+const settingsUrl = (baseUrl, recipientRole) =>
+  baseUrl ? `${String(baseUrl).replace(/\/+$/, '')}/${recipientRole}/notifications` : null
+const footerText = (baseUrl, recipientRole) => {
+  const url = settingsUrl(baseUrl, recipientRole)
+  return ['', '—', FOOTER_LINES[0],
+    url ? `Change what you are notified about: ${url}` : FOOTER_LINES[1]].join('\n')
+}
+const footerHtml = (baseUrl, recipientRole) => {
+  const url = settingsUrl(baseUrl, recipientRole)
+  return url
+    ? `Change what you are notified about under <a href="${esc(url)}" style="color:#2441E5;">Notifications</a> in the portal.`
+    : FOOTER_LINES[1]
+}
 
-// Outer chrome shared by every message.
-const shell = (title, inner) => `<!doctype html>
+// Outer chrome shared by every message. `footer` is the second line of the
+// footer, already linked when a portal URL is configured.
+const shell = (title, inner, footer) => `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title></head>
 <body style="margin:0;padding:0;background:${GROUND};">
@@ -54,7 +65,7 @@ const shell = (title, inner) => `<!doctype html>
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;">
   <tr><td style="padding:14px 24px;font:400 11px ${FONT};color:${MUTED};line-height:1.5;">
     ${FOOTER_LINES[0]}
-    ${FOOTER_LINES[1]}
+    ${footer || FOOTER_LINES[1]}
   </td></tr>
 </table>
 </td></tr></table></body></html>`
@@ -101,9 +112,9 @@ export function renderOne(row, { baseUrl, recipientRole = 'admin' } = {}) {
     '',
     ...facts.map(([k, v]) => `${k}: ${v}`),
     href ? `\n${t.cta}: ${href}` : '',
-  ].filter(x => x !== '').join('\n') + footerText()
+  ].filter(x => x !== '').join('\n') + footerText(baseUrl, recipientRole)
 
-  return { subject, html: shell(subject, inner), text }
+  return { subject, html: shell(subject, inner, footerHtml(baseUrl, recipientRole)), text }
 }
 
 // ---- daily digest ---------------------------------------------------------
@@ -173,7 +184,7 @@ export function renderDigest(rows, { baseUrl, recipientRole = 'admin', date = ne
       ]
     }),
     baseUrl ? `Open the portal: ${String(baseUrl).replace(/\/+$/, '')}/${recipientRole}` : '',
-  ].join('\n') + footerText()
+  ].join('\n') + footerText(baseUrl, recipientRole)
 
-  return { subject, html: shell(subject, inner), text }
+  return { subject, html: shell(subject, inner, footerHtml(baseUrl, recipientRole)), text }
 }

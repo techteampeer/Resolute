@@ -3,6 +3,7 @@ import { Routes, Route, useNavigate, useSearchParams, useParams } from 'react-ro
 import { motion, AnimatePresence } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrderThread from '../../components/OrderThread'
+import NotificationSettings from '../../components/NotificationSettings'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox,
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign, Search,
@@ -1056,6 +1057,10 @@ export default function ClientDashboard() {
         <Route path="order"  element={<PlaceOrderPage />} />
         <Route path="orders" element={<MyOrdersPage />} />
         <Route path="orders/:id" element={<OrderDetailPage />} />
+        {/* No nav entry and no email ever links here — client contact is
+            portal-only, so a client is never a notification recipient. The route
+            exists so the URL explains itself instead of rendering a blank page. */}
+        <Route path="notifications" element={<NotificationSettings />} />
         <Route path="messages" element={<MessagesPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="support" element={<SupportPage />} />
