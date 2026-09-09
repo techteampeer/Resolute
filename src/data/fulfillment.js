@@ -235,6 +235,33 @@ export function makeDefaultFulfillment(order = {}) {
   }
 }
 
+// Merge a stored row over the default shape.
+//
+// A stored fulfillment is whatever shape the row happens to hold — an older
+// build's, a partial write, or a payload someone truncated. The form reads
+// f.meta.address and comp.items[0] directly, so a row missing a section threw
+// and blanked the entire page: a row holding only {"legalDescription": ""}
+// unmounted FulfillmentBody with "Cannot read properties of undefined (reading
+// 'address')". Filling the gaps from the defaults turns a missing section into
+// an empty one, which the typer can see and fix.
+//
+// Stored values always win, including empty strings and empty arrays — the
+// typer may legitimately have deleted every deed — so only absent keys are
+// filled. Object-shaped sections merge one level deep so a row written before a
+// field existed still gets that field's default.
+export function hydrateFulfillment(order = {}, stored) {
+  const def = makeDefaultFulfillment(order)
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return def
+  const out = { ...def, ...stored }
+  for (const k of Object.keys(def)) {
+    const d = def[k], s = stored[k]
+    if (s == null) { out[k] = d; continue }
+    const plain = (x) => x && typeof x === 'object' && !Array.isArray(x)
+    if (plain(d) && plain(s)) out[k] = { ...d, ...s }
+  }
+  return out
+}
+
 // ── Completeness — 8 required sections (§2.3 "N of 8") ───────────────────────
 export function completeness(f) {
   if (!f) return { items: [], done: 0, total: 8 }

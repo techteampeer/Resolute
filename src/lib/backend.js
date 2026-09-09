@@ -89,9 +89,31 @@ export async function fetchOrders() {
   return data.map(toAppOrder)
 }
 
+// Returns { ok, error }. An RLS-filtered UPDATE is not an error in PostgREST —
+// it matches zero rows and returns 200 — so "did anything change?" has to be
+// answered by asking for the affected rows back. Without this the app could not
+// tell a refused write from a successful one, and reported success either way.
+// Postgres' own words for a refused write ("new row violates row-level security
+// policy for table \"fulfillments\"") are exact and useless to a typer. Keep them
+// in the console for diagnosis; put a sentence on the screen.
+const refusalText = (msg, subject) =>
+  /row-level security|permission denied|insufficient privilege/i.test(msg || '')
+    ? `the database refused the change (${subject})`
+    : (msg || 'not saved')
+
 export async function saveOrder(order) {
-  const { error } = await supabase.from('orders').update(toOrderRow(order)).eq('id', order.id)
-  if (error) console.error('[saveOrder]', error.message)
+  const { data, error } = await supabase.from('orders')
+    .update(toOrderRow(order)).eq('id', order.id).select('id')
+  if (error) {
+    console.error('[saveOrder]', error.message)
+    return { ok: false, error: refusalText(error.message, 'you may no longer own this order') }
+  }
+  if (!data || data.length === 0) {
+    const msg = 'the database refused the change (you may no longer own this order)'
+    console.error('[saveOrder]', msg)
+    return { ok: false, error: msg }
+  }
+  return { ok: true }
 }
 
 // Insert a new order (client-placed or staff). RLS: orders_insert_client lets a
@@ -177,9 +199,23 @@ export async function fetchFulfillment(orderId) {
   return data?.data || null
 }
 
+// Returns { ok, error }. Same reasoning as saveOrder: a refused write comes back
+// as 200 with no rows, and this is the path a typer spends an hour filling in —
+// the autosave badge used to say "Saved" on a timer whether or not the row moved.
 export async function saveFulfillment(orderId, data) {
-  const { error } = await supabase.from('fulfillments').upsert({ order_id: orderId, data, updated_at: new Date().toISOString() })
-  if (error) console.error('[saveFulfillment]', error.message)
+  const { data: rows, error } = await supabase.from('fulfillments')
+    .upsert({ order_id: orderId, data, updated_at: new Date().toISOString() })
+    .select('order_id')
+  if (error) {
+    console.error('[saveFulfillment]', error.message)
+    return { ok: false, error: refusalText(error.message, 'this order may not be on your desk') }
+  }
+  if (!rows || rows.length === 0) {
+    const msg = 'the database refused the change (this order may not be on your desk)'
+    console.error('[saveFulfillment]', msg)
+    return { ok: false, error: msg }
+  }
+  return { ok: true }
 }
 
 // ── Client payment terms ──────────────────────────────────────────────────────

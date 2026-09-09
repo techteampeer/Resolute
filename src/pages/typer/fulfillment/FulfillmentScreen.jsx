@@ -32,7 +32,7 @@ export default function FulfillmentScreen() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { orders, updateOrder } = useOrders()
-  const { byOrder, ensure, update, save } = useFulfillmentStore()
+  const { byOrder, ensure, update, save, saveError } = useFulfillmentStore()
   const order = orders.find(o => o.id === id)
   const [tab, setTab] = useState('Fulfillment')
 
@@ -91,7 +91,7 @@ export default function FulfillmentScreen() {
       </div>
 
       {tab === 'Fulfillment'
-        ? <FulfillmentBody {...{ order, f, set, comp, save, user, updateOrder, navigate }} />
+        ? <FulfillmentBody {...{ order, f, set, comp, save, saveError, user, updateOrder, navigate }} />
         : tab === 'Overview'
         ? <OverviewTab order={order} f={f} user={user} />
         : tab === 'Inbox'
@@ -102,11 +102,11 @@ export default function FulfillmentScreen() {
 }
 
 // ── Fulfillment body: two-column layout ──────────────────────────────────────
-function FulfillmentBody({ order, f, set, comp, save, user, updateOrder, navigate }) {
+function FulfillmentBody({ order, f, set, comp, save, saveError, user, updateOrder, navigate }) {
   return (
     <div className="flex gap-6 px-5 md:px-7 py-5">
       <div className="flex-1 min-w-0 max-w-[860px]">
-        <CompletenessBar comp={comp} address={f.meta.address} save={save} />
+        <CompletenessBar comp={comp} address={f.meta.address} save={save} saveError={saveError} />
         <ImportControl order={order} set={set} />
 
         {/* 1 — Search Information */}
@@ -235,7 +235,7 @@ function FulfillmentBody({ order, f, set, comp, save, user, updateOrder, navigat
 }
 
 // ── Completeness bar ─────────────────────────────────────────────────────────
-function CompletenessBar({ comp, address, save }) {
+function CompletenessBar({ comp, address, save, saveError }) {
   const [open, setOpen] = useState(false)
   const missing = comp.items.filter(i => !i.done)
   const pct = Math.round((comp.done / comp.total) * 100)
@@ -253,7 +253,7 @@ function CompletenessBar({ comp, address, save }) {
             <motion.div className="h-full rounded-full" style={{ background: T.accentBright }} animate={{ width: `${pct}%` }} transition={{ type: 'spring', stiffness: 200, damping: 28 }} />
           </div>
         </div>
-        <SaveIndicator save={save} />
+        <SaveIndicator save={save} saveError={saveError} />
         <div className="relative">
           <button onClick={() => setOpen(o => !o)} disabled={!missing.length}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors whitespace-nowrap"
@@ -288,12 +288,20 @@ function CompletenessBar({ comp, address, save }) {
   )
 }
 
-function SaveIndicator({ save }) {
+// "Saved" now means the row moved. A refused write shows as Not saved with the
+// reason, because this form holds an hour of a typer's work and the badge used to
+// say Saved on a timer whether or not anything reached the database.
+function SaveIndicator({ save, saveError }) {
+  const failed = save === 'error'
   return (
-    <div className="flex items-center gap-1.5 text-[11px] tabular-nums" style={{ color: save === 'saving' ? T.warn : T.dim }}>
+    <div className="flex items-center gap-1.5 text-[11px] tabular-nums"
+      style={{ color: failed ? '#dc2626' : save === 'saving' ? T.warn : T.dim }}
+      title={failed ? saveError || '' : undefined}>
       <AnimatePresence mode="wait">
         {save === 'saving'
           ? <motion.span key="s" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5"><Cloud className="w-3.5 h-3.5 animate-pulse" /> Saving…</motion.span>
+          : failed
+          ? <motion.span key="e" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Not saved — {saveError || 'the database refused the change'}</motion.span>
           : save === 'saved'
           ? <motion.span key="d" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5" style={{ color: T.accentBright }} /> Saved</motion.span>
           : <span />}

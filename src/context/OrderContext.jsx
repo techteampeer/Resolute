@@ -18,6 +18,11 @@ export function OrderProvider({ children }) {
   const { user } = useAuth()
   const [orders, setOrders]           = useState(ORDERS)
   const [activityLog, setActivityLog] = useState(ACTIVITY)
+  // Why the last order write was refused, or null. A write filtered out by RLS
+  // comes back from PostgREST as 200 with zero rows, so completing a stage on an
+  // order that is no longer yours looked identical to succeeding — the optimistic
+  // local update stayed on screen and the work was silently discarded.
+  const [writeError, setWriteError]   = useState(null)
 
   // Hydrate from Supabase + live updates when configured; otherwise keep mock.
   // Keyed on the signed-in identity: the provider mounts on the login page
@@ -45,7 +50,13 @@ export function OrderProvider({ children }) {
       audience: entry.audience || 'staff',
     })
   }
-  const persist = (order) => { if (isSupabaseConfigured) saveOrder(order) }
+  const persist = (order) => {
+    if (!isSupabaseConfigured) return
+    saveOrder(order)
+      .then(r => setWriteError(r && r.ok === false ? (r.error || 'not saved') : null))
+      .catch(e => setWriteError(e.message))
+  }
+  const clearWriteError = () => setWriteError(null)
 
   const assignOrder = (orderId, { queue, personName } = {}) => {
     setOrders(os => os.map(o => {
@@ -240,7 +251,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, logAction, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, writeError, clearWriteError, assignOrder, completeStep, returnToAdmin, updateOrder, logAction, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )
