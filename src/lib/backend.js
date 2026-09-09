@@ -80,6 +80,8 @@ export function onAuthChange(cb) {
 
 // ── Orders ─────────────────────────────────────────────────────────────────
 export async function fetchOrders() {
+  // The embedded name comes back only for a super admin; RLS drops it for
+  // everyone else, and toAppOrder falls back to the client code.
   const { data, error } = await supabase.from('orders').select('*, clients(name)').order('created', { ascending: false })
   if (error) { console.error('[orders]', error.message); return null }
   return data.map(toAppOrder)
@@ -185,15 +187,26 @@ export async function saveFulfillment(orderId, data) {
 // for anyone else. `name` comes back only where RLS permits it, so the masking
 // rule still decides what a given user can actually see.
 export async function fetchClients() {
-  const { data, error } = await supabase
-    .from('clients')
-    .select('code, name, contact, email, phone, payment_terms, activity, registered')
-    .order('code')
-  if (error) { console.error('[fetchClients]', error.message); return null }
-  return data.map(c => ({
-    code: c.code, name: c.name, contact: c.contact, email: c.email, phone: c.phone,
-    paymentTerms: c.payment_terms, activity: c.activity, registered: c.registered,
-  }))
+  // Two reads on purpose. client_directory carries the operational columns and
+  // no identity, so every staff role gets the full list of codes. The base table
+  // holds the names and is super-admin-only under RLS, so this second read comes
+  // back empty for everyone else — the mask is the database's answer, not a
+  // rendering decision. Merged by code.
+  const [dir, named] = await Promise.all([
+    supabase.from('client_directory').select('code, payment_terms, activity, registered').order('code'),
+    supabase.from('clients').select('code, name, contact, email, phone'),
+  ])
+  if (dir.error) { console.error('[fetchClients]', dir.error.message); return null }
+  const byCode = new Map((named.data || []).map(c => [c.code, c]))
+  return (dir.data || []).map(c => {
+    const id = byCode.get(c.code)
+    return {
+      code: c.code,
+      name: id?.name ?? null,          // null unless the caller may see it
+      contact: id?.contact ?? null, email: id?.email ?? null, phone: id?.phone ?? null,
+      paymentTerms: c.payment_terms, activity: c.activity, registered: c.registered,
+    }
+  })
 }
 
 export async function fetchClientTerms() {
