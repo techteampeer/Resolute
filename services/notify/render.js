@@ -21,6 +21,22 @@ const esc = (s) => String(s ?? '')
 
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
 
+// Why this arrived and how to stop it, in both parts of every message. The HTML
+// carried it and the text/plain alternative did not, so anyone reading in a
+// text-only client (or any filter scoring the text part) got operational mail
+// with no explanation of why they were on it and no way off.
+//
+// It used to point at "Settings → Notifications". notification_preferences and
+// its per-user RLS exist, but no portal renders a screen for them — /admin/
+// settings is a "coming soon" stub and no other role has the route at all — so
+// the footer sent people somewhere that does not exist. Until that screen is
+// built it names a route that does: ask an admin.
+const FOOTER_LINES = [
+  'You are receiving this because of your role in the Resolute portal.',
+  'To change what you are notified about, ask a Resolute administrator.',
+]
+const footerText = () => ['', '—', ...FOOTER_LINES].join('\n')
+
 // Outer chrome shared by every message.
 const shell = (title, inner) => `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -37,8 +53,8 @@ const shell = (title, inner) => `<!doctype html>
 </table>
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;">
   <tr><td style="padding:14px 24px;font:400 11px ${FONT};color:${MUTED};line-height:1.5;">
-    You are receiving this because of your role in the Resolute portal.
-    Change what you are notified about in Settings → Notifications.
+    ${FOOTER_LINES[0]}
+    ${FOOTER_LINES[1]}
   </td></tr>
 </table>
 </td></tr></table></body></html>`
@@ -85,7 +101,7 @@ export function renderOne(row, { baseUrl, recipientRole = 'admin' } = {}) {
     '',
     ...facts.map(([k, v]) => `${k}: ${v}`),
     href ? `\n${t.cta}: ${href}` : '',
-  ].filter(x => x !== '').join('\n')
+  ].filter(x => x !== '').join('\n') + footerText()
 
   return { subject, html: shell(subject, inner), text }
 }
@@ -156,7 +172,8 @@ export function renderDigest(rows, { baseUrl, recipientRole = 'admin', date = ne
         '',
       ]
     }),
-  ].join('\n')
+    baseUrl ? `Open the portal: ${String(baseUrl).replace(/\/+$/, '')}/${recipientRole}` : '',
+  ].join('\n') + footerText()
 
   return { subject, html: shell(subject, inner), text }
 }

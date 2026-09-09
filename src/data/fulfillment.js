@@ -157,6 +157,68 @@ export function exceptionText(ex) {
   }
 }
 
+// ── What the document may print ─────────────────────────────────────────────
+// The ‹label› tokens above exist so the typer can see, in the form, what a
+// clause is still missing. They must never reach the client. An untouched
+// fulfillment printed this into the commitment PDF:
+//
+//   5. A mortgage by ‹mortgagor› to ‹lender› dated ‹date of mortgage› in the
+//      original principal amount of ‹amount› …
+//   2. Any rights, easements, interests, or claims … the following Plat Maps:
+//        • ‹no plat maps added›
+//
+// Two situations, two answers:
+//  - A conditional clause carrying no data at all does not apply to this order,
+//    so the document leaves it out. Schedule B-I and B-II already print "None."
+//    when nothing is left, and the same goes for the deeds table, which used to
+//    print six column headers over one row of em-dashes because the default
+//    fulfillment seeds a single blank deed.
+//  - A clause the typer part-filled stays in, with its gaps drawn the way a
+//    title document draws a gap — a ruled blank — not as a software token.
+const TOKEN_RE = () => /‹[^›]*›/g
+const BLANK = '__________'
+export const stripTokens = (s) => String(s ?? '').replace(TOKEN_RE(), BLANK)
+export const hasToken = (s) => /‹[^›]*›/.test(String(s ?? ''))
+
+const any = (...vals) => vals.some(x => x != null && String(x).trim() !== '')
+
+// Does this requirement/exception carry anything the client needs to read?
+export function clauseHasContent(it = {}) {
+  if (it.overridden) return any(it.overrideText)
+  switch (it.kind) {
+    case 'mortgage': {
+      const l = it.lien || {}
+      return any(l.mortgagor, l.lender, l.borrower, l.trustee, l.instrumentName, l.amount,
+                 l.book, l.page, l.instrument, l.docNo, l.certOfTitle,
+                 l.dateOfMortgage, l.dateRecorded, l.maturityDate)
+        || (l.assignments || []).some(a => any(a.assignor, a.assignee, a.book, a.page))
+        || (l.subordinations || []).some(x => any(x.text))
+    }
+    case 'platmaps': return (it.maps || []).some(m => any(m.date, m.book, m.page))
+    case 'easement': return any(it.recordedDate, it.book, it.page)
+    case 'survey':   return any(it.surveyor, it.surveyDate, it.encroachmentDescription)
+    default:         return any(it.text)
+  }
+}
+
+// The clause list as the document should print it: nothing empty, no tokens.
+export const documentClauses = (items, resolve) =>
+  (items || []).filter(clauseHasContent).map(it => stripTokens(resolve(it)).trim()).filter(Boolean)
+
+export const deedHasContent = (d = {}) =>
+  any(d.deedType, d.grantor, d.grantee, d.dateOfDeed, d.recordedDate,
+      d.book, d.page, d.instrument, d.documentNo, d.certOfTitle, d.consideration, d.comments)
+
+export const judgmentHasContent = (j = {}) =>
+  any(j.instrumentName, j.caseNo, j.filedOn, j.recDate, j.book, j.page, j.amount, j.comments)
+
+// Clauses the document will print with a ruled blank in them, so the typer can
+// be told before the client is.
+export const unfilledClauses = (f) => [
+  ...(f?.requirements || []).map(it => ({ it, resolve: requirementText, part: 'Requirement' })),
+  ...(f?.exceptions   || []).map(it => ({ it, resolve: exceptionText,   part: 'Exception' })),
+].filter(({ it, resolve }) => clauseHasContent(it) && hasToken(resolve(it)))
+
 // ── Default seeds (Schedule B-I / B-II, paraphrased per spec) ────────────────
 function defaultRequirements({ buyer, seller, county }) {
   return [

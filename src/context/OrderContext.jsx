@@ -43,7 +43,13 @@ export function OrderProvider({ children }) {
   // trail (orderId/actor ride on the entry when the caller knows them).
   const log = (entry) => {
     setActivityLog(a => [entry, ...a])
-    if (isSupabaseConfigured) logEvent({
+    // Only staff may append to the durable trail — order_events_insert is
+    // is_staff(). Everything a client does is recorded by the database itself
+    // (log_order_created() on placement, client_cancel_order() and
+    // client_mark_payment() for the rest), so attempting the insert from a
+    // client session added nothing and put a 403 in the console on every single
+    // order placed.
+    if (isSupabaseConfigured && user?.role && user.role !== 'client') logEvent({
       orderId: entry.orderId, action: entry.action, type: entry.type, actor: entry.actor,
       // Whoever performed the action does not need to be told about it.
       actorEmail: entry.actorEmail || user?.email || null,

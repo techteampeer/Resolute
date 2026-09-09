@@ -10,7 +10,7 @@ import { useAuth } from '../../../context/AuthContext'
 import { useFulfillmentStore } from '../../../context/FulfillmentContext'
 import { displayClient, clientByName } from '../../../data/mockData'
 import {
-  completeness, titleVestingAuto, fmtDateTime, uid,
+  completeness, titleVestingAuto, fmtDateTime, uid, unfilledClauses,
 } from '../../../data/fulfillment'
 import { T, Label, TextInput, TextArea, DateInput, RoundBtn, AccentButton, GhostButton } from './ui'
 import DeedTabs from './DeedTabs'
@@ -527,6 +527,10 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
   const [submitting, setSubmitting] = useState(false)
   const missing = comp.items.filter(i => !i.done)
   const ready = missing.length === 0
+  // Clauses that will reach the client with a ruled blank in them. The document
+  // no longer prints ‹token› placeholders, but a blank in a legal instrument is
+  // still the typer's to fill, so say so here rather than let it ship quietly.
+  const gaps = useMemo(() => unfilledClauses(f), [f])
   // Every stage parks with Admin for approval before the next one (CLAUDE.md);
   // typing is no exception, from either the typer portal or the Single Seating
   // desk — so this path never calls completeStep.
@@ -572,6 +576,16 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: T.warn }} />
           <div className="text-[12.5px]" style={{ color: T.muted }}>
             Complete {missing.length} more section{missing.length > 1 ? 's' : ''} before submitting: <span style={{ color: T.warn }}>{missing.map(m => m.label).join(', ')}</span>.
+          </div>
+        </div>
+      )}
+      {gaps.length > 0 && (
+        <div className="rounded-lg px-3 py-2.5 mb-3 flex items-start gap-2" style={{ background: 'rgba(196,164,78,0.08)', border: '1px solid rgba(196,164,78,0.25)' }}>
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: T.warn }} />
+          <div className="text-[12.5px]" style={{ color: T.muted }}>
+            {gaps.length} clause{gaps.length > 1 ? 's' : ''} will print with a blank in {gaps.length > 1 ? 'them' : 'it'}
+            {' '}(<span style={{ color: T.warn }}>{[...new Set(gaps.map(g => g.part))].join(' and ')}</span>).
+            Fill them in, delete the clause, or override its text.
           </div>
         </div>
       )}

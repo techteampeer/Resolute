@@ -249,15 +249,24 @@ function InternalNotes({ order, notes, user, clientCode }) {
 // Confirming an order is the moment it gets a price and a committed date. Both
 // used to be skipped for portal orders: the price fell through to the catalogue
 // (or a flat $125 for the quote-only products) and the ETA was never set at all.
-function ConfirmOrderModal({ order, onCancel, onConfirm }) {
+// `started` = the order is already past intake. Admin still needs to be able to
+// price a row that got moving without ever being confirmed (every seeded order,
+// and anything placed before pricing existed), but calling that "Confirm order"
+// and mailing the client "received and confirmed — we'll begin work shortly" on
+// a file that is 65% done is a lie. Same modal, different framing and message.
+function ConfirmOrderModal({ order, started, onCancel, onConfirm }) {
   const catalogue = PRODUCT_PRICE[order.type]
   const quoteOnly = catalogue == null
   const [price, setPrice] = useState(String(order.workflow?.invoiceAmount ?? catalogue ?? ''))
-  const [eta, setEta] = useState(order.eta || (() => {
+  const [eta, setEta] = useState(() => {
     // A rush order promises a tighter date than a normal one.
     const d = new Date(); d.setDate(d.getDate() + (order.priority === 'rush' ? 2 : 4))
-    return d.toISOString().slice(0, 10)
-  })())
+    const suggested = d.toISOString().slice(0, 10)
+    // Only carry an existing ETA forward while it is still in the future.
+    // Pricing an older order prefilled its stale date and saved it, so the
+    // client was shown a committed date that had already passed.
+    return order.eta && order.eta >= new Date().toISOString().slice(0, 10) ? order.eta : suggested
+  })
   const n = Number(price)
   const priceValid = price !== '' && !Number.isNaN(n) && n >= 0
   const field = { width:'100%', padding:'9px 11px', borderRadius:8, border:`1px solid ${Q.border}`,
@@ -269,10 +278,17 @@ function ConfirmOrderModal({ order, onCancel, onConfirm }) {
         style={{ background:Q.card, borderRadius:12, width:'100%', maxWidth:420, boxShadow:'0 20px 50px rgba(0,0,0,0.25)' }}>
         <div style={{ padding:'18px 22px', borderBottom:`1px solid ${Q.border}` }}>
           <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:ROLE_COLOR }}>{order.id}</div>
-          <div style={{ fontSize:17, fontWeight:700, color:Q.text }}>Confirm &amp; price order</div>
+          <div style={{ fontSize:17, fontWeight:700, color:Q.text }}>{started ? 'Set price & committed date' : 'Confirm & price order'}</div>
           <div style={{ fontSize:12, color:Q.muted }}>{order.type}{order.county ? ` · ${order.county}, ${order.state}` : ''}</div>
         </div>
         <div style={{ padding:'18px 22px', display:'grid', gap:14 }}>
+          {started && (
+            <div style={{ fontSize:12, lineHeight:1.5, padding:'9px 11px', borderRadius:8,
+              background:'#fffbeb', border:'1px solid #fde68a', color:'#a16207' }}>
+              Work on this order has already started ({order.status}, {order.progress || 0}% complete).
+              This sets the price and the date the client sees — it is not an acknowledgment of a new order.
+            </div>
+          )}
           <div>
             <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
               letterSpacing:'0.05em', color:Q.faint, marginBottom:6 }}>Agreed price (USD)</label>
@@ -297,7 +313,7 @@ function ConfirmOrderModal({ order, onCancel, onConfirm }) {
           <button disabled={!priceValid} onClick={() => onConfirm({ price: n, eta })}
             style={{ flex:1, padding:'10px', background: priceValid ? ROLE_COLOR : Q.border, border:'none',
               borderRadius:8, color:'#fff', fontSize:13, fontWeight:600, cursor: priceValid ? 'pointer' : 'not-allowed' }}>
-            Confirm order
+            {started ? 'Save price & date' : 'Confirm order'}
           </button>
           <button onClick={onCancel} style={{ padding:'10px 18px', background:Q.bg,
             border:`1px solid ${Q.border}`, borderRadius:8, color:Q.muted, fontSize:13, fontWeight:600, cursor:'pointer' }}>
@@ -427,6 +443,10 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
   // to delivery and the client's order detail rendered "ETA:" with nothing after.
   const [confirming, setConfirming] = useState(false)
   const confirmOrder = () => setConfirming(true)
+  // Past intake already? Then this is a pricing correction, not a confirmation.
+  // Status is the test, not progress: a newly placed order already reads 5%
+  // (progressFor('received')), so a progress check called every new order started.
+  const started = order.status !== 'received'
   const applyConfirm = ({ price, eta }) => {
     updateOrder({
       ...order,
@@ -439,7 +459,9 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
         ...(price != null ? { invoiceAmount: price } : {}),
       },
     })
-    notify(`Your order ${order.id} has been received and confirmed${price != null ? ` — total ${money(price)}` : ''}${eta ? `. Estimated completion ${eta}` : ''}. We'll begin work shortly.`)
+    notify(started
+      ? `Your order ${order.id} has been priced${price != null ? ` at ${money(price)}` : ''}${eta ? `, with an estimated completion of ${eta}` : ''}. Work is already under way.`
+      : `Your order ${order.id} has been received and confirmed${price != null ? ` — total ${money(price)}` : ''}${eta ? `. Estimated completion ${eta}` : ''}. We'll begin work shortly.`)
     setConfirming(false)
     onClose()
   }
@@ -450,7 +472,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
 
   return (
     <div style={{ maxWidth:900, margin:'0 auto' }}>
-      {confirming && <ConfirmOrderModal order={order} onCancel={() => setConfirming(false)} onConfirm={applyConfirm} />}
+      {confirming && <ConfirmOrderModal order={order} started={started} onCancel={() => setConfirming(false)} onConfirm={applyConfirm} />}
       <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.18 }}
         style={{ background:Q.card, borderRadius:12, border:`1px solid ${Q.border}`, overflow:'hidden' }}>
         <div style={{ padding:'16px 22px 0' }}>
@@ -664,7 +686,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
               {!confirmed && (
                 <button onClick={confirmOrder} style={{ padding:'8px 14px', borderRadius:8, fontSize:12.5, fontWeight:700, cursor:'pointer',
                   background:ROLE_COLOR, border:'none', color:'#fff' }}>
-                  Confirm &amp; price order
+                  {started ? 'Set price & date' : 'Confirm & price order'}
                 </button>
               )}
               {confirmed && (
