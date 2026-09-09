@@ -459,9 +459,11 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
         ...(price != null ? { invoiceAmount: price } : {}),
       },
     })
+    // "total" was wrong: this is the agreed price, and the invoice issued on
+    // delivery can carry extra costs on top of it.
     notify(started
       ? `Your order ${order.id} has been priced${price != null ? ` at ${money(price)}` : ''}${eta ? `, with an estimated completion of ${eta}` : ''}. Work is already under way.`
-      : `Your order ${order.id} has been received and confirmed${price != null ? ` — total ${money(price)}` : ''}${eta ? `. Estimated completion ${eta}` : ''}. We'll begin work shortly.`)
+      : `Your order ${order.id} has been received and confirmed${price != null ? ` — agreed price ${money(price)}` : ''}${eta ? `. Estimated completion ${eta}` : ''}. We'll begin work shortly.`)
     setConfirming(false)
     onClose()
   }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
-import { X, UserCheck } from 'lucide-react'
+import { X, UserCheck, AlertTriangle } from 'lucide-react'
 import { displayClient, nextRoleFor } from '../data/mockData'
 import { useProfiles, namesForRole } from '../lib/useProfiles'
 import { useOrders } from '../context/OrderContext'
@@ -61,6 +61,14 @@ export default function AssignModal({ order, user, onClose }) {
 
   const pickQueue = (key) => { setQueue(key); setPersonName('') }   // reset pin on stage change
 
+  const noPrice = order.workflow?.invoiceAmount == null
+  const noDate  = !order.eta
+  const unpriced = [noPrice ? 'agreed price' : null, noDate ? 'committed date' : null].filter(Boolean)
+  const consequence = [
+    noPrice ? 'it cannot be invoiced' : null,
+    noDate ? 'the client is shown no delivery date' : null,
+  ].filter(Boolean).join(' and ')
+
   const confirm = () => {
     if (!queue) return
     assignOrder(order.id, { queue, personName: personName || undefined })
@@ -102,6 +110,23 @@ export default function AssignModal({ order, user, onClose }) {
         </div>
 
         <div style={{ padding:'18px 22px' }}>
+          {/* Nothing forces Admin to confirm an order before routing it, and an
+              unconfirmed order has no agreed price and no committed date: driving
+              one straight from placement to delivery left invoiceAmount unset
+              until the typer stamped it, and eta NULL the whole way, so the
+              client's card read "ETA: to be confirmed" from start to finish.
+              Say so here, where the routing decision is actually made. */}
+          {unpriced.length > 0 && (
+            <div style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:16,
+              padding:'10px 12px', borderRadius:8, background:'#fffbeb', border:'1px solid #fde68a' }}>
+              <AlertTriangle style={{ width:15, height:15, color:'#a16207', flexShrink:0, marginTop:1 }} />
+              <div style={{ fontSize:12, lineHeight:1.5, color:'#a16207' }}>
+                This order has no {unpriced.join(' and ')} yet. Open it and use
+                “{order.status === 'received' ? 'Confirm & price order' : 'Set price & date'}” —
+                until then {consequence}.
+              </div>
+            </div>
+          )}
           {/* Stage */}
           <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
             letterSpacing:'0.05em', color:Q.faint, marginBottom:8 }}>Stage</label>

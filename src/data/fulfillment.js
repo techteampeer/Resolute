@@ -289,7 +289,14 @@ export function makeDefaultFulfillment(order = {}) {
       services: [{
         id: uid(),
         type: order.type ? `${order.type} Plus Update` : 'Title Search Plus Update',
-        costPerUnit: 125, units: 1, locked: true,
+        // The price Admin agreed with the client at confirmation, when there is
+        // one. This was the constant 125, so the typer's Finalize stamped 125
+        // over whatever had been negotiated: a client told "confirmed — $150.00"
+        // at intake was invoiced $125 on delivery, and the number Admin agreed
+        // was thrown away without anyone touching the invoice.
+        costPerUnit: Number(order.workflow?.invoiceAmount) > 0
+          ? Number(order.workflow.invoiceAmount) : 125,
+        units: 1, locked: true,
       }],
       additionalCosts: [],
       chargeOnCancel: false,

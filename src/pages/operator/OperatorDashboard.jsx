@@ -178,9 +178,14 @@ const Lbl = ({ children }) => (
   <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#5C6E8C' }}>{children}</label>
 )
 
-// The Single Seating desk only sees orders Admin has routed to it. A routed
-// order stays with the desk start to finish; between steps it parks with
-// Admin for approval and shows here read-only until re-approved.
+// This queue lists only the orders Admin has routed to the desk. A routed order
+// stays with the desk start to finish; between steps it parks with Admin for
+// approval and shows here read-only until re-approved.
+//
+// The filter is a queue, not a boundary: orders_read is `is_staff()`, so every
+// staff account — this desk included — can read any order row it asks for by id.
+// Writes are scoped (orders_update_assigned, fulfillments_write_owner), so a
+// foreign order can be read but not changed.
 function OperatorHome() {
   const { user } = useAuth()
   const { orders } = useOrders()

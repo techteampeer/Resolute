@@ -134,9 +134,12 @@ function TrackOrder({ order, onOpen }) {
         ))}
       </div>
       <div className="flex items-center justify-between text-xs mb-1.5" style={{ color:'#5C6E8C' }}>
+        {/* An order Admin has routed but not yet confirmed carries no committed
+            date, and this rendered a bare "ETA:" with nothing after it. Say that
+            it is coming rather than leaving the client to guess. */}
         <span>{isOrderComplete(order)
-          ? <>Delivered: <span style={{ color:'#12284C' }}>{order.completed || order.eta}</span></>
-          : <>ETA: <span style={{ color:'#12284C' }}>{order.eta}</span></>}</span>
+          ? <>Delivered: <span style={{ color:'#12284C' }}>{order.completed || order.eta || '—'}</span></>
+          : <>ETA: <span style={{ color: order.eta ? '#12284C' : '#9AA8BF' }}>{order.eta || 'to be confirmed'}</span></>}</span>
         <span style={isOrderComplete(order) ? { color:'#15803d', fontWeight:600 } : undefined}>
           {isOrderComplete(order) ? 'Completed' : `${orderProgress(order)}% complete`}
         </span>
