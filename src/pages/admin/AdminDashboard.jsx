@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
 import AssignModal from '../../components/AssignModal'
+import { useClients } from '../../lib/useClients'
 import NotificationSettings from '../../components/NotificationSettings'
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
@@ -24,7 +25,7 @@ import { orderSubtitle } from '../../components/OrderDetailLayout'
 import OrderThread from '../../components/OrderThread'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS,
-  CLIENTS, STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode, stateCode,
+  STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode, stateCode,
   REGIONS, regionOf, nextRoleFor, statusForRole,
 } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
@@ -824,6 +825,9 @@ const awaitingApproval = (o) =>
 // order, so the approval path is identical.
 function NewOrderModal({ onClose }) {
   const { createOrder } = useOrders()
+  // Every client in the registry, not the seven in the fixture — Admin could not
+  // place an order for a newly onboarded client, including the pilot.
+  const clients = useClients()
   const [f, setF] = useState({ client: '', state: '', county: '', type: 'Full Search', priority: 'normal', eta: '' })
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF(p => ({ ...p, [k]: v }))
@@ -857,7 +861,7 @@ function NewOrderModal({ onClose }) {
             <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>CLIENT</div>
             <select value={f.client} onChange={e => set('client', e.target.value)} style={field}>
               <option value="">Select a client…</option>
-              {CLIENTS.map(c => <option key={c.code} value={c.name}>{c.code} · {c.name}</option>)}
+              {clients.map(c => <option key={c.code} value={c.name}>{c.code} · {c.name}</option>)}
             </select>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
@@ -915,6 +919,10 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const [activeTab, setActiveTab] = useState('all')   // lifecycle tab
   const [newOrder, setNewOrder]   = useState(false)
   const [showMap, setShowMap]   = useState(false)
+  // Real orders per state for the inline coverage map — same source as the
+  // Coverage Map page, so the two cannot disagree.
+  const ordersByState = useMemo(() => orders.reduce(
+    (m, o) => (o.state ? { ...m, [stateCode(o.state)]: (m[stateCode(o.state)] || 0) + 1 } : m), {}), [orders])
   const [region, setRegion]     = useState('all')
   const [stateF, setStateF]     = useState('all')
   const [countyF, setCountyF]   = useState('all')
@@ -1263,7 +1271,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
         </button>
         {showMap && (
           <div style={{ borderTop:`1px solid ${Q.border}`, padding:'16px 20px 20px' }}>
-            <USAMap />
+            <USAMap counts={ordersByState} />
           </div>
         )}
       </div>
@@ -1582,7 +1590,7 @@ function AdminMap() {
         <h1 className="text-xl font-bold" style={{ color: Q.text }}>Coverage Map</h1>
         <p className="text-sm" style={{ color: Q.muted }}>Real-time order distribution across all 50 states</p>
       </div>
-      <QCard className="p-6"><USAMap /></QCard>
+      <QCard className="p-6"><USAMap counts={byState} /></QCard>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {top.map(({s,c}) => (
           <div key={s}

@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { DollarSign, CheckCircle, XCircle, AlertTriangle, FileText, Landmark, Plus, RefreshCw } from 'lucide-react'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
-import { CLIENTS, VENDORS } from '../../data/mockData'
+import { VENDORS } from '../../data/mockData'
+import { useClients, clientNameOf } from '../../lib/useClients'
 import { isSupabaseConfigured, savePayoutLedger, openDocument } from '../../lib/backend'
 import {
   TERMS, termByKey, getClientTerms, setClientTerms, hydrateClientTerms, canConfirmPayments,
@@ -41,6 +42,8 @@ export default function AdminBilling() {
 
   // Pull durable client terms into the local cache when Supabase is on.
   useEffect(() => { hydrateClientTerms().then(ok => ok && bump(n => n + 1)) }, [])
+  // Company names come from the registry, not from the seven-company fixture.
+  const clients = useClients()
 
   const billable = useMemo(() => orders.filter(isBillable), [orders])
   const byClient = useMemo(() => {
@@ -136,7 +139,7 @@ export default function AdminBilling() {
 
       {/* Per-client sections */}
       {[...byClient.entries()].map(([code, list]) => {
-        const client = CLIENTS.find(c => c.code === code)
+        const clientName = clientNameOf(clients, code)
         const termKey = getClientTerms(code)
         const stmt = openStatement(orders, code, termKey)
         const rows = list.filter(matches)
@@ -146,7 +149,7 @@ export default function AdminBilling() {
             {/* Client header + terms editor */}
             <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3" style={{ borderBottom: `1px solid ${Q.border}` }}>
               <div>
-                <div className="font-semibold text-sm" style={{ color: Q.text }}>{client?.name || code}</div>
+                <div className="font-semibold text-sm" style={{ color: Q.text }}>{clientName || code}</div>
                 <div className="text-xs" style={{ color: Q.faint }}>{code} · {termByKey(termKey).desc}</div>
               </div>
               <label className="flex items-center gap-2 text-xs" style={{ color: Q.muted }}>

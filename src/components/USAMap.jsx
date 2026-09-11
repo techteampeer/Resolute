@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import * as d3 from 'd3'
 import { feature } from 'topojson-client'
 import { motion, AnimatePresence } from 'framer-motion'
-import { STATE_ORDERS } from '../data/mockData'
 
 const FIPS = {
   '01':'AL','02':'AK','04':'AZ','05':'AR','06':'CA','08':'CO','09':'CT',
@@ -29,23 +28,43 @@ const NAMES = {
 }
 
 // Order density along the brand ramp: navy (sparse) → indigo → cyan (dense).
-function getDensityColor(count) {
-  if (!count || count === 0) return 'rgba(18, 40, 76, 0.14)'
-  if (count <= 4)  return 'rgba(27, 58, 140, 0.42)'
-  if (count <= 9)  return 'rgba(36, 65, 229, 0.62)'
-  if (count <= 18) return 'rgba(18, 104, 168, 0.78)'
-  return 'rgba(0, 184, 217, 0.92)'
+const RAMP = ['rgba(27, 58, 140, 0.42)', 'rgba(36, 65, 229, 0.62)',
+              'rgba(18, 104, 168, 0.78)', 'rgba(0, 184, 217, 0.92)']
+const EMPTY = 'rgba(18, 40, 76, 0.14)'
+
+// Four buckets scaled to the busiest state, so the ramp means something whether
+// Resolute is running ten orders or ten thousand. The thresholds used to be the
+// fixed 4 / 9 / 18 that suited the invented fixture; against a real portfolio of
+// a dozen orders every state came out the same colour.
+function buckets(max) {
+  const step = Math.max(1, Math.ceil(max / 4))
+  return [step, step * 2, step * 3, Infinity]
 }
+const densityColor = (count, edges) => {
+  if (!count) return EMPTY
+  return RAMP[edges.findIndex(e => count <= e)] || RAMP[RAMP.length - 1]
+}
+const bucketLabels = (edges) => edges.map((e, i) => {
+  const lo = i === 0 ? 1 : edges[i - 1] + 1
+  return e === Infinity ? `${lo}+` : lo === e ? `${lo}` : `${lo}–${e}`
+})
 
 const W = 960, H = 560
 
-export default function USAMap({ compact = false }) {
+// `counts` is { AZ: 3, OH: 10, … } — real orders per state, supplied by the
+// caller. It used to read a hardcoded 50-state fixture from mockData (TX 35,
+// CA 28, FL 31) while the page above it promised "real-time order distribution",
+// so every colour, every label, every tooltip and the pulse on "high-volume"
+// states was invented.
+export default function USAMap({ compact = false, counts = {} }) {
   const [geoStates, setGeoStates]   = useState([])
   const [loading, setLoading]       = useState(true)
   const [hovered, setHovered]       = useState(null)
   const [tooltip, setTooltip]       = useState({ x: 0, y: 0 })
   const svgRef   = useRef(null)
-  const maxOrders = Math.max(...Object.values(STATE_ORDERS))
+  const values = Object.values(counts)
+  const maxOrders = values.length ? Math.max(...values) : 0
+  const edges = buckets(maxOrders)
 
   useEffect(() => {
     fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json')
@@ -109,13 +128,13 @@ export default function USAMap({ compact = false }) {
 
         {/* State paths */}
         {geoStates.map(st => {
-          const orders    = STATE_ORDERS[st.abbrev] || 0
+          const orders    = counts[st.abbrev] || 0
           const isHovered = hovered === st.abbrev
           return (
             <g key={st.fips}>
               <path
                 d={st.d}
-                fill={isHovered ? 'rgba(0, 184, 217, 0.95)' : getDensityColor(orders)}
+                fill={isHovered ? 'rgba(0, 184, 217, 0.95)' : densityColor(orders, edges)}
                 stroke={isHovered
                   ? 'rgba(255, 255, 255, 0.9)'
                   : 'rgba(36, 65, 229, 0.28)'}
@@ -149,7 +168,7 @@ export default function USAMap({ compact = false }) {
 
         {/* Animated pulse on highest-volume states */}
         {!compact && geoStates
-          .filter(st => (STATE_ORDERS[st.abbrev] || 0) >= 20 && st.cx && st.cy)
+          .filter(st => maxOrders > 0 && (counts[st.abbrev] || 0) >= edges[2] && st.cx && st.cy)
           .map(st => (
             <g key={`pulse-${st.fips}`} style={{ pointerEvents: 'none' }}>
               <circle cx={st.cx} cy={st.cy - 14} r="4" fill="#00B8D9" opacity="0.85">
@@ -183,12 +202,12 @@ export default function USAMap({ compact = false }) {
                 {NAMES[hovered] || hovered}
               </div>
               <div className="text-xs font-medium mb-2" style={{ color: '#2441E5' }}>
-                {STATE_ORDERS[hovered] || 0} active orders
+                {counts[hovered] || 0} active orders
               </div>
               <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(18,40,76,0.10)' }}>
                 <div className="h-full rounded-full"
                   style={{
-                    width: `${((STATE_ORDERS[hovered] || 0) / maxOrders) * 100}%`,
+                    width: `${maxOrders ? ((counts[hovered] || 0) / maxOrders) * 100 : 0}%`,
                     background: 'linear-gradient(90deg, #2441E5, #00B8D9)',
                     transition: 'width 0.3s ease',
                   }} />
@@ -202,12 +221,7 @@ export default function USAMap({ compact = false }) {
       {!compact && (
         <div className="absolute bottom-1 right-3 flex items-center gap-3 flex-wrap">
           <span className="text-xs" style={{ color: '#5C6E8C' }}>Orders</span>
-          {[
-            ['rgba(27,58,140,0.42)',  '1–4'],
-            ['rgba(36,65,229,0.62)',  '5–9'],
-            ['rgba(18,104,168,0.78)', '10–18'],
-            ['rgba(0,184,217,0.92)',  '19+'],
-          ].map(([c, l]) => (
+          {RAMP.map((c, i) => [c, bucketLabels(edges)[i]]).map(([c, l]) => (
             <div key={l} className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded-sm" style={{ background: c, border: '1px solid rgba(36,65,229,0.25)' }} />
               <span className="text-xs" style={{ color: '#5C6E8C' }}>{l}</span>

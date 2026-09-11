@@ -282,6 +282,18 @@ export async function clearNotificationPreference(profileId, typeKey) {
   return { ok: true }
 }
 
+// ── Client registry ───────────────────────────────────────────────────────────
+// Every client Resolute works with. clients_read lets any staff member read it;
+// a client account sees only its own row (RLS), which is all it needs.
+export async function fetchClients() {
+  const { data, error } = await supabase
+    .from('clients')
+    .select('code,name,contact,email,phone,registered,activity,payment,payment_terms')
+    .order('code')
+  if (error) { console.error('[fetchClients]', error.message); return null }
+  return data
+}
+
 // ── Client payment terms ──────────────────────────────────────────────────────
 export async function fetchClientTerms() {
   const { data, error } = await supabase.from('clients').select('code, payment_terms')
