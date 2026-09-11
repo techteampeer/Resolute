@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrderThread from '../../components/OrderThread'
 import NotificationSettings from '../../components/NotificationSettings'
+import { clientStats } from '../../lib/deskStats'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox,
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign, Search,
@@ -823,13 +824,16 @@ function PlaceOrderPage() {
 
 function ClientHome() {
   const myOrders = useMyOrders()
+  const { user } = useAuth()
   const navigate = useNavigate()
+  const stats = clientStats(myOrders)
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold" style={{ color:'#12284C' }}>Client Portal</h1>
-          <p className="text-sm" style={{ color:'#3D5171' }}>Welcome back, Taylor Brooks</p>
+          {/* The signed-in person, not whoever happened to be in the fixture. */}
+          <p className="text-sm" style={{ color:'#3D5171' }}>Welcome back{user?.name ? `, ${user.name}` : ''}</p>
         </div>
         <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }} onClick={() => navigate('/client/order')}
           className="btn-primary flex items-center gap-2 text-sm">
@@ -838,10 +842,10 @@ function ClientHome() {
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon:Package,     label:'Active Orders',   value:'2',   color:ROLE_COLOR },
-          { icon:CheckCircle, label:'Completed (YTD)', value:'12',  color:'#15803d' },
-          { icon:Clock,       label:'Avg Turnaround',  value:'1.9d',color:'#a16207' },
-          { icon:Zap,         label:'Rush Orders',     value:'1',   color:'#b45309' },
+          { icon:Package,     label:'Active orders',    value:stats.active,       color:ROLE_COLOR },
+          { icon:CheckCircle, label:'Completed this year', value:stats.completedYtd, color:'#15803d' },
+          { icon:Clock,       label:'Avg turnaround',   value:stats.turnaround,   color:'#a16207' },
+          { icon:Zap,         label:'Rush in progress', value:stats.rush,         color:'#b45309' },
         ].map(s => (
           <motion.div key={s.label} initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} className="stat-card">
             <div className="w-9 h-9 rounded-xl mb-3 flex items-center justify-center" style={{ background:`${s.color}22` }}>

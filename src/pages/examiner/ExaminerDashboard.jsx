@@ -12,12 +12,14 @@ import DocUpload from '../../components/DocUpload'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
+import { deskStats, issuesFlagged } from '../../lib/deskStats'
 import NotificationSettings from '../../components/NotificationSettings'
 
 const ROLE_COLOR = '#2441E5'
-const NAV = [
+// The queue badge is the queue, not a number someone typed once.
+const navItems = (queue) => [
   { path: '/examiner',           label: 'Dashboard',  icon: LayoutDashboard },
-  { path: '/examiner/examine',   label: 'To Examine', icon: FileSearch, badge: 2 },
+  { path: '/examiner/examine',   label: 'To Examine', icon: FileSearch, badge: queue || null },
   { path: '/examiner/completed', label: 'Completed',  icon: CheckCircle },
   { path: '/examiner/notifications', label: 'Notifications', icon: Bell },
 ]
@@ -134,10 +136,12 @@ function ExaminerOrderPage() {
 
 function ExaminerHome() {
   const { user } = useAuth()
-  const { getOrdersForRole } = useOrders()
+  const { orders, getOrdersForRole } = useOrders()
   const myOrders = getOrdersForRole('examiner')
   const navigate = useNavigate()
   const openOrder = (o) => navigate(`/examiner/order/${o.id}`)
+  const stats = deskStats(orders, 'examiner')
+  const issues = issuesFlagged(orders)
   return (
     <div className="space-y-6">
       <div>
@@ -146,10 +150,10 @@ function ExaminerHome() {
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon:FileSearch,  label:'Awaiting Exam',   value:'2',  color:'#2441E5' },
-          { icon:Clock,       label:'In Progress',     value:'1',  color:ROLE_COLOR },
-          { icon:CheckCircle, label:'Completed Today', value:'4',  color:'#15803d' },
-          { icon:AlertCircle, label:'Issues Found',    value:'1',  color:'#dc2626' },
+          { icon:FileSearch,  label:'In the queue',   value:stats.queue,  color:ROLE_COLOR },
+          { icon:Clock,       label:'Rush waiting',   value:stats.rush,   color:'#b45309' },
+          { icon:CheckCircle, label:'Examined today', value:stats.today,  color:'#15803d' },
+          { icon:AlertCircle, label:'Issues flagged', value:issues,       color:'#dc2626' },
         ].map(s => (
           <motion.div key={s.label} initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} className="stat-card">
             <div className="w-9 h-9 rounded-xl mb-3 flex items-center justify-center" style={{ background:`${s.color}22` }}>
@@ -217,7 +221,7 @@ export default function ExaminerDashboard() {
   const myOrders  = getOrdersForRole('examiner')
   const completed = orders.filter(o => o.completedDates?.examiner)
   return (
-    <Layout navItems={NAV} role="examiner" roleColor={ROLE_COLOR}>
+    <Layout navItems={navItems(myOrders.length)} role="examiner" roleColor={ROLE_COLOR}>
       <Routes>
         <Route index element={<ExaminerHome />} />
         <Route path="examine" element={<ExaminerQueue orders={myOrders} title="To Examine" />} />

@@ -103,46 +103,29 @@ npm install
 npm run dev               # http://127.0.0.1:5173
 ```
 
-Build a small shared Playwright + psql harness in a gitignored directory
-(`.audit/` is already in `.gitignore`) rather than repeating boilerplate in every
-script. It needs, at minimum:
+**The harness already exists — read `.audit/README.md` first.** `.audit/` holds a
+shared Playwright + psql harness and about thirty scripts that each prove one
+thing, including the two end-to-end runs and the PDF generator harness. Run them
+before you write anything new; they are the fastest way to see the app behave and
+to find out whether something is already covered.
 
-```js
-import { chromium } from 'playwright'
-import { execFileSync } from 'node:child_process'
-
-export const CHROME = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
-export const BASE = 'http://127.0.0.1:5173'
-
-export const sql = (q) => execFileSync('psql',
-  ['-h','127.0.0.1','-p','54322','-U','postgres','-d','postgres','-X','-A','-c',q],
-  { env: { ...process.env, PGPASSWORD: 'postgres' }, encoding: 'utf8' })
-
-export async function login(b, who) {
-  const ctx = await b.newContext({ viewport: { width: 1600, height: 1100 } })
-  // Without this, every page hangs on external requests.
-  await ctx.route('**/*', r => {
-    const u = r.request().url()
-    return (u.startsWith('http://127.0.0.1') || u.startsWith('http://localhost')
-         || u.startsWith('data:') || u.startsWith('blob:')) ? r.continue() : r.abort()
-  })
-  const page = await ctx.newPage()
-  const errors = []
-  page.on('pageerror', e => errors.push('PAGEERROR: ' + e.message))
-  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()) })
-  await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' })
-  await page.fill('input[type="email"], input[name="email"]', EMAIL[who])
-  await page.fill('input[type="password"]', PASSWORD[who])
-  await page.click('button[type="submit"]')
-  await page.waitForTimeout(2500)
-  return { page, ctx, errors }
-}
+```bash
+node .audit/verify-smoke7.mjs        # every portal, every sidebar entry, nine accounts
+node .audit/e2e.mjs                  # a client order carried to delivered
+node .audit/e2e-single.mjs           # the same through Single Seating
+node .audit/verify-real-numbers.mjs  # every dashboard figure against the database
 ```
 
-You also want an `as(who, path, opts)` helper that signs in over GoTrue
-(`POST /auth/v1/token?grant_type=password`) and issues PostgREST requests with
-that user's JWT. **That is the only honest way to test RLS** — a service-role key
-bypasses it entirely and will tell you everything is fine.
+Two things about it that matter:
+
+- `sql()` and `sqlJson()` run as superuser and **bypass RLS** — use them to check
+  state, never to test access.
+- `as(who, path, opts)` issues PostgREST requests with a real signed-in user's
+  JWT. **That is the only honest way to test RLS**; a service-role key bypasses
+  it entirely and will tell you everything is fine.
+
+New probe scripts are welcome in `.audit/` — git ignores everything there except
+the harness, the `verify-*` scripts, the two end-to-end runs and the PDF tooling.
 
 **Collect page errors on every single page you visit.** An uncaught
 `ReferenceError` unmounts the React tree and leaves a blank white page; that is
@@ -171,6 +154,8 @@ isolation is not proven in combination.
 | `4a33c8e` | The agreed price carries into the invoice; the Assign modal says when an order has no price or date |
 | `bf171bc` | A per-user Notifications screen in all six staff portals, wired to `notification_preferences` |
 | `ffa26e8` | One write per stage completion (the race above); Finalize wording that fits whoever is reading it |
+| `9f413d3` | This prompt |
+| *(head)* | Every dashboard figure and queue badge derives from the rows; the audit harness is tracked |
 
 For each: reproduce the original failure condition if you can, then confirm the
 current behaviour. If any claim does not hold, that is a high-severity finding —
@@ -219,30 +204,16 @@ right.
 
 For each screen specifically:
 
-1. **Is every number and every table row real?** **Start here — this is a known,
-   unfixed, pervasive defect.** Four dashboards and the client dashboard render
-   entirely fabricated stat tiles, and four sidebars render fabricated queue
-   badges. They do not move when the data moves:
+1. **Is every number and every table row real?** Twenty fabricated stat tiles and
+   four fabricated sidebar badges have been removed; every dashboard
+   figure now derives from the rows through `src/lib/deskStats.js`, and
+   `verify-real-numbers.mjs` checks each one against the database. Re-run it,
+   then sweep the rest of the app for the same pattern — any figure a staff
+   member could quote to a client, or a client could quote back, must come from
+   the rows. Per-stage averages were deleted rather than guessed, because the row
+   records only the date a stage completed, never a start or end time; do not
+   reintroduce them without storing the timestamps first.
 
-   ```
-   src/pages/client/ClientDashboard.jsx:841-844    Active Orders 2, Completed (YTD) 12,
-                                                   Avg Turnaround 1.9d, Rush Orders 1
-   src/pages/delivery/DeliveryDashboard.jsx:144-147 Ready to Deliver 2, Sent Today 3,
-                                                   Delivered (MTD) 79, Avg Delivery 22m
-   src/pages/examiner/ExaminerDashboard.jsx:149-152 Awaiting Exam 2, In Progress 1,
-                                                   Completed Today 4, Issues Found 1
-   src/pages/typer/TyperDashboard.jsx:34-37        Awaiting Typing 2, In Progress 1,
-                                                   Typed Today 6, Avg Type Time 24m
-   nav badges: screener/queue 3, examiner/examine 2, typer/queue 2, delivery/queue 2
-   ```
-
-   A screener's sidebar says "Screening Queue 3" with an empty queue. A client is
-   shown "Completed (YTD) 12" on their first day. **Every one of these must be
-   derived from the orders the signed-in user can actually see, or removed.**
-   Decide per tile: some (Avg Turnaround, Avg Delivery, Issues Found) need a real
-   definition before they can be computed — if the data does not support an
-   honest number, take the tile out rather than invent one. Then sweep the rest
-   of the app for the same pattern; assume there are more.
 2. **Empty state.** What does the screen do with zero rows? A client with no
    orders, a desk with an empty queue, an order with no messages, no documents,
    no activity. Blank panels and bare labels with nothing after them are defects.

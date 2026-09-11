@@ -11,12 +11,14 @@ import { useSupport } from '../../context/SupportContext'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
+import { deskStats } from '../../lib/deskStats'
 import NotificationSettings from '../../components/NotificationSettings'
 
 const ROLE_COLOR = '#2441E5'
-const NAV = [
+// The queue badge is the queue, not a number someone typed once.
+const navItems = (queue) => [
   { path: '/delivery',         label: 'Dashboard',    icon: LayoutDashboard },
-  { path: '/delivery/queue',   label: 'Ready to Send',icon: Package, badge: 2 },
+  { path: '/delivery/queue',   label: 'Ready to Send',icon: Package, badge: queue || null },
   { path: '/delivery/sent',    label: 'Delivered',    icon: CheckCircle },
   { path: '/delivery/notifications', label: 'Notifications', icon: Bell },
 ]
@@ -132,6 +134,7 @@ function DeliveryHome() {
   const readyOrders     = getOrdersForRole('delivery')
   const deliveredOrders = orders.filter(o => o.status === 'delivered')
   const navigate = useNavigate()
+  const stats = deskStats(orders, 'delivery')
   const [emailed, setEmailed]   = useState([])
   return (
     <div className="space-y-6">
@@ -141,10 +144,10 @@ function DeliveryHome() {
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon:Package,     label:'Ready to Deliver', value:'2',  color:ROLE_COLOR },
-          { icon:Truck,       label:'Sent Today',       value:'3',  color:'#2441E5' },
-          { icon:CheckCircle, label:'Delivered (MTD)',  value:'79', color:'#15803d' },
-          { icon:Clock,       label:'Avg Delivery',     value:'22m',color:'#a16207' },
+          { icon:Package,     label:'Ready to send',    value:stats.queue, color:ROLE_COLOR },
+          { icon:Clock,       label:'Rush waiting',     value:stats.rush,  color:'#b45309' },
+          { icon:Truck,       label:'Delivered today',  value:stats.today, color:'#2441E5' },
+          { icon:CheckCircle, label:'Delivered this month', value:stats.month, color:'#15803d' },
         ].map(s => (
           <motion.div key={s.label} initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} className="stat-card">
             <div className="w-9 h-9 rounded-xl mb-3 flex items-center justify-center" style={{ background:`${s.color}22` }}>
@@ -243,7 +246,7 @@ export default function DeliveryDashboard() {
   const readyOrders     = getOrdersForRole('delivery')
   const deliveredOrders = orders.filter(o => o.status === 'delivered')
   return (
-    <Layout navItems={NAV} role="delivery" roleColor={ROLE_COLOR}>
+    <Layout navItems={navItems(readyOrders.length)} role="delivery" roleColor={ROLE_COLOR}>
       <Routes>
         <Route index element={<DeliveryHome />} />
         <Route path="queue" element={<DeliveryQueue orders={readyOrders} title="Ready to Send" />} />
