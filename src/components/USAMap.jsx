@@ -59,6 +59,7 @@ const W = 960, H = 560
 export default function USAMap({ compact = false, counts = {} }) {
   const [geoStates, setGeoStates]   = useState([])
   const [loading, setLoading]       = useState(true)
+  const [failed, setFailed]         = useState(false)
   const [hovered, setHovered]       = useState(null)
   const [tooltip, setTooltip]       = useState({ x: 0, y: 0 })
   const svgRef   = useRef(null)
@@ -66,9 +67,16 @@ export default function USAMap({ compact = false, counts = {} }) {
   const maxOrders = values.length ? Math.max(...values) : 0
   const edges = buckets(maxOrders)
 
+  // Served from our own origin, not a CDN. This used to fetch
+  // https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json at runtime, so the
+  // map depended on a third party being reachable every time an admin opened
+  // the page, and rendered nothing behind a strict CSP, on a locked-down
+  // network, or offline. The file is public/us-states-10m.json, vendored
+  // verbatim from us-atlas@3.0.1 (states-10m.json); refresh it with
+  // `npm pack us-atlas@3 && tar xzf us-atlas-*.tgz package/states-10m.json`.
   useEffect(() => {
-    fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json')
-      .then(r => r.json())
+    fetch(`${import.meta.env.BASE_URL}us-states-10m.json`)
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then(us => {
         const proj = d3.geoAlbersUsa().scale(1280).translate([W / 2, H / 2])
         const path = d3.geoPath().projection(proj)
@@ -88,7 +96,8 @@ export default function USAMap({ compact = false, counts = {} }) {
         setGeoStates(computed)
         setLoading(false)
       })
-      .catch(() => setLoading(false))
+      // A map that silently renders nothing looks like a portal with no orders.
+      .catch(e => { console.error('[USAMap]', e.message); setFailed(true); setLoading(false) })
   }, [])
 
   const handleMouseMove = useCallback((e, abbrev) => {
@@ -107,6 +116,13 @@ export default function USAMap({ compact = false, counts = {} }) {
           <div className="w-5 h-5 border-2 rounded-full animate-spin"
             style={{ borderColor: 'rgba(36,65,229,0.25)', borderTopColor: 'rgba(36,65,229,0.8)' }} />
           <span className="text-xs" style={{ color: '#5C6E8C' }}>Loading map…</span>
+        </div>
+      )}
+      {failed && !loading && (
+        <div className="absolute inset-0 flex items-center justify-center px-6 text-center">
+          <span className="text-xs" style={{ color: '#a16207' }}>
+            The map outline could not be loaded. The order counts beside it are unaffected.
+          </span>
         </div>
       )}
 
