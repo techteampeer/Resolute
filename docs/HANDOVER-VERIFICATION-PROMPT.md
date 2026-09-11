@@ -155,7 +155,8 @@ isolation is not proven in combination.
 | `bf171bc` | A per-user Notifications screen in all six staff portals, wired to `notification_preferences` |
 | `ffa26e8` | One write per stage completion (the race above); Finalize wording that fits whoever is reading it |
 | `9f413d3` | This prompt |
-| *(head)* | Every dashboard figure and queue badge derives from the rows; the audit harness is tracked |
+| `edb450f` | Every dashboard figure and queue badge derives from the rows; the audit harness is tracked |
+| `f64379e` | A real client registry behind billing and order intake; the coverage map shows real orders |
 
 For each: reproduce the original failure condition if you can, then confirm the
 current behaviour. If any claim does not hold, that is a high-severity finding —
@@ -213,6 +214,15 @@ For each screen specifically:
    the rows. Per-stage averages were deleted rather than guessed, because the row
    records only the date a stage completed, never a start or end time; do not
    reintroduce them without storing the timestamps first.
+
+   The sweep that followed found three more and fixed them: the Coverage Map
+   coloured all fifty states from a hardcoded fixture under the heading
+   "real-time order distribution"; Admin's billing page named each client from a
+   seven-company fixture, so a newly onboarded client showed as a bare code; and
+   Admin's own order-intake `<select>` offered only those seven, so no order
+   could be placed for a new client at all. `src/lib/useClients.js` is the
+   registry now. **Keep going** — the report groupings, the CSV exports, the
+   coverage-map top-five panel, and anything else that puts a figure on screen.
 
 2. **Empty state.** What does the screen do with zero rows? A client with no
    orders, a desk with an empty queue, an order with no messages, no documents,
