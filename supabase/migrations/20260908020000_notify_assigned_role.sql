@@ -78,6 +78,28 @@ end $$;
 
 revoke execute on function public.enqueue_notification(text, text, jsonb, text, text, user_role[]) from anon, authenticated;
 
+-- Drop the five-argument version this one replaces.
+--
+-- `create or replace` with an added parameter creates an OVERLOAD, not a
+-- replacement, so both signatures end up on the database. A five-argument call
+-- then matches both candidates -- the 5-arg exactly, and the 6-arg via its
+-- default -- and Postgres refuses to choose:
+--
+--   ERROR:  function public.enqueue_notification(unknown, text, jsonb, text, unknown) is not unique
+--   HINT:   Could not choose a best candidate function.
+--
+-- notify_on_client_message() still makes exactly that call, and it runs in an
+-- AFTER INSERT trigger, so the error aborts the insert rather than just losing a
+-- notification: a client could not send a support message at all. Per CLAUDE.md
+-- the portal is the only channel a client has, so that is the whole of client
+-- communication, and nothing in the UI would have explained it.
+--
+-- Reproduced against a local database with both signatures present, and the
+-- insert confirmed working again once this drop is in place. The remaining
+-- five-argument callers resolve to the function above with p_roles defaulting to
+-- null, which coalesces to the type's default_roles -- their existing behaviour.
+drop function if exists public.enqueue_notification(text, text, jsonb, text, text);
+
 -- Classify an assignment, and route it to the role that received the work.
 create or replace function public.notify_on_order_event()
 returns trigger
