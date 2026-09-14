@@ -3,12 +3,30 @@
 -- and the anon grant on the RLS helpers
 -- =====================================================================
 
--- 1. order_events carries the same audience CHECK twice.
--- 20260813000000 added order_events_audience_check; 20260901200000 restored the
--- column and added order_events_audience_chk with an identical predicate. Both
--- exist in production, so every insert into the audit trail evaluates the same
--- test twice and psql prints the constraint twice on \d. Keep the first.
-alter table public.order_events drop constraint if exists order_events_audience_chk;
+-- 1. order_events can carry the same audience CHECK twice.
+-- 20260813000000 adds order_events_audience_check; 20260901200000 restores the
+-- column and adds order_events_audience_chk with an identical predicate. Where
+-- both landed, every insert into the audit trail evaluates the same test twice.
+--
+-- Drop the duplicate ONLY when the other one is actually there. An unconditional
+-- `drop constraint if exists order_events_audience_chk` is not safe: the
+-- production project has _chk and not _check (20260729000000_order_events_audience
+-- from an unmerged branch was applied there first, and _check did not survive
+-- it), so the unconditional form would have left the column with no CHECK at
+-- all — audience could then be set to anything, and it decides both client
+-- visibility and who gets notified.
+do $$
+begin
+  if exists (select 1 from pg_constraint
+              where conrelid = 'public.order_events'::regclass
+                and conname = 'order_events_audience_check')
+     and exists (select 1 from pg_constraint
+                  where conrelid = 'public.order_events'::regclass
+                    and conname = 'order_events_audience_chk')
+  then
+    alter table public.order_events drop constraint order_events_audience_chk;
+  end if;
+end $$;
 
 -- 2. auth.uid() was being re-evaluated per row (Supabase's auth_rls_initplan).
 -- Wrapping it in a scalar subquery lets the planner evaluate it once as an
