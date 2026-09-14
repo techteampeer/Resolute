@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
 import AssignModal from '../../components/AssignModal'
-import { useClients } from '../../lib/useClients'
+import { useClients, clientNameOf } from '../../lib/useClients'
 import NotificationSettings from '../../components/NotificationSettings'
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
@@ -828,16 +828,22 @@ function NewOrderModal({ onClose }) {
   // Every client in the registry, not the seven in the fixture — Admin could not
   // place an order for a newly onboarded client, including the pilot.
   const clients = useClients()
-  const [f, setF] = useState({ client: '', state: '', county: '', type: 'Full Search', priority: 'normal', eta: '' })
+  // Keyed on the client CODE, not the name. The name is PII a plain admin may
+  // not read (20260909120000), so an option labelled by name would be blank for
+  // them — and the old code derived client_code by looking the NAME up in
+  // mockData, which returned nothing for any client added since, saving the
+  // order with no client link at all.
+  const [f, setF] = useState({ clientCode: '', state: '', county: '', type: 'Full Search', priority: 'normal', eta: '' })
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF(p => ({ ...p, [k]: v }))
-  const ready = f.client && f.state && f.county
+  const ready = f.clientCode && f.state && f.county
   const submit = async () => {
     if (!ready || busy) return
     setBusy(true)
     try {
       await createOrder({
-        client: f.client, clientCode: clientCode(f.client) || null,
+        client: clientNameOf(clients, f.clientCode) || f.clientCode,
+        clientCode: f.clientCode,
         state: f.state.toUpperCase(), county: f.county, type: f.type,
         priority: f.priority, eta: f.eta || '',
         intake: { source: 'admin', propertyAddress: '', orderType: f.type },
@@ -859,9 +865,11 @@ function NewOrderModal({ onClose }) {
         <div style={{ display:'grid', gap:10 }}>
           <div>
             <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>CLIENT</div>
-            <select value={f.client} onChange={e => set('client', e.target.value)} style={field}>
-              <option value="">Select a client…</option>
-              {clients.map(c => <option key={c.code} value={c.name}>{c.code} · {c.name}</option>)}
+            <select value={f.clientCode} onChange={e => set('clientCode', e.target.value)} style={field}>
+              <option value="">{clients.length ? 'Select a client…' : 'Loading clients…'}</option>
+              {clients.map(c => (
+                <option key={c.code} value={c.code}>{c.name ? `${c.code} · ${c.name}` : c.code}</option>
+              ))}
             </select>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>

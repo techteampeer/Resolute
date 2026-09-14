@@ -285,18 +285,35 @@ export async function clearNotificationPreference(profileId, typeKey) {
 // ── Client registry ───────────────────────────────────────────────────────────
 // Every client Resolute works with. clients_read lets any staff member read it;
 // a client account sees only its own row (RLS), which is all it needs.
+// Two sources, because the name is PII. 20260909120000 restricted
+// public.clients to super admins and added public.client_directory — the same
+// list with code, terms, activity and registration date only. Ask for both: a
+// super admin's `clients` read returns names, everyone else's returns nothing
+// and the directory still supplies the codes. Rows merge by code, so a caller
+// who may not see a name simply does not get one.
 export async function fetchClients() {
-  const { data, error } = await supabase
-    .from('clients')
-    .select('code,name,contact,email,phone,registered,activity,payment,payment_terms')
-    .order('code')
-  if (error) { console.error('[fetchClients]', error.message); return null }
-  return data
+  const [dir, pii] = await Promise.all([
+    supabase.from('client_directory').select('code,payment_terms,activity,registered').order('code'),
+    supabase.from('clients').select('code,name,contact,email,phone,registered,activity,payment,payment_terms').order('code'),
+  ])
+  if (dir.error && pii.error) {
+    console.error('[fetchClients]', dir.error.message, '|', pii.error.message)
+    return null
+  }
+  if (dir.error) console.error('[fetchClients] directory:', dir.error.message)
+  const byCode = new Map()
+  for (const r of dir.data || []) byCode.set(r.code, { ...r })
+  for (const r of pii.data || []) byCode.set(r.code, { ...(byCode.get(r.code) || {}), ...r })
+  return [...byCode.values()].sort((a, b) => String(a.code).localeCompare(String(b.code)))
 }
 
 // ── Client payment terms ──────────────────────────────────────────────────────
 export async function fetchClientTerms() {
-  const { data, error } = await supabase.from('clients').select('code, payment_terms')
+  // From the directory, not the table: clients_read is super-admin-only since
+  // 20260909120000, so reading payment_terms off `clients` returned nothing for
+  // a plain admin and every client on the billing page silently fell back to
+  // "per order". client_directory carries the same column for all staff.
+  const { data, error } = await supabase.from('client_directory').select('code, payment_terms')
   if (error) { console.error('[terms]', error.message); return null }
   return Object.fromEntries(data.map(r => [r.code, r.payment_terms || 'per_order']))
 }

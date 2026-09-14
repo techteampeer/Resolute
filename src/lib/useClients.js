@@ -24,9 +24,13 @@ function load() {
   if (!isSupabaseConfigured) { cache = CLIENTS; return Promise.resolve(cache) }
   if (!inflight) {
     inflight = fetchClients().then(rows => {
-      // A failed fetch must not leave the registry empty — an empty client
-      // <select> reads as "Resolute has no clients", which is worse than stale.
-      cache = (rows && rows.length) ? rows : CLIENTS
+      // No fixture fallback here, deliberately. mockData's CLIENTS carries real
+      // company names, and clients_read denies those to anyone who is not a
+      // super admin. Falling back to it on an empty read put all seven names
+      // back on Admin's billing page for a plain admin — undoing, in the UI,
+      // exactly what 20260909120000 was written to enforce. An empty list is
+      // the honest answer when the database gives us nothing.
+      cache = rows || []
       inflight = null
       subscribers.forEach(fn => fn(cache))
       return cache
@@ -48,9 +52,15 @@ export function useClients() {
   return rows
 }
 
-/** A client's company name from its code, or null — never a guess. */
+/** A client's company name from its code, or null when the caller may not see
+ *  it. Callers render the code in that case — the same masking displayClient
+ *  applies everywhere else. */
 export const clientNameOf = (clients, code) =>
   (clients || []).find(c => c.code === code)?.name || null
+
+/** How a client should be labelled for this viewer: the company when they are
+ *  allowed to see it, the code otherwise. */
+export const clientLabelOf = (clients, code) => clientNameOf(clients, code) || code || '—'
 
 /** Discard the cache so the next consumer refetches (after a client is added). */
 export function invalidateClients() { cache = null; inflight = null }
