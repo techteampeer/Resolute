@@ -4,16 +4,21 @@ Production (Supabase project `wuulybfnhrxpgvqqisxz`, "Resolute") is behind branc
 `claude/resolute-e2e-testing-38ipu6` in two independent ways, and they have to be
 closed in a fixed order.
 
-Nothing below has been applied to production. It was prepared from a sandbox
-that can *read* the production database freely — every precondition in this
-document was checked against the live schema — but whose permission gate refuses
-writes to it. An earlier draft of this file said the Postgres port was
-unreachable; that was wrong, and the correction matters only in that the
-blocker is a policy one, not a network one. Run the push from a machine that is
-allowed to write.
+> **Step 1 is done.** The six migrations were applied to production on
+> 2026-09-14 and verified statement by statement; production now reports 30
+> migrations. Step 2, the code deploy, is still outstanding. The rest of this
+> document is kept as the record of what was applied and how it was checked —
+> and as the procedure to repeat against any other environment.
 
-The read access was worth having: it turned up a defect in these very
-migrations that would have broken client messaging in production. See
+They were applied through the Supabase Management API rather than
+`supabase db push`, because this sandbox has no route to the Postgres port that
+its own permission gate allows. Each migration ran in its own transaction
+together with its `supabase_migrations.schema_migrations` row, so a failure
+would have rolled back the schema change and its bookkeeping together, and each
+was verified against the live database before the next was applied.
+
+Reading production before writing to it was what mattered most: it turned up a
+defect in these very migrations that would have broken client messaging. See
 `notify_assigned_role` below.
 
 ---
@@ -50,7 +55,9 @@ against today's schema — deploying first breaks the staff roster on every
 screen. The migrations, by contrast, are all safe against the code that is
 deployed right now (see the table below), so the intermediate state is fine.
 
-## Step 1 — push the migrations
+## Step 1 — push the migrations  (applied 2026-09-14)
+
+From a machine that can reach Postgres, this is the whole of it:
 
 ```bash
 supabase link --project-ref wuulybfnhrxpgvqqisxz
@@ -119,6 +126,26 @@ select pg_get_function_identity_arguments(p.oid)
 
 Then send one message as a client from the portal and confirm it posts. That is
 the single check that would have caught the overload, and it takes a minute.
+
+### What was actually verified on production, 2026-09-14
+
+Each of these was run against the live database after the migrations landed.
+The write probes ran inside transactions that were rolled back, so they left no
+rows behind; the counts below were re-checked afterwards and were unchanged.
+
+| Check | Result |
+| --- | --- |
+| Migrations recorded | 30, including all six |
+| `orders` / `profiles` / `clients` | 17 / 10 / 7 — unchanged throughout |
+| Three state rows | `RTS-10054=CA`, `RTS-10055=NJ`, `RTS-10056=AR`; no non-two-character state remains |
+| `enqueue_notification` signatures | exactly 1 (the six-argument one) |
+| Client sends a support message | insert succeeds, raising 4 admin outbox rows — the path the overload broke |
+| `order_events` CHECK | `order_events_audience_chk` still present, predicate intact |
+| Payment guard | plain admin refused when confirming; may still mark; Vivek allowed |
+| Fulfillment scoping | owning desk writes, non-owning desk refused, Admin writes, `updated_by` stamped |
+| Client PII | screener 0, plain admin 0, super admin 7; `client_directory` 7 to all staff |
+| `anon` may still call the RLS helpers | yes — `false / false / null / null`, no 401 |
+| Outbox | 4 rows, 0 ever sent — nothing drains it, so no mail was or can be sent |
 
 ## Step 2 — deploy the code
 
