@@ -1,0 +1,39 @@
+name: Deploy Resolute Portal to GCP
+
+on:
+  workflow_dispatch: # Allows you to run the action manually from the GitHub UI
+
+jobs:
+  deploy:
+    name: Build and Deploy Frontend to Cloud Run
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Clone the repository code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Authenticate to Google Cloud using the Service Account Secret
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+
+      # 3. Set up Google Cloud CLI tools
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # 4. Deploy the frontend app to Cloud Run
+      - name: Deploy Frontend App to Cloud Run
+        run: |
+          # Deploy the Vite frontend using the Nginx Dockerfile in the root directory.
+          # Note: Database credentials and Cloud SQL connections have been intentionally 
+          # removed from this step. The frontend should never connect directly to the DB.
+          # DB variables belong ONLY in the backend API deployment workflow.
+          gcloud run deploy resolute-portal \
+            --quiet \
+            --source . \
+            --region us-central1 \
+            --allow-unauthenticated \
+            --project resolute-508323
