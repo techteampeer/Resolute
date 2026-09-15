@@ -4,11 +4,12 @@ Production (Supabase project `wuulybfnhrxpgvqqisxz`, "Resolute") is behind branc
 `claude/resolute-e2e-testing-38ipu6` in two independent ways, and they have to be
 closed in a fixed order.
 
-> **Step 1 is done.** The six migrations were applied to production on
-> 2026-09-14 and verified statement by statement; production now reports 30
-> migrations. Step 2, the code deploy, is still outstanding. The rest of this
-> document is kept as the record of what was applied and how it was checked —
-> and as the procedure to repeat against any other environment.
+> **Both steps are done.** The six migrations were applied to production on
+> 2026-09-14 and verified statement by statement; production reports 30
+> migrations, matching this repo version for version. The code was merged to
+> `main` and deployed on 2026-09-15. The rest of this document is kept as the
+> record of what was applied and how it was checked — and as the procedure to
+> repeat against any other environment.
 
 They were applied through the Supabase Management API rather than
 `supabase db push`, because this sandbox has no route to the Postgres port that
@@ -147,9 +148,14 @@ rows behind; the counts below were re-checked afterwards and were unchanged.
 | `anon` may still call the RLS helpers | yes — `false / false / null / null`, no 401 |
 | Outbox | 4 rows, 0 ever sent — nothing drains it, so no mail was or can be sent |
 
-## Step 2 — deploy the code
+## Step 2 — deploy the code  (done 2026-09-15)
 
-Merge the branch's pull request. Vercel builds from `main`.
+Merge to `main`; Vercel builds from it. Confirmed live by fetching
+`/us-states-10m.json`, which this branch added and the previous `main` did not
+have: it returns 200 and 114,554 bytes, and every asset `index.html` references
+resolves. Note the built bundle's hash will not match a local `npm run build`
+byte for byte — Vercel resolves dependencies on its own — so check for content
+that only the new code has rather than comparing hashes.
 
 After the deploy, the quickest confidence check is the one thing that was most
 visibly wrong: sign in as `screener@resolute.com` and look at the dashboard —
