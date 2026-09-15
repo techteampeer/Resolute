@@ -6,7 +6,7 @@
 // Confirmed (by the billing super admin) → or Bounced.
 import { clientByName } from '../data/mockData'
 import { PRODUCT_PRICE } from '../data/products'
-import { isSupabaseConfigured, fetchClientTerms, saveClientTerms } from './backend'
+import { isBackendConfigured, fetchClientTerms, saveClientTerms } from './backend'
 
 // ── Remittance details (PLACEHOLDERS — fill in real values here later) ──────
 export const REMITTANCE = {
@@ -38,11 +38,11 @@ export const getClientTerms = (clientCode) => readTermsMap()[clientCode] || 'per
 export function setClientTerms(clientCode, termKey) {
   const map = readTermsMap(); map[clientCode] = termKey
   localStorage.setItem(TERMS_LS_KEY, JSON.stringify(map))
-  if (isSupabaseConfigured) saveClientTerms(clientCode, termKey)
+  if (isBackendConfigured) saveClientTerms(clientCode, termKey)
 }
 // Pull the durable terms into the local cache; returns true when refreshed.
 export async function hydrateClientTerms() {
-  if (!isSupabaseConfigured) return false
+  if (!isBackendConfigured) return false
   const map = await fetchClientTerms()
   if (map) localStorage.setItem(TERMS_LS_KEY, JSON.stringify(map))
   return !!map

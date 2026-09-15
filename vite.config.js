@@ -11,6 +11,15 @@ const commit = (() => {
 })()
 
 export default defineConfig({
+  // `vite dev` serves the SPA only; the API lives in server/ on 8080. Proxying
+  // keeps them same-origin in development, which is what the session cookie
+  // needs (it is httpOnly and SameSite=lax, so a cross-origin XHR would not
+  // send it). Run both: `npm run dev:server` alongside `npm run dev`.
+  server: {
+    proxy: {
+      '/api': { target: process.env.VITE_DEV_API || 'http://127.0.0.1:8080', changeOrigin: true },
+    },
+  },
   define: {
     __BUILD_COMMIT__: JSON.stringify(commit),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, US_STATES, stateName } from '../../data/mockData'
 import { PRODUCTS } from '../../data/products'
-import { isSupabaseConfigured, openDocument, uploadDocument } from '../../lib/backend'
+import { isBackendConfigured, openDocument, uploadDocument } from '../../lib/backend'
 import { fileKind, uid } from '../../data/fulfillment'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
@@ -177,7 +177,7 @@ function ClientAttach({ orderId = null, value = [], onChange, accent = ROLE_COLO
     setErr('')
     for (const file of incoming) {
       const ref = { id: uid(), name: file.name, type: fileKind(file.name), status: 'staged', file, url: URL.createObjectURL(file) }
-      if (orderId && isSupabaseConfigured) {
+      if (orderId && isBackendConfigured) {
         ref.status = 'uploading'; delete ref.file
         onChange(v => [...v, ref])
         try { const { url, path } = await uploadDocument(orderId, file); onChange(v => v.map(x => x.id === ref.id ? { ...x, status: 'done', url, path } : x)) }
@@ -541,7 +541,7 @@ function PlaceOrderPage() {
       if (attachments.length) {
         const clientDocs = []
         for (const a of attachments) {
-          if (isSupabaseConfigured && a.file) {
+          if (isBackendConfigured && a.file) {
             try { const { url, path } = await uploadDocument(order.id, a.file); clientDocs.push({ id: a.id, name: a.name, type: a.type, status: 'done', url, path }) }
             catch { clientDocs.push({ id: a.id, name: a.name, type: a.type, status: 'error' }) }
           } else {

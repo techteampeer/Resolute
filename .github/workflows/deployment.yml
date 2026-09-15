@@ -5,7 +5,7 @@ on:
 
 jobs:
   deploy:
-    name: Build and Deploy Frontend to Cloud Run
+    name: Build and Deploy Portal to Cloud Run
     runs-on: ubuntu-latest
 
     steps:
@@ -24,16 +24,28 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # 4. Deploy the frontend app to Cloud Run
-      - name: Deploy Frontend App to Cloud Run
+      # 4. Deploy the portal (SPA + API) to Cloud Run
+      - name: Deploy Portal to Cloud Run
         run: |
-          # Deploy the Vite frontend using the Nginx Dockerfile in the root directory.
-          # Note: Database credentials and Cloud SQL connections have been intentionally 
-          # removed from this step. The frontend should never connect directly to the DB.
-          # DB variables belong ONLY in the backend API deployment workflow.
+          # The container now runs the Express server in server/, which serves the
+          # built SPA *and* the API it talks to. So unlike the previous
+          # static-only revision, this one does need the database, the bucket and
+          # the Cloud SQL socket — a browser cannot hold any of them, which is
+          # exactly why the server exists.
+          #
+          # DB_USER is deliberately NOT the schema owner. Postgres exempts a
+          # table's owner from that table's RLS, so an app connecting as the role
+          # that ran the migrations would silently lose every access rule in the
+          # schema. Create a dedicated login and set its password out of band:
+          #   gcloud sql users create resolute_app --instance=resolute-db-instance --prompt-for-password
+          # then store it as the DB_PASS secret.
+          #
+          # ^@^ makes @ the delimiter, so values containing commas are safe.
           gcloud run deploy resolute-portal \
             --quiet \
             --source . \
             --region us-central1 \
             --allow-unauthenticated \
-            --project resolute-508323
+            --project resolute-508323 \
+            --set-env-vars="^@^DB_USER=${{ secrets.DB_USER }}@DB_PASS=${{ secrets.DB_PASS }}@DB_NAME=resolute_prod@BUCKET_NAME=${{ secrets.BUCKET_NAME }}@INSTANCE_CONNECTION_NAME=resolute-508323:us-central1:resolute-db-instance@FIREBASE_PROJECT_ID=resolute-508323@FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}@NODE_ENV=production" \
+            --add-cloudsql-instances="resolute-508323:us-central1:resolute-db-instance"

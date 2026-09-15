@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { FileText, CheckCircle, Upload, AlertTriangle, Landmark, Mail, Clock } from 'lucide-react'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
-import { isSupabaseConfigured, uploadDocument, openDocument } from '../../lib/backend'
+import { isBackendConfigured, uploadDocument, openDocument } from '../../lib/backend'
 import {
   REMITTANCE, hasRemittanceDetails, termByKey, getClientTerms, hydrateClientTerms,
   invoiceAmount, invoiceNumber, money, clientCodeOf, paymentOf, payStatusOf,
@@ -76,7 +76,7 @@ function PayPanel({ payLabel, docKeyId, onPaid }) {
     if (!file) return
     setBusy(true)
     try {
-      if (isSupabaseConfigured) {
+      if (isBackendConfigured) {
         const { url, path } = await uploadDocument(docKeyId, file)
         setCheckDoc({ name: file.name, url, path })
       } else {

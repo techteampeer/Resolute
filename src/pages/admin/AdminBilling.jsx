@@ -4,7 +4,7 @@ import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
 import { VENDORS } from '../../data/mockData'
 import { useClients, clientNameOf } from '../../lib/useClients'
-import { isSupabaseConfigured, savePayoutLedger, openDocument } from '../../lib/backend'
+import { isBackendConfigured, savePayoutLedger, openDocument } from '../../lib/backend'
 import {
   TERMS, termByKey, getClientTerms, setClientTerms, hydrateClientTerms, canConfirmPayments,
   invoiceAmount, invoiceNumber, money, clientCodeOf, paymentOf, payStatusOf,
@@ -287,12 +287,12 @@ function VendorPayouts({ orders, updateOrder, user, vivek }) {
   const setFee = (o, vendor, amount) => {
     const payout = buildPayout({ vendor, amount, userName: user?.name })
     updateOrder({ ...o, workflow: { ...o.workflow, abstractorFee: payout } })
-    if (isSupabaseConfigured) savePayoutLedger(o.id, payout)
+    if (isBackendConfigured) savePayoutLedger(o.id, payout)
   }
   const markPaid = (o) => {
     const payout = payPayout(payoutOf(o), user?.name)
     updateOrder({ ...o, workflow: { ...o.workflow, abstractorFee: payout } })
-    if (isSupabaseConfigured) savePayoutLedger(o.id, payout)
+    if (isBackendConfigured) savePayoutLedger(o.id, payout)
   }
   const paySub = (s) => {
     const next = paySubscription(s, user?.name)

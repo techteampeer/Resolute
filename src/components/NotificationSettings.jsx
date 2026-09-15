@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bell, BellOff, Zap, Sun, Check, AlertTriangle, RotateCcw, Loader2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
-  isSupabaseConfigured, fetchNotificationTypes, fetchNotificationPreferences,
+  isBackendConfigured, fetchNotificationTypes, fetchNotificationPreferences,
   saveNotificationPreference, clearNotificationPreference,
 } from '../lib/backend'
 
@@ -42,7 +42,7 @@ export default function NotificationSettings({ accent = '#2441E5' }) {
   const [loadError, setLoadError] = useState(null)
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
+    if (!isBackendConfigured) {
       // Mock mode has no rows to read. Show the catalogue the app ships with so
       // the screen is still explorable, and say plainly that nothing persists.
       setTypes(MOCK_TYPES)
@@ -76,7 +76,7 @@ export default function NotificationSettings({ accent = '#2441E5' }) {
     const previous = { ...prefs }
     setError(null)
     setPrefs(p => ({ ...p, [t.key]: mode }))          // optimistic
-    if (!isSupabaseConfigured) return                  // mock mode: local only
+    if (!isBackendConfigured) return                  // mock mode: local only
     setBusy(t.key)
     const res = await saveNotificationPreference(user?.id, t.key, mode)
     setBusy(null)
@@ -91,7 +91,7 @@ export default function NotificationSettings({ accent = '#2441E5' }) {
     const previous = { ...prefs }
     setError(null)
     setPrefs(p => { const n = { ...p }; delete n[t.key]; return n })
-    if (!isSupabaseConfigured) return
+    if (!isBackendConfigured) return
     setBusy(t.key)
     const res = await clearNotificationPreference(user?.id, t.key)
     setBusy(null)
@@ -116,7 +116,7 @@ export default function NotificationSettings({ accent = '#2441E5' }) {
         </p>
       </div>
 
-      {!isSupabaseConfigured && (
+      {!isBackendConfigured && (
         <Notice tone="warn" icon={AlertTriangle}>
           Demo mode — there is no database connected, so these choices are not saved.
         </Notice>

@@ -12,7 +12,7 @@
 // Same shape as useProfiles: cached at module scope, fetched once per page load,
 // falling back to the fixture only when Supabase is not configured.
 import { useEffect, useState } from 'react'
-import { isSupabaseConfigured, fetchClients } from './backend'
+import { isBackendConfigured, fetchClients } from './backend'
 import { CLIENTS } from '../data/mockData'
 
 let cache = null
@@ -21,7 +21,7 @@ const subscribers = new Set()
 
 function load() {
   if (cache) return Promise.resolve(cache)
-  if (!isSupabaseConfigured) { cache = CLIENTS; return Promise.resolve(cache) }
+  if (!isBackendConfigured) { cache = CLIENTS; return Promise.resolve(cache) }
   if (!inflight) {
     inflight = fetchClients().then(rows => {
       // No fixture fallback here, deliberately. mockData's CLIENTS carries real

@@ -5,7 +5,7 @@
 // Vivek (canConfirmPayments) may mark anything paid.
 import { VENDORS } from '../data/mockData'
 import {
-  isSupabaseConfigured, fetchVendors, saveVendorCycle as saveVendorCycleRemote,
+  isBackendConfigured, fetchVendors, saveVendorCycle as saveVendorCycleRemote,
   fetchSubscriptions, saveSubscription,
 } from './backend'
 
@@ -26,12 +26,12 @@ export const getVendorCycle = (code) =>
 export function setVendorCycle(code, cycleKey) {
   const map = readCycles(); map[code] = cycleKey
   localStorage.setItem(CYCLES_LS_KEY, JSON.stringify(map))
-  if (isSupabaseConfigured) saveVendorCycleRemote(code, cycleKey)
+  if (isBackendConfigured) saveVendorCycleRemote(code, cycleKey)
 }
 // Pull the vendor registry (incl. cycles) from Supabase; refreshes the cycle
 // cache and returns the list, or null in mock mode / on error.
 export async function hydrateVendors() {
-  if (!isSupabaseConfigured) return null
+  if (!isBackendConfigured) return null
   const vendors = await fetchVendors()
   if (vendors) {
     localStorage.setItem(CYCLES_LS_KEY, JSON.stringify(Object.fromEntries(vendors.map(v => [v.code, v.cycle]))))
@@ -89,14 +89,14 @@ export function writeSubscriptions(subs) {
 }
 // Pull durable subscriptions into the local cache; null in mock mode / on error.
 export async function hydrateSubscriptions() {
-  if (!isSupabaseConfigured) return null
+  if (!isBackendConfigured) return null
   const subs = await fetchSubscriptions()
   if (subs) writeSubscriptions(subs)
   return subs
 }
 // Persist a single subscription row (call after paySubscription).
 export function persistSubscription(s) {
-  if (isSupabaseConfigured) saveSubscription(s)
+  if (isBackendConfigured) saveSubscription(s)
 }
 export const subscriptionNextDue = (s) =>
   s.lastPaidAt ? addDays(s.lastPaidAt, cycleByKey(s.cycle).days) : todayISO()

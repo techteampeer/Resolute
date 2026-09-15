@@ -15,7 +15,7 @@ import {
 import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument } from '../../lib/backend'
-import { supabase, isSupabaseConfigured } from '../../lib/supabase'
+import { isBackendConfigured } from '../../lib/api'
 import { useProfiles, namesForRole, invalidateProfiles } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
 import { money } from '../../lib/billing'
@@ -1399,10 +1399,13 @@ function AdminOrders() {
 const USER_ROLES = ['admin', 'screener', 'examiner', 'typer', 'delivery', 'client', 'operator']
 
 async function usersApi(method, body) {
-  const { data: { session } = {} } = await supabase.auth.getSession()
+  // No Authorization header any more: the session is an httpOnly cookie the
+  // server set at sign-in, so there is no token to read here — which is the
+  // point. `credentials` is what carries it.
   const res = await fetch('/api/admin/users', {
     method,
-    headers: { 'content-type': 'application/json', ...(session ? { authorization: `Bearer ${session.access_token}` } : {}) },
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
     body: method === 'POST' ? JSON.stringify(body) : undefined,
   })
   const j = await res.json().catch(() => ({}))
@@ -1454,7 +1457,7 @@ function UserFormModal({ initial, onClose, onSave, busy }) {
 }
 
 function AdminUsers() {
-  const live = isSupabaseConfigured
+  const live = isBackendConfigured
   const [users, setUsers] = useState(() => live ? [] : USERS.map(u => ({ ...u, active: u.status !== 'inactive' })))
   const [loading, setLoading] = useState(live)
   const [err, setErr] = useState('')

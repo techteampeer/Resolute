@@ -11,7 +11,7 @@
 // per modal open. Falls back to the fixture when Supabase is not configured,
 // which is the documented mock-data-first behaviour.
 import { useEffect, useState } from 'react'
-import { isSupabaseConfigured, fetchProfiles } from './backend'
+import { isBackendConfigured, fetchProfiles } from './backend'
 import { USERS } from '../data/mockData'
 
 const MOCK = USERS.map(u => ({ ...u, status: u.status || 'active' }))
@@ -22,7 +22,7 @@ const subscribers = new Set()
 
 function load() {
   if (cache) return Promise.resolve(cache)
-  if (!isSupabaseConfigured) { cache = MOCK; return Promise.resolve(cache) }
+  if (!isBackendConfigured) { cache = MOCK; return Promise.resolve(cache) }
   if (!inflight) {
     inflight = fetchProfiles().then(rows => {
       // A failed fetch must not leave the roster empty — an empty Assign modal

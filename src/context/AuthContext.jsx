@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { isSupabaseConfigured, getCurrentUser, signIn, signOut, onAuthChange } from '../lib/backend'
+import { isBackendConfigured, getCurrentUser, signIn, signOut, onAuthChange } from '../lib/backend'
 import { DEMO_USER } from '../data/demoData'
 
 const AuthContext = createContext(null)
@@ -41,11 +41,11 @@ export function AuthProvider({ children }) {
   // notification email landed on the login page instead of the order. Guards
   // must wait for this, not for `user`.
   // Mock mode has nothing to restore, so it starts ready.
-  const [ready, setReady] = useState(!isSupabaseConfigured)
+  const [ready, setReady] = useState(!isBackendConfigured)
 
   // With Supabase: restore the session on load and track auth changes.
   useEffect(() => {
-    if (!isSupabaseConfigured) return
+    if (!isBackendConfigured) return
     let unsub = () => {}
     // Only restore a session that has a resolved role; never auto-land on client.
     getCurrentUser()
@@ -57,7 +57,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = async (email, password) => {
-    if (isSupabaseConfigured) {
+    if (isBackendConfigured) {
       let res
       try {
         res = await signIn(email, password)
@@ -85,7 +85,7 @@ export function AuthProvider({ children }) {
   const loginAsDemo = () => setUser({ ...DEMO_USER })
 
   const logout = async () => {
-    if (isSupabaseConfigured && !user?.demo) await signOut()
+    if (isBackendConfigured && !user?.demo) await signOut()
     setUser(null)
   }
 

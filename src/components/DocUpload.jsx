@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { UploadCloud, FileText, Trash2, CheckCircle2, AlertCircle, Eye } from 'lucide-react'
 import { ACCEPTED_DOCS, validDocType, fileKind, uid } from '../data/fulfillment'
-import { isSupabaseConfigured, uploadDocument, openDocument } from '../lib/backend'
+import { isBackendConfigured, uploadDocument, openDocument } from '../lib/backend'
 
 // Compact PDF/Word upload used across the role portals (dark theme).
 // Uploads to Supabase Storage when configured; otherwise stores a local ref.
@@ -15,9 +15,9 @@ export default function DocUpload({ orderId, value, onChange, accent = '#2441E5'
     if (!file) return
     if (!validDocType(file)) { setErr('PDF or Word (.doc/.docx) only'); return }
     setErr('')
-    const ref = { id: uid(), name: file.name, type: fileKind(file.name), status: isSupabaseConfigured ? 'uploading' : 'done', url: null }
+    const ref = { id: uid(), name: file.name, type: fileKind(file.name), status: isBackendConfigured ? 'uploading' : 'done', url: null }
     onChange(ref)
-    if (isSupabaseConfigured) {
+    if (isBackendConfigured) {
       try { const { url, path } = await uploadDocument(orderId, file); onChange({ ...ref, status: 'done', url, path }) }
       catch { onChange({ ...ref, status: 'error' }) }
     }

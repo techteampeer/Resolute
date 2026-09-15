@@ -94,7 +94,15 @@ comment on table auth.users is
   'Platform) authenticates; this table maps its UID to the portal profiles.id '
   'uuid that every RLS policy and foreign key is built on.';
 
+-- The Express server is the ONLY thing that reaches this schema -- there is no
+-- PostgREST in front of it any more -- so the app role manages the mapping
+-- directly. It carries no RLS because nothing untrusted can query it.
 grant select on auth.users to authenticated, service_role;
+do $$
+begin
+  execute format('grant select, insert, update, delete on auth.users to %I',
+                 current_setting('resolute.app_user'));
+end $$;
 
 -- ── 4. The application role ────────────────────────────────────────────────
 -- Created here without a password; the password is set by bootstrap.sh from

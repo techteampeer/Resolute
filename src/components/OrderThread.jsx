@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { FileText, Paperclip, Send, X } from 'lucide-react'
-import { isSupabaseConfigured, uploadDocument, openDocument } from '../lib/backend'
+import { isBackendConfigured, uploadDocument, openDocument } from '../lib/backend'
 import { fileKind } from '../data/fulfillment'
 
 // Qualia-style per-order message thread: full-width message cards (sender name +
@@ -25,7 +25,7 @@ export default function OrderThread({ orderId, messages = [], viewerSide = 'supp
     if (!/\.(pdf|docx?|jpe?g|png|tiff?)$/i.test(file.name)) { setErr('PDF, Word, or image only'); return }
     setErr(''); setBusy(true)
     try {
-      if (isSupabaseConfigured && orderId) {
+      if (isBackendConfigured && orderId) {
         const { path, url } = await uploadDocument(orderId, file)
         setPending({ name: file.name, type: fileKind(file.name), path, url })
       } else {

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useCallback } from 'react'
 import { makeDefaultFulfillment, hydrateFulfillment } from '../data/fulfillment'
-import { isSupabaseConfigured, fetchFulfillment, saveFulfillment } from '../lib/backend'
+import { isBackendConfigured, fetchFulfillment, saveFulfillment } from '../lib/backend'
 
 // Per-order Typer fulfillment state with a transient autosave indicator.
 // Persists to Supabase (fulfillments.data JSONB) when configured; otherwise
@@ -18,7 +18,7 @@ export function FulfillmentProvider({ children }) {
   const ensure = useCallback((order) => {
     if (loaded.current.has(order.id)) return
     loaded.current.add(order.id)
-    if (isSupabaseConfigured) {
+    if (isBackendConfigured) {
       fetchFulfillment(order.id).then(data => {
         if (data) { setByOrder(s => ({ ...s, [order.id]: hydrateFulfillment(order, data) })) }
         else { const def = makeDefaultFulfillment(order); setByOrder(s => ({ ...s, [order.id]: def })); saveFulfillment(order.id, def) }
@@ -48,7 +48,7 @@ export function FulfillmentProvider({ children }) {
       // would have replaced a full commitment with a one-key payload.
       if (!s[orderId]) return s
       const next = recipe(s[orderId])
-      if (isSupabaseConfigured) {
+      if (isBackendConfigured) {
         clearTimeout(saveTimers.current[orderId])
         saveTimers.current[orderId] = setTimeout(
           () => saveFulfillment(orderId, next).then(settle).catch(e => settle({ ok: false, error: e.message })),

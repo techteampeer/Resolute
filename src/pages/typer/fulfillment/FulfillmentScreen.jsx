@@ -23,7 +23,7 @@ import RequirementsSection from './RequirementsSection'
 import ExceptionsSection from './ExceptionsSection'
 import InvoiceBlock from './InvoiceBlock'
 import { SearchInformation, AssessmentTax, JudgmentsLiens, TextLineList, DisclaimerBlock } from './ReportSections'
-import { isSupabaseConfigured, uploadDocument } from '../../../lib/backend'
+import { isBackendConfigured, uploadDocument } from '../../../lib/backend'
 
 const TABS = ['Overview', 'Fulfillment', 'Activity', 'Inbox', 'Files']
 
@@ -456,7 +456,7 @@ function TitleSearchDoc({ order, f, set }) {
     const ref = makeFileRef(files[0])
     set(d => ({ ...d, titleSearchDoc: ref }))
     const patch = (extra) => set(d => ({ ...d, titleSearchDoc: d.titleSearchDoc?.id === ref.id ? { ...d.titleSearchDoc, ...extra } : d.titleSearchDoc }))
-    if (isSupabaseConfigured) {
+    if (isBackendConfigured) {
       try { const { url, path } = await uploadDocument(order.id, files[0]); patch({ progress: 100, status: 'done', url, path }) }
       catch { patch({ status: 'error' }) }
     } else {
@@ -484,7 +484,7 @@ function Supplementary({ order, f, set }) {
     const refs = files.map(makeFileRef)
     set(d => ({ ...d, supplementaryDocs: [...d.supplementaryDocs, ...refs.map(r => ({ file: r, sendToCustomer: true }))] }))
     refs.forEach((ref, i) => {
-      if (isSupabaseConfigured) {
+      if (isBackendConfigured) {
         uploadDocument(order.id, files[i])
           .then(({ url, path }) => patchFile(ref.id, { progress: 100, status: 'done', url, path }))
           .catch(() => patchFile(ref.id, { status: 'error' }))
@@ -562,7 +562,7 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
       // BUG_011: this file is what the client downloads, so it must be a PDF.
       const blob = await commitmentPdfBlob(order, f)
       const file = new File([blob], commitmentFileName(order), { type: 'application/pdf' })
-      if (isSupabaseConfigured) {
+      if (isBackendConfigured) {
         const { url, path } = await uploadDocument(order.id, file)
         extra.commitmentDoc = { id: uid(), name: file.name, type: 'pdf', url, path }
       } else {

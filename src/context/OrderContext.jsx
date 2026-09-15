@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { ORDERS, ACTIVITY, nextRoleFor, roleAfter, statusForRole } from '../data/mockData'
-import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
+import { isBackendConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
 import { useAuth } from './AuthContext'
 
 const OrderContext = createContext(null)
@@ -30,7 +30,7 @@ export function OrderProvider({ children }) {
   // nothing. Re-running when the user resolves ensures the just-logged-in user
   // actually sees their own rows. Demo users have no backend session — skip.
   useEffect(() => {
-    if (!isSupabaseConfigured || !user || user.demo) return
+    if (!isBackendConfigured || !user || user.demo) return
     let unsub = () => {}
     const load = () => fetchOrders().then(rows => { if (rows) setOrders(rows) })
     load()
@@ -49,7 +49,7 @@ export function OrderProvider({ children }) {
     // client_mark_payment() for the rest), so attempting the insert from a
     // client session added nothing and put a 403 in the console on every single
     // order placed.
-    if (isSupabaseConfigured && user?.role && user.role !== 'client') logEvent({
+    if (isBackendConfigured && user?.role && user.role !== 'client') logEvent({
       orderId: entry.orderId, action: entry.action, type: entry.type, actor: entry.actor,
       // Whoever performed the action does not need to be told about it.
       actorEmail: entry.actorEmail || user?.email || null,
@@ -57,7 +57,7 @@ export function OrderProvider({ children }) {
     })
   }
   const persist = (order) => {
-    if (!isSupabaseConfigured) return
+    if (!isBackendConfigured) return
     saveOrder(order)
       .then(r => setWriteError(r && r.ok === false ? (r.error || 'not saved') : null))
       .catch(e => setWriteError(e.message))
@@ -169,7 +169,7 @@ export function OrderProvider({ children }) {
   const markPayment = (order, payment) => {
     const next = { ...order, workflow: { ...order.workflow, payment } }
     setOrders(os => os.map(o => (o.id === order.id ? next : o)))
-    if (isSupabaseConfigured) markOrderPayment(order.id, payment).catch(() => {})
+    if (isBackendConfigured) markOrderPayment(order.id, payment).catch(() => {})
     return next
   }
 
@@ -190,7 +190,7 @@ export function OrderProvider({ children }) {
     // Durable persistence: clients can't UPDATE orders (RLS), so go through the
     // SECURITY DEFINER RPC, which also records the order_events row that shows up
     // in Admin's notifications. Mock mode just keeps the local update.
-    if (isSupabaseConfigured) cancelOrderRpc(orderId).catch(() => {})
+    if (isBackendConfigured) cancelOrderRpc(orderId).catch(() => {})
     // Local activity feed only — the RPC writes the durable event (a client
     // logEvent insert would be denied by RLS).
     setActivityLog(a => [{
@@ -206,7 +206,7 @@ export function OrderProvider({ children }) {
   // Client responds to a pending clarification (RLS-safe RPC; own order only).
   const respondClarification = (orderId) => {
     setOrders(os => os.map(o => (o.id === orderId ? { ...o, clarification: 'responded' } : o)))
-    if (isSupabaseConfigured) respondClarificationRpc(orderId).catch(() => {})
+    if (isBackendConfigured) respondClarificationRpc(orderId).catch(() => {})
   }
 
   // Admin resolves a pending cancellation request (approve = cancel the order).
@@ -228,7 +228,7 @@ export function OrderProvider({ children }) {
   // ID comes from the DB sequence when Supabase is on (two simultaneous orders
   // can't collide); the local max()+1 is the mock fallback.
   const createOrder = async (data = {}) => {
-    let id = isSupabaseConfigured ? await nextOrderId() : null
+    let id = isBackendConfigured ? await nextOrderId() : null
     if (!id) {
       const max = orders.reduce((m, o) => {
         const n = parseInt(String(o.id).replace(/\D/g, ''), 10)
@@ -257,7 +257,7 @@ export function OrderProvider({ children }) {
     // Await the insert so the row exists before the caller uploads any
     // attachments — the documents storage policy authorizes a client upload by
     // checking that the order (path orders/<id>/…) belongs to them.
-    if (isSupabaseConfigured) await insertOrder(order)
+    if (isBackendConfigured) await insertOrder(order)
     log({ id: Date.now(), orderId: order.id, action: `New order ${order.id} placed (${order.type})`, time: 'Just now', type: 'new', audience: 'all' })
     return order
   }

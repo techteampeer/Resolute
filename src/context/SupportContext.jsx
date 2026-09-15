@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { clientName as nameForCode } from '../data/mockData'
-import { isSupabaseConfigured, fetchSupportMessages, insertSupportMessage, subscribeSupport } from '../lib/backend'
+import { isBackendConfigured, fetchSupportMessages, insertSupportMessage, subscribeSupport } from '../lib/backend'
 import { useAuth } from './AuthContext'
 
 // Client ⇄ Admin messaging. Two flavours share one store (support_messages):
 //   • General Support thread   — message.orderId == null
 //   • Per-order "Client Inbox" — message.orderId == <order id>
 //
-// Persistence follows the app's isSupabaseConfigured seam:
+// Persistence follows the app's isBackendConfigured seam:
 //   • Supabase on  → support_messages table (RLS-scoped, realtime).
 //   • Supabase off → flat message list persisted to localStorage (per-browser).
 const SupportContext = createContext(null)
@@ -35,11 +35,11 @@ const threadsByClient = (msgs) => {
 export function SupportProvider({ children }) {
   const { user } = useAuth()
   // Flat list: { id, clientCode, orderId, from, text, author, time, at }
-  const [messages, setMessages] = useState(() => (isSupabaseConfigured ? [] : load()))
+  const [messages, setMessages] = useState(() => (isBackendConfigured ? [] : load()))
 
   // Supabase: hydrate + live updates once authenticated. Mock: persist locally.
   useEffect(() => {
-    if (!isSupabaseConfigured || !user || user.demo) return
+    if (!isBackendConfigured || !user || user.demo) return
     let unsub = () => {}
     const reload = () => fetchSupportMessages().then(rows => {
       if (rows) setMessages(rows.map(r => ({ id: r.id, clientCode: r.clientCode, orderId: r.orderId || null, from: r.from, text: r.body, author: r.author, attachment: r.attachment || null, visibility: r.visibility, time: r.time, at: r.at })))
@@ -49,7 +49,7 @@ export function SupportProvider({ children }) {
     return () => unsub()
   }, [user?.email, user?.demo])
 
-  useEffect(() => { if (!isSupabaseConfigured) save(messages) }, [messages])
+  useEffect(() => { if (!isBackendConfigured) save(messages) }, [messages])
 
   // Communication policy (enforced in RLS, mirrored here so the UI matches):
   //   • Clients write to their own thread, always client-visible.
@@ -73,7 +73,7 @@ export function SupportProvider({ children }) {
     if (visibility === 'internal' && !canAddInternalNote) return
     const optimistic = { id: mid(), clientCode, orderId: orderId || null, from, text: body, author: author || null, attachment: attachment || null, visibility, time: nowLabel(), at: Date.now() }
     setMessages(prev => [...prev, optimistic])
-    if (isSupabaseConfigured) {
+    if (isBackendConfigured) {
       insertSupportMessage({ clientCode, sender: from, author, body, orderId, attachment, visibility })
         .then(() => fetchSupportMessages())
         .then(rows => { if (rows) setMessages(rows.map(r => ({ id: r.id, clientCode: r.clientCode, orderId: r.orderId || null, from: r.from, text: r.body, author: r.author, attachment: r.attachment || null, visibility: r.visibility, time: r.time, at: r.at }))) })
