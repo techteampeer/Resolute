@@ -80,7 +80,17 @@ grant execute on function auth.uid(), auth.role() to anon, authenticated, servic
 -- and gives the app one place to record the Firebase UID -> profile mapping.
 create table if not exists auth.users (
   id                  uuid primary key default gen_random_uuid(),
-  firebase_uid        text unique not null,
+  -- Nullable on purpose, and it is an ordering constraint rather than a
+  -- preference. The data migration loads these rows first, carrying the uuids
+  -- every profile and policy already depends on; the Firebase accounts are
+  -- created and bound afterwards by scripts/link-firebase-users.mjs. NOT NULL
+  -- here would make that order impossible and force accounts to be minted
+  -- before the data they belong to exists.
+  --
+  -- A row with a null firebase_uid is simply an account nobody can sign in to
+  -- yet: profileForFirebaseUid() matches on firebase_uid, so it resolves to
+  -- nothing and login is refused with "not linked to a portal account".
+  firebase_uid        text unique,
   email               text,
   -- Carried only because 20260601000000 creates handle_new_user() against it.
   -- 02_post_migrate.sql drops that trigger; the column keeps the migration
@@ -98,11 +108,38 @@ comment on table auth.users is
 -- PostgREST in front of it any more -- so the app role manages the mapping
 -- directly. It carries no RLS because nothing untrusted can query it.
 grant select on auth.users to authenticated, service_role;
-do $$
-begin
-  execute format('grant select, insert, update, delete on auth.users to %I',
-                 current_setting('resolute.app_user'));
-end $$;
+
+-- ── 3b. A storage schema stand-in, so the migrations apply ─────────────────
+-- Two of the migrations (20260601000000 and 20260722010000) create policies on
+-- storage.objects / storage.buckets. Supabase Storage provides those tables;
+-- Cloud SQL has no such schema, so without this the schema build stops on the
+-- first of them -- which is exactly what happened when it was tried.
+--
+-- These stubs exist only so those statements parse and apply. The policies on
+-- them enforce nothing: Cloud Storage never consults Postgres. 02_post_migrate
+-- drops the whole schema afterwards rather than leave rules that look like
+-- protection they cannot provide -- document access is enforced in the API, at
+-- the point a signed URL is minted (server/routes/documents.js).
+create schema if not exists storage;
+
+create table if not exists storage.buckets (
+  id      text primary key,
+  name    text,
+  public  boolean not null default false
+);
+
+create table if not exists storage.objects (
+  id          uuid primary key default gen_random_uuid(),
+  bucket_id   text references storage.buckets(id),
+  name        text,
+  owner       uuid,
+  metadata    jsonb,
+  created_at  timestamptz not null default now()
+);
+alter table storage.objects enable row level security;
+
+insert into storage.buckets (id, name, public) values ('documents','documents',false)
+  on conflict (id) do nothing;
 
 -- ── 4. The application role ────────────────────────────────────────────────
 -- Created here without a password; the password is set by bootstrap.sh from
@@ -127,6 +164,11 @@ do $$
 declare u text := current_setting('resolute.app_user');
 begin
   execute format('grant authenticated, anon to %I', u);
+  -- The Express server is the only thing that reaches the auth schema -- there
+  -- is no PostgREST in front of it any more -- so the app role manages the
+  -- identity mapping directly. Granted here rather than where the table is
+  -- created, because the role does not exist until this block.
+  execute format('grant select, insert, update, delete on auth.users to %I', u);
   execute format('grant connect on database %I to %I', current_database(), u);
   execute format('grant usage on schema public, auth to %I', u);
 end $$;
