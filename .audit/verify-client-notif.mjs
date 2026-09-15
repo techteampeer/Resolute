@@ -1,0 +1,12 @@
+import { browser, login } from './harness.mjs'
+const b = await browser()
+const { page, ctx, errors } = await login(b, 'client')
+await page.waitForTimeout(1400)
+await page.goto('http://127.0.0.1:5173/client/notifications', { waitUntil: 'domcontentloaded' })
+await page.waitForTimeout(2500)
+const t = await page.locator('body').innerText()
+console.log('url:', page.url(), 'chars:', t.length)
+console.log('message:', JSON.stringify((t.match(/Notifications are for Resolute staff[^\n]*/) || ['*** none'])[0]))
+console.log('nav has Notifications:', (await page.locator('aside button, nav button').allInnerTexts()).some(x => /Notifications/.test(x)) ? '*** yes (should not)' : 'no ✓')
+console.log('page errors:', errors.filter(e => e.startsWith('PAGEERROR')).slice(0,2))
+await ctx.close(); await b.close()

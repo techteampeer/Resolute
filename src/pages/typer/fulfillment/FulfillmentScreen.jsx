@@ -10,7 +10,7 @@ import { useAuth } from '../../../context/AuthContext'
 import { useFulfillmentStore } from '../../../context/FulfillmentContext'
 import { displayClient, clientByName } from '../../../data/mockData'
 import {
-  completeness, titleVestingAuto, fmtDateTime, uid,
+  completeness, titleVestingAuto, fmtDateTime, uid, unfilledClauses,
 } from '../../../data/fulfillment'
 import { T, Label, TextInput, TextArea, DateInput, RoundBtn, AccentButton, GhostButton } from './ui'
 import DeedTabs from './DeedTabs'
@@ -32,7 +32,7 @@ export default function FulfillmentScreen() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { orders, updateOrder } = useOrders()
-  const { byOrder, ensure, update, save } = useFulfillmentStore()
+  const { byOrder, ensure, update, save, saveError } = useFulfillmentStore()
   const order = orders.find(o => o.id === id)
   const [tab, setTab] = useState('Fulfillment')
 
@@ -91,7 +91,7 @@ export default function FulfillmentScreen() {
       </div>
 
       {tab === 'Fulfillment'
-        ? <FulfillmentBody {...{ order, f, set, comp, save, user, updateOrder, navigate }} />
+        ? <FulfillmentBody {...{ order, f, set, comp, save, saveError, user, updateOrder, navigate }} />
         : tab === 'Overview'
         ? <OverviewTab order={order} f={f} user={user} />
         : tab === 'Inbox'
@@ -102,11 +102,11 @@ export default function FulfillmentScreen() {
 }
 
 // ── Fulfillment body: two-column layout ──────────────────────────────────────
-function FulfillmentBody({ order, f, set, comp, save, user, updateOrder, navigate }) {
+function FulfillmentBody({ order, f, set, comp, save, saveError, user, updateOrder, navigate }) {
   return (
     <div className="flex gap-6 px-5 md:px-7 py-5">
       <div className="flex-1 min-w-0 max-w-[860px]">
-        <CompletenessBar comp={comp} address={f.meta.address} save={save} />
+        <CompletenessBar comp={comp} address={f.meta.address} save={save} saveError={saveError} />
         <ImportControl order={order} set={set} />
 
         {/* 1 — Search Information */}
@@ -235,7 +235,7 @@ function FulfillmentBody({ order, f, set, comp, save, user, updateOrder, navigat
 }
 
 // ── Completeness bar ─────────────────────────────────────────────────────────
-function CompletenessBar({ comp, address, save }) {
+function CompletenessBar({ comp, address, save, saveError }) {
   const [open, setOpen] = useState(false)
   const missing = comp.items.filter(i => !i.done)
   const pct = Math.round((comp.done / comp.total) * 100)
@@ -253,7 +253,7 @@ function CompletenessBar({ comp, address, save }) {
             <motion.div className="h-full rounded-full" style={{ background: T.accentBright }} animate={{ width: `${pct}%` }} transition={{ type: 'spring', stiffness: 200, damping: 28 }} />
           </div>
         </div>
-        <SaveIndicator save={save} />
+        <SaveIndicator save={save} saveError={saveError} />
         <div className="relative">
           <button onClick={() => setOpen(o => !o)} disabled={!missing.length}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors whitespace-nowrap"
@@ -288,12 +288,20 @@ function CompletenessBar({ comp, address, save }) {
   )
 }
 
-function SaveIndicator({ save }) {
+// "Saved" now means the row moved. A refused write shows as Not saved with the
+// reason, because this form holds an hour of a typer's work and the badge used to
+// say Saved on a timer whether or not anything reached the database.
+function SaveIndicator({ save, saveError }) {
+  const failed = save === 'error'
   return (
-    <div className="flex items-center gap-1.5 text-[11px] tabular-nums" style={{ color: save === 'saving' ? T.warn : T.dim }}>
+    <div className="flex items-center gap-1.5 text-[11px] tabular-nums"
+      style={{ color: failed ? '#dc2626' : save === 'saving' ? T.warn : T.dim }}
+      title={failed ? saveError || '' : undefined}>
       <AnimatePresence mode="wait">
         {save === 'saving'
           ? <motion.span key="s" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5"><Cloud className="w-3.5 h-3.5 animate-pulse" /> Saving…</motion.span>
+          : failed
+          ? <motion.span key="e" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Not saved — {saveError || 'the database refused the change'}</motion.span>
           : save === 'saved'
           ? <motion.span key="d" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5" style={{ color: T.accentBright }} /> Saved</motion.span>
           : <span />}
@@ -519,6 +527,11 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
   const [submitting, setSubmitting] = useState(false)
   const missing = comp.items.filter(i => !i.done)
   const ready = missing.length === 0
+  // Clauses that will reach the client with a ruled blank in them. The document
+  // no longer prints ‹token› placeholders, but a blank in a legal instrument is
+  // still the typer's to fill, so say so here rather than let it ship quietly.
+  const gaps = useMemo(() => unfilledClauses(f), [f])
+  const isAdmin = user?.role === 'admin'
   // Every stage parks with Admin for approval before the next one (CLAUDE.md);
   // typing is no exception, from either the typer portal or the Single Seating
   // desk — so this path never calls completeStep.
@@ -534,30 +547,46 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
     const invoicedAt = new Date().toISOString().slice(0, 10)
     // Generate the commitment document and attach it to the order so it flows
     // to Admin and Delivery under Files, like every other stage's document.
+    //
+    // One write, not two. This used to call updateOrder() for the document and
+    // then returnToAdmin() for the stage move, as two independent un-awaited
+    // PATCHes carrying different statuses. A typer never saw the consequence,
+    // because once the move took the order off their desk RLS refused the stale
+    // write; an Admin may update any order, so the stale row landed last and
+    // undid the move — leaving "Rajni completed typing … → returned to Admin for
+    // assignment" in the audit trail against a row still on the typer's desk at
+    // 85%, with no error anywhere. returnToAdmin merges `extra` into workflow,
+    // so the document and the move travel together.
+    const extra = { invoiceAmount, invoicedAt }
     try {
       // BUG_011: this file is what the client downloads, so it must be a PDF.
       const blob = await commitmentPdfBlob(order, f)
       const file = new File([blob], commitmentFileName(order), { type: 'application/pdf' })
-      let ref
       if (isSupabaseConfigured) {
         const { url, path } = await uploadDocument(order.id, file)
-        ref = { id: uid(), name: file.name, type: 'pdf', url, path }
+        extra.commitmentDoc = { id: uid(), name: file.name, type: 'pdf', url, path }
       } else {
-        ref = { id: uid(), name: file.name, type: 'pdf', url: URL.createObjectURL(file) }
+        extra.commitmentDoc = { id: uid(), name: file.name, type: 'pdf', url: URL.createObjectURL(file) }
       }
-      updateOrder({ ...order, workflow: { ...order.workflow, commitmentDoc: ref, invoiceAmount, invoicedAt } })
     } catch (e) {
-      // Doc attach is best-effort — still stamp the invoice total.
-      updateOrder({ ...order, workflow: { ...order.workflow, invoiceAmount, invoicedAt } })
+      // Doc attach is best-effort — the invoice total is still stamped below.
+      console.error('[commitment]', e.message)
     }
-    returnToAdmin(order.id, 'typer', user?.name, 'Commitment typed, generated & verified')
+    returnToAdmin(order.id, 'typer', user?.name, 'Commitment typed, generated & verified', extra)
     navigate(-1)
   }
   return (
     <div>
       {showDoc && <CommitmentDocumentModal order={order} onClose={() => setShowDoc(false)} />}
+      {/* Admin can open and fill this form too, so the wording has to fit the
+          person reading it: told "sent to Admin for approval", an admin was
+          being asked to submit to themselves. Submitting records typing as
+          complete either way and parks the order with Admin for the delivery
+          assignment — for an admin that is their own Orders list. */}
       <p className="text-[12.5px] mb-3" style={{ color: T.faint }}>
-        When you submit, the order is sent to Admin for approval before delivery.
+        {isAdmin
+          ? 'When you submit, typing is recorded as complete and the order returns to your Orders list, ready to assign to Delivery.'
+          : 'When you submit, the order is sent to Admin for approval before delivery.'}
       </p>
       {!ready && (
         <div className="rounded-lg px-3 py-2.5 mb-3 flex items-start gap-2" style={{ background: 'rgba(196,164,78,0.08)', border: '1px solid rgba(196,164,78,0.25)' }}>
@@ -567,9 +596,21 @@ function Finalize({ comp, order, f, user, updateOrder, navigate }) {
           </div>
         </div>
       )}
+      {gaps.length > 0 && (
+        <div className="rounded-lg px-3 py-2.5 mb-3 flex items-start gap-2" style={{ background: 'rgba(196,164,78,0.08)', border: '1px solid rgba(196,164,78,0.25)' }}>
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: T.warn }} />
+          <div className="text-[12.5px]" style={{ color: T.muted }}>
+            {gaps.length} clause{gaps.length > 1 ? 's' : ''} will print with a blank in {gaps.length > 1 ? 'them' : 'it'}
+            {' '}(<span style={{ color: T.warn }}>{[...new Set(gaps.map(g => g.part))].join(' and ')}</span>).
+            Fill them in, delete the clause, or override its text.
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-2 flex-wrap">
         <GhostButton icon={FileText} onClick={() => setShowDoc(true)}>Generate Commitment Document</GhostButton>
-        <AccentButton icon={Send} disabled={!ready || submitting} onClick={submit}>{submitting ? 'Generating…' : 'Submit for Admin Approval'}</AccentButton>
+        <AccentButton icon={Send} disabled={!ready || submitting} onClick={submit}>
+          {submitting ? 'Generating…' : isAdmin ? 'Mark typing complete' : 'Submit for Admin Approval'}
+        </AccentButton>
       </div>
     </div>
   )
@@ -698,6 +739,7 @@ function OverviewTab({ order, f, user }) {
 
       <Card title="Order">
         <Row k="Order No." v={order.id} mono />
+        <Row k="Client file #" v={order.clientFileNo || '—'} mono />
         <Row k="Product / Type" v={m.productType || order.type} />
         <Row k="Customer" v={displayClient(order, user)} />
         <Row k="Priority" v={(order.priority || '').toUpperCase()} />

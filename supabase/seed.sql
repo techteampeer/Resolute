@@ -142,4 +142,14 @@ where p.email = d.email;
 
 update public.profiles set super_admin = true
 where email in ('rajni@resolute.com','saravanan@resolute.com','vivek@resolute.com');
+
+-- Vivek alone reconciles money (CLAUDE.md). 20260908010000 seeds the same flag,
+-- but a `db reset` runs every migration before this file, so at that point
+-- profiles is still empty and the update matches nothing -- leaving a local
+-- database on which NOBODY can confirm a payment, mark a vendor payout paid, or
+-- mark a subscription paid, since the guard triggers refuse all three. Set it
+-- here too, where the rows actually exist. Production is unaffected: its
+-- profiles predate the migration, so the update there found Vivek.
+update public.profiles set can_confirm_payments = true
+where email = 'vivek@resolute.com';
 update public.profiles set client_code = 'CL01' where email = 'client@resolute.com';

@@ -41,12 +41,20 @@ const toOrderRow = (o) => ({
 })
 
 const mapUser = (authUser, prof) => ({
+  // profiles.id is the auth user's id. The Notifications screen writes
+  // notification_preferences.profile_id with it, and RLS checks it against
+  // auth.uid(), so a wrong value is refused rather than misfiled.
+  id: prof?.id || authUser.id || null,
   email: authUser.email,
   role: prof?.role || null,        // null when no profile/role — caller must handle, never silently 'client'
   name: prof?.name || authUser.email,
   avatar: initials(prof?.name || authUser.email),
   superAdmin: !!prof?.super_admin,
   clientCode: prof?.client_code || null,
+  // Whether this account may confirm money (client payments, vendor payouts,
+  // subscriptions). Held by the billing owner only, and enforced by database
+  // triggers as well — this is just what the UI hides behind.
+  canConfirmPayments: !!prof?.can_confirm_payments,
 })
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -85,9 +93,31 @@ export async function fetchOrders() {
   return data.map(toAppOrder)
 }
 
+// Returns { ok, error }. An RLS-filtered UPDATE is not an error in PostgREST —
+// it matches zero rows and returns 200 — so "did anything change?" has to be
+// answered by asking for the affected rows back. Without this the app could not
+// tell a refused write from a successful one, and reported success either way.
+// Postgres' own words for a refused write ("new row violates row-level security
+// policy for table \"fulfillments\"") are exact and useless to a typer. Keep them
+// in the console for diagnosis; put a sentence on the screen.
+const refusalText = (msg, subject) =>
+  /row-level security|permission denied|insufficient privilege/i.test(msg || '')
+    ? `the database refused the change (${subject})`
+    : (msg || 'not saved')
+
 export async function saveOrder(order) {
-  const { error } = await supabase.from('orders').update(toOrderRow(order)).eq('id', order.id)
-  if (error) console.error('[saveOrder]', error.message)
+  const { data, error } = await supabase.from('orders')
+    .update(toOrderRow(order)).eq('id', order.id).select('id')
+  if (error) {
+    console.error('[saveOrder]', error.message)
+    return { ok: false, error: refusalText(error.message, 'you may no longer own this order') }
+  }
+  if (!data || data.length === 0) {
+    const msg = 'the database refused the change (you may no longer own this order)'
+    console.error('[saveOrder]', msg)
+    return { ok: false, error: msg }
+  }
+  return { ok: true }
 }
 
 // Insert a new order (client-placed or staff). RLS: orders_insert_client lets a
@@ -173,14 +203,117 @@ export async function fetchFulfillment(orderId) {
   return data?.data || null
 }
 
+// Returns { ok, error }. Same reasoning as saveOrder: a refused write comes back
+// as 200 with no rows, and this is the path a typer spends an hour filling in —
+// the autosave badge used to say "Saved" on a timer whether or not the row moved.
 export async function saveFulfillment(orderId, data) {
-  const { error } = await supabase.from('fulfillments').upsert({ order_id: orderId, data, updated_at: new Date().toISOString() })
-  if (error) console.error('[saveFulfillment]', error.message)
+  const { data: rows, error } = await supabase.from('fulfillments')
+    .upsert({ order_id: orderId, data, updated_at: new Date().toISOString() })
+    .select('order_id')
+  if (error) {
+    console.error('[saveFulfillment]', error.message)
+    return { ok: false, error: refusalText(error.message, 'this order may not be on your desk') }
+  }
+  if (!rows || rows.length === 0) {
+    const msg = 'the database refused the change (this order may not be on your desk)'
+    console.error('[saveFulfillment]', msg)
+    return { ok: false, error: msg }
+  }
+  return { ok: true }
+}
+
+// ── Notification preferences ─────────────────────────────────────────────────
+// notification_types is the catalogue (what exists, who it can reach, and the
+// mode used when someone has expressed no preference); notification_preferences
+// holds one row per person per type, and only when they have chosen something.
+// No row means "the type's default", which is why turning a preference off again
+// deletes the row instead of writing the default into it.
+export async function fetchNotificationTypes() {
+  const { data, error } = await supabase
+    .from('notification_types')
+    .select('key,label,description,default_roles,default_mode,sort_order')
+    .order('sort_order')
+  if (error) { console.error('[notificationTypes]', error.message); return null }
+  return data
+}
+
+// RLS (notif_pref_own_read) scopes this to the caller, so no filter is needed —
+// but an admin may read everyone's, hence the explicit profile filter.
+export async function fetchNotificationPreferences(profileId) {
+  let q = supabase.from('notification_preferences').select('type_key,mode,updated_at')
+  if (profileId) q = q.eq('profile_id', profileId)
+  const { data, error } = await q
+  if (error) { console.error('[notificationPreferences]', error.message); return null }
+  return data
+}
+
+// Returns { ok, error } like the other writes: an RLS refusal comes back as 200
+// with no rows, and a settings toggle that silently does nothing is worse than
+// one that says why.
+export async function saveNotificationPreference(profileId, typeKey, mode) {
+  if (!profileId) return { ok: false, error: 'your profile is not linked to a login yet' }
+  const { data, error } = await supabase
+    .from('notification_preferences')
+    .upsert({ profile_id: profileId, type_key: typeKey, mode, updated_at: new Date().toISOString() })
+    .select('type_key')
+  if (error) {
+    console.error('[saveNotificationPreference]', error.message)
+    return { ok: false, error: refusalText(error.message, 'you may only change your own preferences') }
+  }
+  if (!data || data.length === 0) {
+    const msg = 'the database refused the change (you may only change your own preferences)'
+    console.error('[saveNotificationPreference]', msg)
+    return { ok: false, error: msg }
+  }
+  return { ok: true }
+}
+
+// Back to the type's default: remove the row rather than store a copy of the
+// default, so a later change to the default follows the person automatically.
+export async function clearNotificationPreference(profileId, typeKey) {
+  if (!profileId) return { ok: false, error: 'your profile is not linked to a login yet' }
+  const { error } = await supabase
+    .from('notification_preferences')
+    .delete().eq('profile_id', profileId).eq('type_key', typeKey)
+  if (error) {
+    console.error('[clearNotificationPreference]', error.message)
+    return { ok: false, error: refusalText(error.message, 'you may only change your own preferences') }
+  }
+  return { ok: true }
+}
+
+// ── Client registry ───────────────────────────────────────────────────────────
+// Every client Resolute works with. clients_read lets any staff member read it;
+// a client account sees only its own row (RLS), which is all it needs.
+// Two sources, because the name is PII. 20260909120000 restricted
+// public.clients to super admins and added public.client_directory — the same
+// list with code, terms, activity and registration date only. Ask for both: a
+// super admin's `clients` read returns names, everyone else's returns nothing
+// and the directory still supplies the codes. Rows merge by code, so a caller
+// who may not see a name simply does not get one.
+export async function fetchClients() {
+  const [dir, pii] = await Promise.all([
+    supabase.from('client_directory').select('code,payment_terms,activity,registered').order('code'),
+    supabase.from('clients').select('code,name,contact,email,phone,registered,activity,payment,payment_terms').order('code'),
+  ])
+  if (dir.error && pii.error) {
+    console.error('[fetchClients]', dir.error.message, '|', pii.error.message)
+    return null
+  }
+  if (dir.error) console.error('[fetchClients] directory:', dir.error.message)
+  const byCode = new Map()
+  for (const r of dir.data || []) byCode.set(r.code, { ...r })
+  for (const r of pii.data || []) byCode.set(r.code, { ...(byCode.get(r.code) || {}), ...r })
+  return [...byCode.values()].sort((a, b) => String(a.code).localeCompare(String(b.code)))
 }
 
 // ── Client payment terms ──────────────────────────────────────────────────────
 export async function fetchClientTerms() {
-  const { data, error } = await supabase.from('clients').select('code, payment_terms')
+  // From the directory, not the table: clients_read is super-admin-only since
+  // 20260909120000, so reading payment_terms off `clients` returned nothing for
+  // a plain admin and every client on the billing page silently fell back to
+  // "per order". client_directory carries the same column for all staff.
+  const { data, error } = await supabase.from('client_directory').select('code, payment_terms')
   if (error) { console.error('[terms]', error.message); return null }
   return Object.fromEntries(data.map(r => [r.code, r.payment_terms || 'per_order']))
 }
@@ -249,6 +382,20 @@ export async function fetchActivity(limit = 50) {
 export async function logEvent({ orderId = null, action, type = 'status', actor = null, actorEmail = null, audience = 'staff' }) {
   const { error } = await supabase.from('order_events').insert({ order_id: orderId, action, type, actor, actor_email: actorEmail, audience })
   if (error) console.error('[logEvent]', error.message)
+}
+
+// ── Staff roster ─────────────────────────────────────────────────────────────
+// The real people who can be assigned work. Admin's Assign modal used to offer
+// mockData's USERS fixture, which contains six staff with no profiles row and no
+// login — so an order could be assigned to someone who does not exist, and the
+// row recorded their name. profiles_read lets any staff member read the roster.
+export async function fetchProfiles() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,name,email,role,super_admin,client_code,status,can_confirm_payments')
+    .order('name')
+  if (error) { console.error('[fetchProfiles]', error.message); return null }
+  return data
 }
 
 // ── Server-generated order IDs ────────────────────────────────────────────────

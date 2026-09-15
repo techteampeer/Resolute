@@ -53,6 +53,30 @@ export default function OrderDetailLayout({
         </div>
       </div>
 
+      {/* Anything that means "do not keep working this" has to be on the screen of
+          the person working it. Admin's hold and clarification were written to the
+          row and messaged to the client, but the owning role's queue and order page
+          never mentioned either — so a screener kept working a paused file, and
+          nobody chased a clarification the client had been asked for. */}
+      {order.workflow?.onHold && (
+        <div className="rounded-xl px-4 py-3 text-sm font-medium"
+          style={{ background: 'rgba(220,140,40,0.10)', border: '1px solid rgba(220,140,40,0.30)', color: '#a16207' }}>
+          On hold{order.workflow.holdReason ? ` — ${order.workflow.holdReason}` : ''}. Work is paused; wait for Admin to resume it.
+        </div>
+      )}
+      {order.clarification === 'pending' && (
+        <div className="rounded-xl px-4 py-3 text-sm font-medium"
+          style={{ background: 'rgba(36,65,229,0.08)', border: '1px solid rgba(36,65,229,0.28)', color: '#1B34C4' }}>
+          Clarification requested from the client — awaiting their reply. Check the Messages tab before continuing.
+        </div>
+      )}
+      {order.clarification === 'responded' && (
+        <div className="rounded-xl px-4 py-3 text-sm font-medium"
+          style={{ background: 'rgba(21,128,61,0.08)', border: '1px solid rgba(21,128,61,0.26)', color: '#15803d' }}>
+          The client answered the clarification request — see the Messages tab.
+        </div>
+      )}
+
       {/* Tab strip */}
       <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderColor: 'rgba(18,40,76,0.10)' }}>
         {tabs.map(t => {

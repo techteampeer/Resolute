@@ -10,6 +10,7 @@
 // paid only when someone actually generates a commitment.
 import {
   requirementText, exceptionText, fmtDate, fmtDateTime, titleVestingAuto, recInfo,
+  documentClauses, deedHasContent, judgmentHasContent,
 } from '../data/fulfillment'
 import { LOGO_SVG } from '../components/CommitmentDocument'
 
@@ -74,11 +75,14 @@ const dataTable = (headers, rows, emptyText) => {
   }
 }
 
-// Numbered clause list (Schedule B-I / B-II).
+// Numbered clause list (Schedule B-I / B-II). documentClauses() drops the
+// conditional clauses the typer left untouched and rules a blank where a
+// part-filled one is missing a value, so no ‹token› reaches the client.
 const clauses = (items, resolve) => {
-  if (!items || !items.length) return { text: 'None.', color: '#9AA8BF', italics: true, fontSize: 9.5, margin: [0, 2, 0, 4] }
+  const texts = documentClauses(items, resolve)
+  if (!texts.length) return { text: 'None.', color: '#9AA8BF', italics: true, fontSize: 9.5, margin: [0, 2, 0, 4] }
   return {
-    ol: items.map(it => ({ text: resolve(it) || '—', margin: [0, 0, 0, 5], alignment: 'justify' })),
+    ol: texts.map(t => ({ text: t, margin: [0, 0, 0, 5], alignment: 'justify' })),
     fontSize: 9.5, margin: [0, 2, 0, 4],
   }
 }
@@ -99,7 +103,7 @@ export function commitmentDocDefinition(order, f) {
   const hasTax = Object.values(tax).some(x => x && String(x).trim())
   const genAt = fmtDateTime(new Date().toISOString())
 
-  const deedRows = (f.deeds || []).map((d, i) => ([
+  const deedRows = (f.deeds || []).filter(deedHasContent).map((d, i) => ([
     { text: [{ text: i === 0 ? 'Vesting' : `#${i + 1}`, bold: true }, d.deedType ? { text: `\n${d.deedType}`, fontSize: 7.5, color: MUTED } : ''] },
     v(d.grantor), v(d.grantee),
     { text: d.dateOfDeed ? fmtDate(d.dateOfDeed) : '—', alignment: 'right' },
@@ -107,7 +111,7 @@ export function commitmentDocDefinition(order, f) {
     { text: recInfo(d) || '—', alignment: 'right' },
   ]))
 
-  const judgmentRows = (f.judgments || []).map(j => ([
+  const judgmentRows = (f.judgments || []).filter(judgmentHasContent).map(j => ([
     v(j.instrumentName), v(j.caseNo),
     { text: j.filedOn ? fmtDate(j.filedOn) : '—', alignment: 'right' },
     { text: j.recDate ? fmtDate(j.recDate) : '—', alignment: 'right' },

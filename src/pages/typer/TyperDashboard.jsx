@@ -5,22 +5,27 @@ import Layout from '../../components/Layout'
 import OrdersTable from '../../components/OrdersTable'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
-import { LayoutDashboard, Keyboard, CheckCircle, Clock, FileText, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, Keyboard, CheckCircle, Clock, FileText, ChevronRight, Bell } from 'lucide-react'
 import { displayClient } from '../../data/mockData'
 import FulfillmentScreen from './fulfillment/FulfillmentScreen'
+import { deskStats } from '../../lib/deskStats'
+import NotificationSettings from '../../components/NotificationSettings'
 
 const ROLE_COLOR = '#2441E5'
-const NAV = [
+// The queue badge is the queue, not a number someone typed once.
+const navItems = (queue) => [
   { path: '/typer',           label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/typer/queue',     label: 'To Type',   icon: Keyboard, badge: 2 },
+  { path: '/typer/queue',     label: 'To Type',   icon: Keyboard, badge: queue || null },
   { path: '/typer/completed', label: 'Completed', icon: CheckCircle },
+  { path: '/typer/notifications', label: 'Notifications', icon: Bell },
 ]
 
 function TyperHome() {
   const { user } = useAuth()
-  const { getOrdersForRole } = useOrders()
+  const { orders, getOrdersForRole } = useOrders()
   const navigate = useNavigate()
   const myOrders = getOrdersForRole('typer')
+  const stats = deskStats(orders, 'typer')
   return (
     <div className="space-y-6">
       <div>
@@ -29,10 +34,10 @@ function TyperHome() {
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon:Keyboard,    label:'Awaiting Typing', value:'2',   color:ROLE_COLOR },
-          { icon:FileText,    label:'In Progress',     value:'1',   color:'#2441E5' },
-          { icon:CheckCircle, label:'Typed Today',     value:'6',   color:'#15803d' },
-          { icon:Clock,       label:'Avg Type Time',   value:'24m', color:'#a16207' },
+          { icon:Keyboard,    label:'In the queue',      value:stats.queue, color:ROLE_COLOR },
+          { icon:Clock,       label:'Rush waiting',      value:stats.rush,  color:'#b45309' },
+          { icon:CheckCircle, label:'Typed today',       value:stats.today, color:'#15803d' },
+          { icon:FileText,    label:'Typed this month',  value:stats.month, color:'#2441E5' },
         ].map(s => (
           <motion.div key={s.label} initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} className="stat-card">
             <div className="w-9 h-9 rounded-xl mb-3 flex items-center justify-center" style={{ background:`${s.color}22` }}>
@@ -90,10 +95,11 @@ export default function TyperDashboard() {
   const completed = orders.filter(o => o.completedDates?.typer)
   const openOrder = (o) => navigate(`/typer/order/${o.id}`)
   return (
-    <Layout navItems={NAV} role="typer" roleColor={ROLE_COLOR}>
+    <Layout navItems={navItems(myOrders.length)} role="typer" roleColor={ROLE_COLOR}>
       <Routes>
         <Route index element={<TyperHome />} />
         <Route path="order/:id" element={<FulfillmentScreen />} />
+        <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
         <Route path="queue" element={<div className="space-y-6">
           <h1 className="text-2xl font-bold" style={{color:'#12284C'}}>To Type</h1>
           <div className="glass-card p-5"><OrdersTable orders={myOrders} onOrderClick={openOrder} /></div>

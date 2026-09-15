@@ -3,12 +3,14 @@ import { Routes, Route, useNavigate, useSearchParams, useParams } from 'react-ro
 import { motion, AnimatePresence } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrderThread from '../../components/OrderThread'
+import NotificationSettings from '../../components/NotificationSettings'
+import { clientStats } from '../../lib/deskStats'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox,
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign, Search,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye
 } from 'lucide-react'
-import { clientCode as codeByName, clientName, orderProgress, isOrderComplete } from '../../data/mockData'
+import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, US_STATES, stateName } from '../../data/mockData'
 import { PRODUCTS } from '../../data/products'
 import { isSupabaseConfigured, openDocument, uploadDocument } from '../../lib/backend'
 import { fileKind, uid } from '../../data/fulfillment'
@@ -72,15 +74,6 @@ function InvoiceCard({ order }) {
   )
 }
 
-const US_STATES = [
-  'Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut','Delaware',
-  'Florida','Georgia','Hawaii','Idaho','Illinois','Indiana','Iowa','Kansas','Kentucky',
-  'Louisiana','Maine','Maryland','Massachusetts','Michigan','Minnesota','Mississippi','Missouri',
-  'Montana','Nebraska','Nevada','New Hampshire','New Jersey','New Mexico','New York',
-  'North Carolina','North Dakota','Ohio','Oklahoma','Oregon','Pennsylvania','Rhode Island',
-  'South Carolina','South Dakota','Tennessee','Texas','Utah','Vermont','Virginia',
-  'Washington','West Virginia','Wisconsin','Wyoming',
-]
 
 // Client-facing stages: Placed (awaiting admin confirmation) → Received
 // (confirmed by admin) → In Progress (any internal stage) → Delivered. On-Hold
@@ -143,9 +136,12 @@ function TrackOrder({ order, onOpen }) {
         ))}
       </div>
       <div className="flex items-center justify-between text-xs mb-1.5" style={{ color:'#5C6E8C' }}>
+        {/* An order Admin has routed but not yet confirmed carries no committed
+            date, and this rendered a bare "ETA:" with nothing after it. Say that
+            it is coming rather than leaving the client to guess. */}
         <span>{isOrderComplete(order)
-          ? <>Delivered: <span style={{ color:'#12284C' }}>{order.completed || order.eta}</span></>
-          : <>ETA: <span style={{ color:'#12284C' }}>{order.eta}</span></>}</span>
+          ? <>Delivered: <span style={{ color:'#12284C' }}>{order.completed || order.eta || '—'}</span></>
+          : <>ETA: <span style={{ color: order.eta ? '#12284C' : '#9AA8BF' }}>{order.eta || 'to be confirmed'}</span></>}</span>
         <span style={isOrderComplete(order) ? { color:'#15803d', fontWeight:600 } : undefined}>
           {isOrderComplete(order) ? 'Completed' : `${orderProgress(order)}% complete`}
         </span>
@@ -533,7 +529,7 @@ function PlaceOrderPage() {
         clientCode: user?.clientCode || null,
         client: clientName(user?.clientCode) || user?.name || 'Web Order',
         intake: {
-          source: 'web', propertyAddress: [form.address, form.city, form.state, form.zip].filter(Boolean).join(', '),
+          source: 'web', propertyAddress: [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', '),
           parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
           orderType: form.searchType, from: `${form.firstName} ${form.lastName} <${form.email}>`.trim(),
           company: form.company, role: form.role, specialInstructions: form.notes,
@@ -645,7 +641,7 @@ function PlaceOrderPage() {
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Property State *</label>
                   <select value={form.state} onChange={e=>set('state',e.target.value)} className="input-field text-sm" required>
                     <option value="">Select state…</option>
-                    {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    {US_STATES.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -776,7 +772,7 @@ function PlaceOrderPage() {
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Review & Submit</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[['State',form.state||'—'],['County',form.county||'—'],['Search Type',form.searchType||'—'],
+                  {[['State',stateName(form.state)||'—'],['County',form.county||'—'],['Search Type',form.searchType||'—'],
                     ['Your file #',form.clientFileNo||'—'],
                     ['Priority',form.priority.toUpperCase()],['Contact',`${form.firstName} ${form.lastName}`.trim()||'—'],['Email',form.email||'—']].map(([k,v]) => (
                     <div key={k} className="glass p-3 rounded-xl">
@@ -828,13 +824,16 @@ function PlaceOrderPage() {
 
 function ClientHome() {
   const myOrders = useMyOrders()
+  const { user } = useAuth()
   const navigate = useNavigate()
+  const stats = clientStats(myOrders)
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold" style={{ color:'#12284C' }}>Client Portal</h1>
-          <p className="text-sm" style={{ color:'#3D5171' }}>Welcome back, Taylor Brooks</p>
+          {/* The signed-in person, not whoever happened to be in the fixture. */}
+          <p className="text-sm" style={{ color:'#3D5171' }}>Welcome back{user?.name ? `, ${user.name}` : ''}</p>
         </div>
         <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }} onClick={() => navigate('/client/order')}
           className="btn-primary flex items-center gap-2 text-sm">
@@ -843,10 +842,10 @@ function ClientHome() {
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon:Package,     label:'Active Orders',   value:'2',   color:ROLE_COLOR },
-          { icon:CheckCircle, label:'Completed (YTD)', value:'12',  color:'#15803d' },
-          { icon:Clock,       label:'Avg Turnaround',  value:'1.9d',color:'#a16207' },
-          { icon:Zap,         label:'Rush Orders',     value:'1',   color:'#b45309' },
+          { icon:Package,     label:'Active orders',    value:stats.active,       color:ROLE_COLOR },
+          { icon:CheckCircle, label:'Completed this year', value:stats.completedYtd, color:'#15803d' },
+          { icon:Clock,       label:'Avg turnaround',   value:stats.turnaround,   color:'#a16207' },
+          { icon:Zap,         label:'Rush in progress', value:stats.rush,         color:'#b45309' },
         ].map(s => (
           <motion.div key={s.label} initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} className="stat-card">
             <div className="w-9 h-9 rounded-xl mb-3 flex items-center justify-center" style={{ background:`${s.color}22` }}>
@@ -1062,6 +1061,10 @@ export default function ClientDashboard() {
         <Route path="order"  element={<PlaceOrderPage />} />
         <Route path="orders" element={<MyOrdersPage />} />
         <Route path="orders/:id" element={<OrderDetailPage />} />
+        {/* No nav entry and no email ever links here — client contact is
+            portal-only, so a client is never a notification recipient. The route
+            exists so the URL explains itself instead of rendering a blank page. */}
+        <Route path="notifications" element={<NotificationSettings />} />
         <Route path="messages" element={<MessagesPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="support" element={<SupportPage />} />

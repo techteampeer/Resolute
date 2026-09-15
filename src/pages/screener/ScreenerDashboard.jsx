@@ -3,7 +3,7 @@ import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrdersTable from '../../components/OrdersTable'
-import { LayoutDashboard, ClipboardList, CheckCircle, Clock, AlertTriangle, Search, ChevronRight, Send, FileText, Inbox, Files } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, CheckCircle, Clock, AlertTriangle, Search, ChevronRight, Send, FileText, Inbox, Files, Bell } from 'lucide-react'
 import { displayClient } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
@@ -12,13 +12,17 @@ import DocUpload from '../../components/DocUpload'
 import OrderMessages from '../../components/OrderMessages'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
+import { deskStats } from '../../lib/deskStats'
+import NotificationSettings from '../../components/NotificationSettings'
 
 const ROLE_COLOR = '#2441E5'
 const ASSIGN_OPTS = [['in_house', 'In-House'], ['abs', 'ABS (Abstract)'], ['both', 'Both']]
-const NAV = [
+// The queue badge is the queue, not a number someone typed once.
+const navItems = (queue) => [
   { path: '/screener',           label: 'Dashboard',       icon: LayoutDashboard },
-  { path: '/screener/queue',     label: 'Screening Queue', icon: ClipboardList, badge: 3 },
+  { path: '/screener/queue',     label: 'Screening Queue', icon: ClipboardList, badge: queue || null },
   { path: '/screener/completed', label: 'Completed',       icon: CheckCircle },
+  { path: '/screener/notifications', label: 'Notifications', icon: Bell },
 ]
 
 const STATUS_DOT = {
@@ -92,6 +96,7 @@ function ScreenerOrderPage() {
     { key:'overview', label:'Overview', icon:FileText, render: () => (
       <div className="space-y-4">
         <DetailGrid items={[
+          ['Client file #', order.clientFileNo || '—'],
           ['State / County', `${order.state} · ${order.county}`],
           ['Search Type', order.type],
           ['Priority', order.priority?.toUpperCase()],
@@ -140,8 +145,9 @@ function ScreenerOrderPage() {
 function ScreenerHome() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { getOrdersForRole } = useOrders()
+  const { orders, getOrdersForRole } = useOrders()
   const myOrders = getOrdersForRole('screener')
+  const stats = deskStats(orders, 'screener')
   const openOrder = (o) => navigate(`/screener/order/${o.id}`)
   return (
     <div className="space-y-6">
@@ -151,10 +157,10 @@ function ScreenerHome() {
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon: AlertTriangle, label: 'Awaiting Screening', value: '2', color: '#b45309' },
-          { icon: Search,        label: 'In Screening',       value: '1', color: ROLE_COLOR },
-          { icon: CheckCircle,   label: 'Passed Today',       value: '5', color: '#15803d' },
-          { icon: Clock,         label: 'Avg Screen Time',    value: '18m', color: '#a16207' },
+          { icon: ClipboardList, label: 'In the queue',        value: stats.queue, color: ROLE_COLOR },
+          { icon: AlertTriangle, label: 'Rush waiting',        value: stats.rush,  color: '#b45309' },
+          { icon: CheckCircle,   label: 'Screened today',      value: stats.today, color: '#15803d' },
+          { icon: Search,        label: 'Screened this month', value: stats.month, color: '#2441E5' },
         ].map(s => (
           <motion.div key={s.label} initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} className="stat-card">
             <div className="w-9 h-9 rounded-xl mb-3 flex items-center justify-center" style={{ background: `${s.color}22` }}>
@@ -221,12 +227,13 @@ export default function ScreenerDashboard() {
   const myOrders  = getOrdersForRole('screener')
   const completed = orders.filter(o => o.completedDates?.screener)
   return (
-    <Layout navItems={NAV} role="screener" roleColor={ROLE_COLOR}>
+    <Layout navItems={navItems(myOrders.length)} role="screener" roleColor={ROLE_COLOR}>
       <Routes>
         <Route index element={<ScreenerHome />} />
         <Route path="queue" element={<ScreenerQueue orders={myOrders} title="Screening Queue" />} />
         <Route path="completed" element={<ScreenerQueue orders={completed} title="Completed Screenings" />} />
         <Route path="order/:id" element={<ScreenerOrderPage />} />
+        <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
       </Routes>
     </Layout>
   )

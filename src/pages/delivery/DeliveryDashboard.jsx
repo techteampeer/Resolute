@@ -3,7 +3,7 @@ import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrdersTable from '../../components/OrdersTable'
-import { LayoutDashboard, Truck, Package, CheckCircle, Clock, Download, Send, Mail, ChevronRight, FileText, Inbox, Files } from 'lucide-react'
+import { LayoutDashboard, Truck, Package, CheckCircle, Clock, Download, Send, Mail, ChevronRight, FileText, Inbox, Files, Bell } from 'lucide-react'
 import { displayClient, clientByName } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
@@ -11,12 +11,16 @@ import { useSupport } from '../../context/SupportContext'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
+import { deskStats } from '../../lib/deskStats'
+import NotificationSettings from '../../components/NotificationSettings'
 
 const ROLE_COLOR = '#2441E5'
-const NAV = [
+// The queue badge is the queue, not a number someone typed once.
+const navItems = (queue) => [
   { path: '/delivery',         label: 'Dashboard',    icon: LayoutDashboard },
-  { path: '/delivery/queue',   label: 'Ready to Send',icon: Package, badge: 2 },
+  { path: '/delivery/queue',   label: 'Ready to Send',icon: Package, badge: queue || null },
   { path: '/delivery/sent',    label: 'Delivered',    icon: CheckCircle },
+  { path: '/delivery/notifications', label: 'Notifications', icon: Bell },
 ]
 
 // Full-page order detail (replaces the old modal). Route: /delivery/order/:id
@@ -24,7 +28,7 @@ function DeliveryOrderPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { orders, completeStep, updateOrder, activityLog = [] } = useOrders()
+  const { orders, completeStep, activityLog = [] } = useOrders()
   const { getOrderThread, getOrderNotes } = useSupport()
   const order = orders.find(o => o.id === id)
   const cli = order ? clientByName(order.client) : null
@@ -41,9 +45,11 @@ function DeliveryOrderPage() {
   )
 
   const submit = () => {
-    updateOrder({ ...order, workflow: { ...order.workflow, deliveryMethod: method,
-      deliveryRecipient: recipient, invoiceVisibleToClient: method === 'portal' } })
-    completeStep(order.id, 'delivery', user?.name, `via ${method}${note ? ' · ' + note : ''}`)
+    // The delivery details ride along with the stage move as one write — see the
+    // note on completeStep's `extra`.
+    completeStep(order.id, 'delivery', user?.name, `via ${method}${note ? ' · ' + note : ''}`, {
+      deliveryMethod: method, deliveryRecipient: recipient, invoiceVisibleToClient: method === 'portal',
+    })
     navigate('/delivery/queue')
   }
   const msgCount = getOrderThread(order.id).length + getOrderNotes(order.id).length
@@ -100,6 +106,7 @@ function DeliveryOrderPage() {
     )},
     { key:'overview', label:'Overview', icon:FileText, render: () => (
       <DetailGrid items={[
+        ['Client file #', order.clientFileNo || '—'],
         ['Search Type', order.type], ['County', order.county], ['State', order.state],
         ['Priority', order.priority?.toUpperCase()], ['ETA', order.eta], ['Placed', order.created],
       ]} />
@@ -127,6 +134,7 @@ function DeliveryHome() {
   const readyOrders     = getOrdersForRole('delivery')
   const deliveredOrders = orders.filter(o => o.status === 'delivered')
   const navigate = useNavigate()
+  const stats = deskStats(orders, 'delivery')
   const [emailed, setEmailed]   = useState([])
   return (
     <div className="space-y-6">
@@ -136,10 +144,10 @@ function DeliveryHome() {
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon:Package,     label:'Ready to Deliver', value:'2',  color:ROLE_COLOR },
-          { icon:Truck,       label:'Sent Today',       value:'3',  color:'#2441E5' },
-          { icon:CheckCircle, label:'Delivered (MTD)',  value:'79', color:'#15803d' },
-          { icon:Clock,       label:'Avg Delivery',     value:'22m',color:'#a16207' },
+          { icon:Package,     label:'Ready to send',    value:stats.queue, color:ROLE_COLOR },
+          { icon:Clock,       label:'Rush waiting',     value:stats.rush,  color:'#b45309' },
+          { icon:Truck,       label:'Delivered today',  value:stats.today, color:'#2441E5' },
+          { icon:CheckCircle, label:'Delivered this month', value:stats.month, color:'#15803d' },
         ].map(s => (
           <motion.div key={s.label} initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} className="stat-card">
             <div className="w-9 h-9 rounded-xl mb-3 flex items-center justify-center" style={{ background:`${s.color}22` }}>
@@ -238,12 +246,13 @@ export default function DeliveryDashboard() {
   const readyOrders     = getOrdersForRole('delivery')
   const deliveredOrders = orders.filter(o => o.status === 'delivered')
   return (
-    <Layout navItems={NAV} role="delivery" roleColor={ROLE_COLOR}>
+    <Layout navItems={navItems(readyOrders.length)} role="delivery" roleColor={ROLE_COLOR}>
       <Routes>
         <Route index element={<DeliveryHome />} />
         <Route path="queue" element={<DeliveryQueue orders={readyOrders} title="Ready to Send" />} />
         <Route path="sent" element={<DeliveryQueue orders={deliveredOrders} title="Delivered Orders" />} />
         <Route path="order/:id" element={<DeliveryOrderPage />} />
+        <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
       </Routes>
     </Layout>
   )

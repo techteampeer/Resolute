@@ -63,7 +63,11 @@ Verify every new feature against these constraints before implementing.
   renders and sends. Routing (who, how often) lives in the DB
   (`notification_types` + per-user `notification_preferences`); wording lives in
   `types.js`. Modes: `immediate`, and a daily `digest` so nobody gets forty
-  mails a day.
+  mails a day. Staff set their own under **Notifications** in their portal
+  (`components/NotificationSettings.jsx`, mounted at `/<role>/notifications` in
+  all six staff portals); no preference row means "follow the type's
+  `default_mode`", and RLS keys on `auth.uid()`, so nobody — super admins
+  included — edits anyone else's.
 - **Staff-only recipients.** Notifications go to Resolute team members by role.
   Clients are never notified by email — portal-only still governs client
   contact. Templates mask client names for non-admin recipients, mirroring

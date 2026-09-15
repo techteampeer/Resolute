@@ -19,7 +19,7 @@ const NOTIF_DOT = { new: '#2441E5', delivered: '#16a34a', progress: '#d97706', s
 
 export default function Layout({ children, navItems, role, roleColor = '#2441E5', lightTheme = true }) {
   const { user, logout } = useAuth()
-  const { activityLog = [], orders = [] } = useOrders() || {}
+  const { activityLog = [], orders = [], writeError, clearWriteError } = useOrders() || {}
   const navigate    = useNavigate()
   const location    = useLocation()
   const [collapsed, setCollapsed]       = useState(false)
@@ -315,6 +315,21 @@ export default function Layout({ children, navItems, role, roleColor = '#2441E5'
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          {/* A refused write must not look like a successful one. RLS filters an
+              update to zero rows and PostgREST answers 200, so completing a
+              stage on an order that is no longer on your desk left the
+              optimistic move on screen and dropped the work. This lives in the
+              shell rather than the order page because the same action navigates
+              back to the queue — on the order page the warning unmounted before
+              anyone could read it. */}
+          {writeError && (
+            <div className="rounded-xl px-4 py-3 mb-4 text-sm font-medium flex items-start justify-between gap-3"
+              style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.28)', color: '#dc2626' }}>
+              <span>Not saved — {writeError}. Reload before continuing; what you last saw may not have been recorded.</span>
+              <button onClick={clearWriteError} aria-label="Dismiss"
+                style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}>×</button>
+            </div>
+          )}
           {children}
         </main>
       </div>

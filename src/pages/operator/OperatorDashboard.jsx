@@ -7,16 +7,18 @@ import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
 import { displayClient, nextRoleFor } from '../../data/mockData'
-import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files } from 'lucide-react'
+import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files, Bell } from 'lucide-react'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
+import NotificationSettings from '../../components/NotificationSettings'
 
 const ROLE_COLOR = '#2441E5'
 const NAV = [
   { path: '/operator',          label: 'Dashboard', icon: LayoutDashboard },
   { path: '/operator/completed',label: 'Completed', icon: CheckCircle },
+  { path: '/operator/notifications', label: 'Notifications', icon: Bell },
 ]
 
 // Stage each order is currently waiting on (first uncompleted production role).
@@ -35,7 +37,7 @@ function OperatorOrderPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { orders, completeStep, returnToAdmin, updateOrder, activityLog = [] } = useOrders()
+  const { orders, completeStep, returnToAdmin, activityLog = [] } = useOrders()
   const { getOrderThread, getOrderNotes } = useSupport()
   const order = orders.find(o => o.id === id)
   const role = order ? nextRoleFor(order) : null
@@ -57,8 +59,7 @@ function OperatorOrderPage() {
   // completing it delivers the order outright.
   const advance = (workflowPatch) => {
     if (role === 'delivery') {
-      if (workflowPatch) updateOrder({ ...order, workflow: { ...order.workflow, ...workflowPatch } })
-      completeStep(order.id, role, user?.name, notes || 'single seating')
+      completeStep(order.id, role, user?.name, notes || 'single seating', workflowPatch || {})
     } else {
       returnToAdmin(order.id, role, user?.name, notes || 'single seating', workflowPatch || {})
     }
@@ -148,6 +149,7 @@ function OperatorOrderPage() {
     )},
     { key:'overview', label:'Overview', icon:FileText, render: () => (
       <DetailGrid items={[
+        ['Client file #', order.clientFileNo || '—'],
         ['Search Type', order.type], ['County', order.county], ['State', order.state],
         ['Priority', order.priority?.toUpperCase()], ['ETA', order.eta], ['Current stage', meta.label],
       ]} />
@@ -177,9 +179,14 @@ const Lbl = ({ children }) => (
   <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#5C6E8C' }}>{children}</label>
 )
 
-// The Single Seating desk only sees orders Admin has routed to it. A routed
-// order stays with the desk start to finish; between steps it parks with
-// Admin for approval and shows here read-only until re-approved.
+// This queue lists only the orders Admin has routed to the desk. A routed order
+// stays with the desk start to finish; between steps it parks with Admin for
+// approval and shows here read-only until re-approved.
+//
+// The filter is a queue, not a boundary: orders_read is `is_staff()`, so every
+// staff account — this desk included — can read any order row it asks for by id.
+// Writes are scoped (orders_update_assigned, fulfillments_write_owner), so a
+// foreign order can be read but not changed.
 function OperatorHome() {
   const { user } = useAuth()
   const { orders } = useOrders()
@@ -302,6 +309,7 @@ export default function OperatorDashboard() {
         <Route path="order/:id"  element={<FulfillmentScreen />} />
         <Route path="orders/:id" element={<OperatorOrderPage />} />
         <Route path="completed" element={<CompletedList />} />
+        <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
       </Routes>
     </Layout>
   )

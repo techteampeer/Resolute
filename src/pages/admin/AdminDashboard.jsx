@@ -1,25 +1,31 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
 import AssignModal from '../../components/AssignModal'
+import { useClients, clientNameOf } from '../../lib/useClients'
+import NotificationSettings from '../../components/NotificationSettings'
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
   Package, CheckCircle, Clock, Search, Plus, Filter, Eye, DollarSign,
   ChevronDown, ChevronUp, FileText, ArrowUpRight, X, Lock, ShieldCheck, UserPlus, Download,
-  MessageSquare, Send, StickyNote,
+  MessageSquare, Send, StickyNote, Bell,
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument } from '../../lib/backend'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
+import { useProfiles, namesForRole, invalidateProfiles } from '../../lib/useProfiles'
+import { PRODUCT_PRICE } from '../../data/products'
+import { money } from '../../lib/billing'
+import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
 import { orderSubtitle } from '../../components/OrderDetailLayout'
 import OrderThread from '../../components/OrderThread'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS,
-  CLIENTS, STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode,
+  STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode, stateCode,
   REGIONS, regionOf, nextRoleFor, statusForRole,
 } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
@@ -27,12 +33,16 @@ import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-const TEAM = {
-  screener: USERS.filter(u => u.role === 'screener').map(u => u.name),
-  examiner: USERS.filter(u => u.role === 'examiner').map(u => u.name),
-  typer:    USERS.filter(u => u.role === 'typer').map(u => u.name),
-  delivery: USERS.filter(u => u.role === 'delivery').map(u => u.name),
-}
+// Staff names per pipeline role, from the real profiles table (see useProfiles).
+// This was built from mockData's USERS fixture, which offers six people who have
+// no profiles row and no login, so an order could be assigned to someone who does
+// not exist.
+const teamFrom = (profiles) => ({
+  screener: namesForRole(profiles, 'screener'),
+  examiner: namesForRole(profiles, 'examiner'),
+  typer:    namesForRole(profiles, 'typer'),
+  delivery: namesForRole(profiles, 'delivery'),
+})
 
 const ROLE_COLOR  = '#2441E5'
 const ROLE_HOVER  = '#1B34C4'
@@ -45,6 +55,7 @@ const NAV = [
   { path: '/admin/support',  label: 'Support',      icon: MessageSquare },
   { path: '/admin/map',      label: 'Coverage Map', icon: MapPin },
   { path: '/admin/reports',  label: 'Reports',      icon: BarChart3 },
+  { path: '/admin/notifications', label: 'Notifications', icon: Bell },
   { path: '/admin/settings', label: 'Settings',     icon: Settings },
 ]
 
@@ -75,7 +86,8 @@ const STATUS_MAP = {
 // from Reports, where the order-level export was less relevant).
 export function exportOrdersCsv(orders, user) {
   downloadCsv('orders.csv', [
-    { label: 'Order', get: o => o.id }, { label: 'Client', get: o => displayClient(o, user) },
+    { label: 'Order', get: o => o.id }, { label: 'Client File #', get: o => o.clientFileNo || '' },
+    { label: 'Client', get: o => displayClient(o, user) },
     { label: 'State', get: o => o.state }, { label: 'County', get: o => o.county },
     { label: 'Type', get: o => o.type }, { label: 'Status', get: o => STATUS_MAP[o.status]?.label || o.status },
     { label: 'Priority', get: o => o.priority }, { label: 'Payment', get: o => o.payment },
@@ -236,6 +248,86 @@ function InternalNotes({ order, notes, user, clientCode }) {
   )
 }
 
+
+// Confirming an order is the moment it gets a price and a committed date. Both
+// used to be skipped for portal orders: the price fell through to the catalogue
+// (or a flat $125 for the quote-only products) and the ETA was never set at all.
+// `started` = the order is already past intake. Admin still needs to be able to
+// price a row that got moving without ever being confirmed (every seeded order,
+// and anything placed before pricing existed), but calling that "Confirm order"
+// and mailing the client "received and confirmed — we'll begin work shortly" on
+// a file that is 65% done is a lie. Same modal, different framing and message.
+function ConfirmOrderModal({ order, started, onCancel, onConfirm }) {
+  const catalogue = PRODUCT_PRICE[order.type]
+  const quoteOnly = catalogue == null
+  const [price, setPrice] = useState(String(order.workflow?.invoiceAmount ?? catalogue ?? ''))
+  const [eta, setEta] = useState(() => {
+    // A rush order promises a tighter date than a normal one.
+    const d = new Date(); d.setDate(d.getDate() + (order.priority === 'rush' ? 2 : 4))
+    const suggested = d.toISOString().slice(0, 10)
+    // Only carry an existing ETA forward while it is still in the future.
+    // Pricing an older order prefilled its stale date and saved it, so the
+    // client was shown a committed date that had already passed.
+    return order.eta && order.eta >= new Date().toISOString().slice(0, 10) ? order.eta : suggested
+  })
+  const n = Number(price)
+  const priceValid = price !== '' && !Number.isNaN(n) && n >= 0
+  const field = { width:'100%', padding:'9px 11px', borderRadius:8, border:`1px solid ${Q.border}`,
+                  background:Q.bg, color:Q.text, fontSize:13, outline:'none' }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background:'rgba(12,29,56,0.45)' }} onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background:Q.card, borderRadius:12, width:'100%', maxWidth:420, boxShadow:'0 20px 50px rgba(0,0,0,0.25)' }}>
+        <div style={{ padding:'18px 22px', borderBottom:`1px solid ${Q.border}` }}>
+          <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:ROLE_COLOR }}>{order.id}</div>
+          <div style={{ fontSize:17, fontWeight:700, color:Q.text }}>{started ? 'Set price & committed date' : 'Confirm & price order'}</div>
+          <div style={{ fontSize:12, color:Q.muted }}>{order.type}{order.county ? ` · ${order.county}, ${order.state}` : ''}</div>
+        </div>
+        <div style={{ padding:'18px 22px', display:'grid', gap:14 }}>
+          {started && (
+            <div style={{ fontSize:12, lineHeight:1.5, padding:'9px 11px', borderRadius:8,
+              background:'#fffbeb', border:'1px solid #fde68a', color:'#a16207' }}>
+              Work on this order has already started ({order.status}, {order.progress || 0}% complete).
+              This sets the price and the date the client sees — it is not an acknowledgment of a new order.
+            </div>
+          )}
+          <div>
+            <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
+              letterSpacing:'0.05em', color:Q.faint, marginBottom:6 }}>Agreed price (USD)</label>
+            <input style={field} value={price} inputMode="decimal"
+              onChange={e => setPrice(e.target.value.replace(/[^0-9.]/g, ''))} />
+            <div style={{ fontSize:11.5, color: quoteOnly ? '#b45309' : Q.muted, marginTop:5 }}>
+              {quoteOnly
+                ? `${order.type} is quote-only — there is no catalogue price, so this must be set here.`
+                : `Catalogue price for ${order.type} is ${money(catalogue)}${order.priority === 'rush' ? ' (rush adds $50 at invoicing)' : ''}.`}
+            </div>
+          </div>
+          <div>
+            <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
+              letterSpacing:'0.05em', color:Q.faint, marginBottom:6 }}>Committed date (ETA)</label>
+            <input style={field} type="date" value={eta} onChange={e => setEta(e.target.value)} />
+            <div style={{ fontSize:11.5, color:Q.muted, marginTop:5 }}>
+              Shown to the client on their order. {order.priority === 'rush' ? 'Rush order — defaulted to two days out.' : 'Defaulted to four days out.'}
+            </div>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:10, padding:'0 22px 20px' }}>
+          <button disabled={!priceValid} onClick={() => onConfirm({ price: n, eta })}
+            style={{ flex:1, padding:'10px', background: priceValid ? ROLE_COLOR : Q.border, border:'none',
+              borderRadius:8, color:'#fff', fontSize:13, fontWeight:600, cursor: priceValid ? 'pointer' : 'not-allowed' }}>
+            {started ? 'Save price & date' : 'Confirm order'}
+          </button>
+          <button onClick={onCancel} style={{ padding:'10px 18px', background:Q.bg,
+            border:`1px solid ${Q.border}`, borderRadius:8, color:Q.muted, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Full-page order detail (replaces the old modal). Route: /admin/orders/:id
 function AdminOrderPage() {
   const { id } = useParams()
@@ -260,6 +352,8 @@ function AdminOrderPage() {
 // Hooks below must run unconditionally, so the not-found guard lives in the
 // wrapper above and this component always receives a real order.
 function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCancel, updateOrder }) {
+  const navigate = useNavigate()
+  const { logAction } = useOrders()
   const { getOrderThread, getOrderNotes, sendMessage } = useSupport()
   const cli = clientByName(order.client)
   // BUG_003: a client requested cancellation of an in-progress order; Admin
@@ -275,6 +369,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
   // the status with it, so the two can't silently drift. Status stays editable
   // afterwards for a deliberate correction.
   const STAGES = ['screener', 'examiner', 'typer', 'delivery']
+  const TEAM = teamFrom(useProfiles())
   const set = (k, v) => setForm(f => {
     if (k !== 'assignedTo') return { ...f, [k]: v }
     const derived = statusForRole(STAGES.includes(v) ? v : nextRoleFor(order))
@@ -316,6 +411,14 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
     const reason = on ? (window.prompt('Reason for holding this order (optional):', '') ?? null) : null
     updateOrder({ ...order, workflow: { ...order.workflow, onHold: on, holdReason: on ? (reason || null) : null } })
     notify(on ? `Your order was placed on hold${reason ? `: ${reason}` : ''}.` : 'Your order has resumed.')
+    // Neither hold nor resume was recorded in the audit trail, so an order could
+    // sit paused for days with nothing in its history explaining why.
+    logAction({
+      orderId: order.id, actor: user?.name || 'Admin',
+      action: on
+        ? `${user?.name || 'Admin'} put ${order.id} on hold${reason ? ` — ${reason}` : ''}`
+        : `${user?.name || 'Admin'} resumed ${order.id}`,
+    })
     onClose()
   }
   const requestClarification = () => {
@@ -323,22 +426,48 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
     if (note == null) return
     updateOrder({ ...order, clarification: 'pending' })
     notify(`Clarification needed: ${note}`)
+    logAction({
+      orderId: order.id, actor: user?.name || 'Admin',
+      action: `${user?.name || 'Admin'} requested clarification from the client on ${order.id}${note ? ` — ${note}` : ''}`,
+    })
     onClose()
   }
   // Confirm step: portal orders (source 'web') are a one-click acknowledgment;
   // website/email orders need a negotiated price entered before confirming.
   const confirmed = !!order.workflow?.confirmed
-  const needsPrice = (order.workflow?.intake?.source || 'web') !== 'web'
-  const confirmOrder = () => {
-    let price = null
-    if (needsPrice) {
-      const raw = window.prompt('Enter the agreed price for this order (USD):', order.workflow?.invoiceAmount ?? '')
-      if (raw == null) return
-      price = Number(raw)
-      if (Number.isNaN(price) || price < 0) { window.alert('Please enter a valid price.'); return }
-    }
-    updateOrder({ ...order, workflow: { ...order.workflow, confirmed: true, confirmedAt: new Date().toISOString().slice(0, 10), confirmedBy: user?.name || 'Admin', ...(price != null ? { invoiceAmount: price } : {}) } })
-    notify(`Your order ${order.id} has been received and confirmed${price != null ? ` — total $${price}` : ''}. We'll begin work shortly.`)
+  // Confirming an order is where it gets priced and given a committed date.
+  // Previously a price was only asked for when the order did NOT come through the
+  // portal, so every client-placed order was confirmed silently and
+  // workflow.invoiceAmount stayed unset — billing then fell back to the catalogue
+  // price, or a flat $125 for the four quote-only products (Tax Search, Patriot
+  // Name Search, Bankruptcy Name Search, Document Retrieval), so the client was
+  // billed a number nobody had chosen. ETA had the same problem from the other
+  // side: no screen set it for a portal order, so it stayed NULL from placement
+  // to delivery and the client's order detail rendered "ETA:" with nothing after.
+  const [confirming, setConfirming] = useState(false)
+  const confirmOrder = () => setConfirming(true)
+  // Past intake already? Then this is a pricing correction, not a confirmation.
+  // Status is the test, not progress: a newly placed order already reads 5%
+  // (progressFor('received')), so a progress check called every new order started.
+  const started = order.status !== 'received'
+  const applyConfirm = ({ price, eta }) => {
+    updateOrder({
+      ...order,
+      eta: eta || order.eta || null,
+      workflow: {
+        ...order.workflow,
+        confirmed: true,
+        confirmedAt: new Date().toISOString().slice(0, 10),
+        confirmedBy: user?.name || 'Admin',
+        ...(price != null ? { invoiceAmount: price } : {}),
+      },
+    })
+    // "total" was wrong: this is the agreed price, and the invoice issued on
+    // delivery can carry extra costs on top of it.
+    notify(started
+      ? `Your order ${order.id} has been priced${price != null ? ` at ${money(price)}` : ''}${eta ? `, with an estimated completion of ${eta}` : ''}. Work is already under way.`
+      : `Your order ${order.id} has been received and confirmed${price != null ? ` — agreed price ${money(price)}` : ''}${eta ? `. Estimated completion ${eta}` : ''}. We'll begin work shortly.`)
+    setConfirming(false)
     onClose()
   }
   const files = orderFiles(order)
@@ -348,6 +477,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
 
   return (
     <div style={{ maxWidth:900, margin:'0 auto' }}>
+      {confirming && <ConfirmOrderModal order={order} started={started} onCancel={() => setConfirming(false)} onConfirm={applyConfirm} />}
       <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.18 }}
         style={{ background:Q.card, borderRadius:12, border:`1px solid ${Q.border}`, overflow:'hidden' }}>
         <div style={{ padding:'16px 22px 0' }}>
@@ -392,6 +522,22 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 Keep order active
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Admin can work the commitment itself, not only approve the finished PDF.
+            Opens the same sectioned fulfillment form the typer and Single Seating
+            desk use; submitting there stamps the typing stage and parks the order
+            back here for the delivery hand-off. */}
+        {order.status !== 'cancelled' && (
+          <div style={{ padding:'0 22px 14px' }}>
+            <button onClick={() => navigate(`/admin/order/${order.id}`)}
+              style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'8px 14px', borderRadius:8,
+                fontSize:12.5, fontWeight:600, cursor:'pointer', background:Q.bg,
+                border:`1px solid ${Q.border}`, color:ROLE_COLOR }}>
+              <FileText style={{ width:14, height:14 }} />
+              {order.completedDates?.typer ? 'Review commitment' : 'Open fulfillment form'}
+            </button>
           </div>
         )}
 
@@ -545,7 +691,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
               {!confirmed && (
                 <button onClick={confirmOrder} style={{ padding:'8px 14px', borderRadius:8, fontSize:12.5, fontWeight:700, cursor:'pointer',
                   background:ROLE_COLOR, border:'none', color:'#fff' }}>
-                  {needsPrice ? 'Confirm & set price' : 'Confirm order'}
+                  {started ? 'Set price & date' : 'Confirm & price order'}
                 </button>
               )}
               {confirmed && (
@@ -679,16 +825,25 @@ const awaitingApproval = (o) =>
 // order, so the approval path is identical.
 function NewOrderModal({ onClose }) {
   const { createOrder } = useOrders()
-  const [f, setF] = useState({ client: '', state: '', county: '', type: 'Full Search', priority: 'normal', eta: '' })
+  // Every client in the registry, not the seven in the fixture — Admin could not
+  // place an order for a newly onboarded client, including the pilot.
+  const clients = useClients()
+  // Keyed on the client CODE, not the name. The name is PII a plain admin may
+  // not read (20260909120000), so an option labelled by name would be blank for
+  // them — and the old code derived client_code by looking the NAME up in
+  // mockData, which returned nothing for any client added since, saving the
+  // order with no client link at all.
+  const [f, setF] = useState({ clientCode: '', state: '', county: '', type: 'Full Search', priority: 'normal', eta: '' })
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF(p => ({ ...p, [k]: v }))
-  const ready = f.client && f.state && f.county
+  const ready = f.clientCode && f.state && f.county
   const submit = async () => {
     if (!ready || busy) return
     setBusy(true)
     try {
       await createOrder({
-        client: f.client, clientCode: clientCode(f.client) || null,
+        client: clientNameOf(clients, f.clientCode) || f.clientCode,
+        clientCode: f.clientCode,
         state: f.state.toUpperCase(), county: f.county, type: f.type,
         priority: f.priority, eta: f.eta || '',
         intake: { source: 'admin', propertyAddress: '', orderType: f.type },
@@ -710,9 +865,11 @@ function NewOrderModal({ onClose }) {
         <div style={{ display:'grid', gap:10 }}>
           <div>
             <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>CLIENT</div>
-            <select value={f.client} onChange={e => set('client', e.target.value)} style={field}>
-              <option value="">Select a client…</option>
-              {CLIENTS.map(c => <option key={c.code} value={c.name}>{c.code} · {c.name}</option>)}
+            <select value={f.clientCode} onChange={e => set('clientCode', e.target.value)} style={field}>
+              <option value="">{clients.length ? 'Select a client…' : 'Loading clients…'}</option>
+              {clients.map(c => (
+                <option key={c.code} value={c.code}>{c.name ? `${c.code} · ${c.name}` : c.code}</option>
+              ))}
             </select>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
@@ -770,6 +927,10 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const [activeTab, setActiveTab] = useState('all')   // lifecycle tab
   const [newOrder, setNewOrder]   = useState(false)
   const [showMap, setShowMap]   = useState(false)
+  // Real orders per state for the inline coverage map — same source as the
+  // Coverage Map page, so the two cannot disagree.
+  const ordersByState = useMemo(() => orders.reduce(
+    (m, o) => (o.state ? { ...m, [stateCode(o.state)]: (m[stateCode(o.state)] || 0) + 1 } : m), {}), [orders])
   const [region, setRegion]     = useState('all')
   const [stateF, setStateF]     = useState('all')
   const [countyF, setCountyF]   = useState('all')
@@ -780,9 +941,9 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
 
   // Cascading geographic options: state list narrows by region, county by state.
   const inRegion = (o) => region === 'all' || regionOf(o.state) === region
-  const statesAvail   = [...new Set(orders.filter(inRegion).map(o => o.state))].sort()
+  const statesAvail   = [...new Set(orders.filter(inRegion).map(o => stateCode(o.state)))].sort()
   const countiesAvail = [...new Set(orders
-    .filter(o => inRegion(o) && (stateF === 'all' || o.state === stateF))
+    .filter(o => inRegion(o) && (stateF === 'all' || stateCode(o.state) === stateCode(stateF)))
     .map(o => o.county))].sort()
   const pickRegion = (v) => { setRegion(v); setStateF('all'); setCountyF('all') }
   const pickState  = (v) => { setStateF(v); setCountyF('all') }
@@ -823,7 +984,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
       || (o.clientFileNo || '').toLowerCase().includes(q)
     const matchTab    = activeTab === 'all' || lifecycleOf(o) === activeTab
     const matchRegion = region === 'all'  || regionOf(o.state) === region
-    const matchState  = stateF === 'all'  || o.state === stateF
+    const matchState  = stateF === 'all'  || stateCode(o.state) === stateCode(stateF)
     const matchCounty = countyF === 'all' || o.county === countyF
     const matchRush   = !rushOnly || o.priority === 'rush'
     const matchDate   = !cutoff || new Date(o.created) >= cutoff
@@ -953,7 +1114,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:920 }}>
           <thead>
             <tr style={{ background:'#F9FBFD', borderBottom:`1px solid ${Q.border}` }}>
-              {['File #','Client','Location','Type','Status','Payment','Assignee','Completed','ETA / Done',''].map(h => (
+              {['Order','Client File #','Client','Location','Type','Status','Payment','Assignee','Completed','ETA / Done',''].map(h => (
                 <th key={h} style={{
                   padding:'10px 16px', textAlign:'left', fontSize:11,
                   fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em',
@@ -985,6 +1146,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       )}
                     </div>
                   </td>
+                  <td style={{ padding:'10px 16px', fontFamily:'monospace', fontSize:11.5, color:Q.muted, whiteSpace:'nowrap' }}>{o.clientFileNo || '—'}</td>
                   <td style={{ padding:'10px 16px', fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o, user)}</td>
                   <td style={{ padding:'10px 16px', color:Q.muted, whiteSpace:'nowrap' }}>{o.county}, {o.state}</td>
                   <td style={{ padding:'10px 16px', color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{o.type}</td>
@@ -1117,7 +1279,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
         </button>
         {showMap && (
           <div style={{ borderTop:`1px solid ${Q.border}`, padding:'16px 20px 20px' }}>
-            <USAMap />
+            <USAMap counts={ordersByState} />
           </div>
         )}
       </div>
@@ -1428,7 +1590,7 @@ function AdminUsers() {
 function AdminMap() {
   const { orders } = useOrders()
   // Top five states by live order volume; no fabricated totals.
-  const byState = orders.reduce((m, o) => (o.state ? { ...m, [o.state]: (m[o.state] || 0) + 1 } : m), {})
+  const byState = orders.reduce((m, o) => (o.state ? { ...m, [stateCode(o.state)]: (m[stateCode(o.state)] || 0) + 1 } : m), {})
   const top = Object.entries(byState).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([s, c]) => ({ s, c }))
   return (
     <div className="space-y-5">
@@ -1436,7 +1598,7 @@ function AdminMap() {
         <h1 className="text-xl font-bold" style={{ color: Q.text }}>Coverage Map</h1>
         <p className="text-sm" style={{ color: Q.muted }}>Real-time order distribution across all 50 states</p>
       </div>
-      <QCard className="p-6"><USAMap /></QCard>
+      <QCard className="p-6"><USAMap counts={byState} /></QCard>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {top.map(({s,c}) => (
           <div key={s}
@@ -1469,8 +1631,8 @@ function AdminReports() {
     { key:'payment', label:'By Payment Mode' },
   ]
   const keyFn = {
-    state:   o => o.state,
-    county:  o => `${o.county}, ${o.state}`,
+    state:   o => stateCode(o.state),
+    county:  o => `${o.county}, ${stateCode(o.state)}`,
     region:  o => regionOf(o.state),
     status:  o => STATUS_MAP[o.status]?.label || o.status,
     type:    o => o.type,
@@ -1480,9 +1642,9 @@ function AdminReports() {
 
   // Geographic filters (cascading), applied before grouping.
   const inRegion = (o) => region === 'all' || regionOf(o.state) === region
-  const statesAvail   = [...new Set(orders.filter(inRegion).map(o => o.state))].sort()
+  const statesAvail   = [...new Set(orders.filter(inRegion).map(o => stateCode(o.state)))].sort()
   const countiesAvail = [...new Set(orders
-    .filter(o => inRegion(o) && (stateF === 'all' || o.state === stateF))
+    .filter(o => inRegion(o) && (stateF === 'all' || stateCode(o.state) === stateCode(stateF)))
     .map(o => o.county))].sort()
   const pickRegion = (v) => { setRegion(v); setStateF('all'); setCountyF('all') }
   const pickState  = (v) => { setStateF(v); setCountyF('all') }
@@ -1491,7 +1653,7 @@ function AdminReports() {
 
   const scoped = orders.filter(o =>
     (region === 'all'  || regionOf(o.state) === region) &&
-    (stateF === 'all'  || o.state === stateF) &&
+    (stateF === 'all'  || stateCode(o.state) === stateCode(stateF)) &&
     (countyF === 'all' || o.county === countyF)
   )
   const counts = {}
@@ -1706,11 +1868,12 @@ function AdminSupport() {
 export default function AdminDashboard() {
   const { pendingCount } = useSupport()
   const { orders } = useOrders()
+  const roster = useProfiles()
   const pending = pendingCount ? pendingCount() : 0
   // Every nav badge is live. Orders counts what still needs work (closed orders
   // aren't actionable), Users the real roster, Support the awaiting replies.
   const openOrders = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').length
-  const badges = { '/admin/orders': openOrders, '/admin/users': USERS.length, '/admin/support': pending }
+  const badges = { '/admin/orders': openOrders, '/admin/users': roster.length, '/admin/support': pending }
   const navItems = NAV.map(n => (badges[n.path] ? { ...n, badge: badges[n.path] } : n))
   return (
     <Layout navItems={navItems} role="admin" roleColor={ROLE_COLOR} lightTheme>
@@ -1718,14 +1881,18 @@ export default function AdminDashboard() {
         <Route index            element={<AdminHome />} />
         <Route path="orders"     element={<AdminOrders />} />
         <Route path="orders/:id" element={<AdminOrderPage />} />
+        {/* Admin can open and fill the commitment itself, not just approve the
+            generated PDF. Same screen the typer and the Single Seating desk use. */}
+        <Route path="order/:id"  element={<FulfillmentScreen />} />
         <Route path="users"    element={<AdminUsers />} />
         <Route path="billing"  element={<AdminBilling />} />
         <Route path="support"  element={<AdminSupport />} />
         <Route path="map"      element={<AdminMap />} />
         <Route path="reports"  element={<AdminReports />} />
+        <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
         <Route path="settings" element={
           <div style={{ padding:48, textAlign:'center', color:Q.faint, fontSize:14 }}>
-            Settings coming soon
+            Nothing here yet. Email notification preferences live under <b>Notifications</b>.
           </div>
         } />
       </Routes>

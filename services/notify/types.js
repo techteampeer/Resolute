@@ -33,6 +33,18 @@ export const TYPES = {
       + 'It is parked with Admin for confirmation and pricing — it has not entered production.',
     cta: 'Confirm and assign',
   },
+  'order.assigned': {
+    label: 'Work assigned to you',
+    accent: '#2441E5',
+    subject: (p, role) => `Assigned to you · ${orderRef(p)} · ${clientLabel(p, role)}`,
+    headline: () => 'Work landed in your queue',
+    lead: (p, role) =>
+      `Admin assigned ${p.orderType || 'an order'} for ${clientLabel(p, role)}`
+      + `${place(p) ? ` in ${place(p)}` : ''} to your desk`
+      + `${p.priority === 'rush' ? ' — this one is RUSH' : ''}`
+      + `${p.eta ? `, committed for ${p.eta}` : ''}.`,
+    cta: 'Open the order',
+  },
   'order.progress': {
     label: 'Stage completed',
     accent: '#00B8D9',
@@ -111,8 +123,20 @@ export const factsFor = (key, p = {}, role) => {
 // Where the email points. The portal discards an unauthenticated destination
 // unless the login flow preserves it, which is why ProtectedRoute carries
 // `from` — without that these links land everyone on their dashboard.
+//
+// The segment is not the same in every portal. Admin, client and Single Seating
+// route an order detail at /orders/:id; the four production desks route theirs
+// at /order/:id. This built /orders/:id for everybody, so the "Open the order"
+// link in every mail to a screener, examiner, typer or delivery pointed at a
+// route that does not exist — including order.assigned, the one type whose
+// entire audience is those four desks.
+const ORDER_SEGMENT = {
+  admin: 'orders', client: 'orders', operator: 'orders',
+  screener: 'order', examiner: 'order', typer: 'order', delivery: 'order',
+}
 export const linkFor = (p = {}, baseUrl, role = 'admin') => {
   const base = String(baseUrl || '').replace(/\/+$/, '')
   if (!base) return null
-  return p.orderId ? `${base}/${role}/orders/${p.orderId}` : `${base}/${role}`
+  const seg = ORDER_SEGMENT[role] || 'orders'
+  return p.orderId ? `${base}/${role}/${seg}/${p.orderId}` : `${base}/${role}`
 }

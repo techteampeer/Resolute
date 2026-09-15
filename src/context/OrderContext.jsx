@@ -18,6 +18,11 @@ export function OrderProvider({ children }) {
   const { user } = useAuth()
   const [orders, setOrders]           = useState(ORDERS)
   const [activityLog, setActivityLog] = useState(ACTIVITY)
+  // Why the last order write was refused, or null. A write filtered out by RLS
+  // comes back from PostgREST as 200 with zero rows, so completing a stage on an
+  // order that is no longer yours looked identical to succeeding — the optimistic
+  // local update stayed on screen and the work was silently discarded.
+  const [writeError, setWriteError]   = useState(null)
 
   // Hydrate from Supabase + live updates when configured; otherwise keep mock.
   // Keyed on the signed-in identity: the provider mounts on the login page
@@ -38,14 +43,26 @@ export function OrderProvider({ children }) {
   // trail (orderId/actor ride on the entry when the caller knows them).
   const log = (entry) => {
     setActivityLog(a => [entry, ...a])
-    if (isSupabaseConfigured) logEvent({
+    // Only staff may append to the durable trail — order_events_insert is
+    // is_staff(). Everything a client does is recorded by the database itself
+    // (log_order_created() on placement, client_cancel_order() and
+    // client_mark_payment() for the rest), so attempting the insert from a
+    // client session added nothing and put a 403 in the console on every single
+    // order placed.
+    if (isSupabaseConfigured && user?.role && user.role !== 'client') logEvent({
       orderId: entry.orderId, action: entry.action, type: entry.type, actor: entry.actor,
       // Whoever performed the action does not need to be told about it.
       actorEmail: entry.actorEmail || user?.email || null,
       audience: entry.audience || 'staff',
     })
   }
-  const persist = (order) => { if (isSupabaseConfigured) saveOrder(order) }
+  const persist = (order) => {
+    if (!isSupabaseConfigured) return
+    saveOrder(order)
+      .then(r => setWriteError(r && r.ok === false ? (r.error || 'not saved') : null))
+      .catch(e => setWriteError(e.message))
+  }
+  const clearWriteError = () => setWriteError(null)
 
   const assignOrder = (orderId, { queue, personName } = {}) => {
     setOrders(os => os.map(o => {
@@ -70,7 +87,14 @@ export function OrderProvider({ children }) {
   }
 
   let advancedTo = null
-  const completeStep = (orderId, role, userName, notes) => {
+  // `extra` merges into workflow as part of the SAME write as the stage move.
+  // Callers used to do updateOrder() for their documents and then completeStep()
+  // for the move, as two independent un-awaited PATCHes; whichever landed last
+  // won, and the updateOrder one carries the pre-move status. It only ever
+  // appeared to work because RLS refused the stale write once the move took the
+  // order off the caller's desk (orders_update_assigned), which is not
+  // protection — it is luck, and it runs out for anyone with a broader policy.
+  const completeStep = (orderId, role, userName, notes, extra = {}) => {
     advancedTo = null
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
@@ -86,6 +110,7 @@ export function OrderProvider({ children }) {
         progress: allDone ? 100 : Math.max(o.progress || 0, progressFor(nextStatus)),
         completed: allDone ? (o.completed || todayISO()) : o.completed,
         completedDates: newDates, completedBy: { ...o.completedBy, [role]: userName },
+        workflow: { ...o.workflow, ...extra },
       }
       persist(next)
       return next
@@ -131,6 +156,12 @@ export function OrderProvider({ children }) {
     setOrders(os => os.map(o => (o.id === updated.id ? updated : o)))
     persist(updated)
   }
+
+  // Record an admin action in the durable audit trail. Hold, resume and
+  // clarification all changed the row and messaged the client but wrote no
+  // order_events row, so none of them appeared in the order's history.
+  const logAction = ({ orderId, action, type = 'status', audience = 'all', actor }) =>
+    log({ id: Date.now(), orderId, actor, action, time: 'Just now', type, audience })
 
   // Client marks an invoice paid. Clients can't UPDATE orders directly (RLS), so
   // persist through the client_mark_payment RPC; the row's other fields are
@@ -234,7 +265,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, writeError, clearWriteError, assignOrder, completeStep, returnToAdmin, updateOrder, logAction, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )
