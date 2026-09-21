@@ -302,12 +302,15 @@ export default function LoginPage({ variant = 'client' }) {
               </>
             )}
 
-            {/* Cross-link between the client and staff entries */}
-            <p className="text-center text-xs mt-5" style={{ color: '#5C6E8C' }}>
-              {isStaff
-                ? <Link to="/login" style={{ color: '#2441E5', fontWeight: 600 }}>← Back to client portal</Link>
-                : <>Resolute team member? <Link to="/staff" style={{ color: '#2441E5', fontWeight: 600 }}>Staff sign-in →</Link></>}
-            </p>
+            {/* The staff entry (/staff) is intentionally NOT advertised on the
+                client portal — internal tooling shouldn't be linked from the
+                public customer surface. Staff reach it by its known URL. Only
+                the staff page links back to the client portal. */}
+            {isStaff && (
+              <p className="text-center text-xs mt-5" style={{ color: '#5C6E8C' }}>
+                <Link to="/login" style={{ color: '#2441E5', fontWeight: 600 }}>← Back to client portal</Link>
+              </p>
+            )}
           </motion.div>
         </div>
       </div>

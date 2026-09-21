@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import * as d3 from 'd3'
+// Named imports (not `import * as d3`) so the bundle carries only the two geo
+// helpers we use, not all of d3.
+import { geoAlbersUsa, geoPath } from 'd3'
 import { feature } from 'topojson-client'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -78,8 +80,8 @@ export default function USAMap({ compact = false, counts = {} }) {
     fetch(`${import.meta.env.BASE_URL}us-states-10m.json`)
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then(us => {
-        const proj = d3.geoAlbersUsa().scale(1280).translate([W / 2, H / 2])
-        const path = d3.geoPath().projection(proj)
+        const proj = geoAlbersUsa().scale(1280).translate([W / 2, H / 2])
+        const path = geoPath().projection(proj)
         const feats = feature(us, us.objects.states).features
         const computed = feats.map(f => {
           const fips   = String(f.id).padStart(2, '0')

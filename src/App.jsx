@@ -1,17 +1,20 @@
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { OrderProvider } from './context/OrderContext'
 import { FulfillmentProvider } from './context/FulfillmentContext'
 import { SupportProvider } from './context/SupportContext'
 import LoginPage from './pages/LoginPage'
-import AdminDashboard from './pages/admin/AdminDashboard'
-import ScreenerDashboard from './pages/screener/ScreenerDashboard'
-import ExaminerDashboard from './pages/examiner/ExaminerDashboard'
-import TyperDashboard from './pages/typer/TyperDashboard'
-import DeliveryDashboard from './pages/delivery/DeliveryDashboard'
-import ClientDashboard from './pages/client/ClientDashboard'
-import OperatorDashboard from './pages/operator/OperatorDashboard'
+// Dashboards are route-split: a signed-in user downloads only their own portal,
+// not all seven. This also stops a client's bundle from carrying the admin,
+// billing, payout and fulfillment code (defence-in-depth + smaller client app).
+const AdminDashboard     = lazy(() => import('./pages/admin/AdminDashboard'))
+const ScreenerDashboard  = lazy(() => import('./pages/screener/ScreenerDashboard'))
+const ExaminerDashboard  = lazy(() => import('./pages/examiner/ExaminerDashboard'))
+const TyperDashboard     = lazy(() => import('./pages/typer/TyperDashboard'))
+const DeliveryDashboard  = lazy(() => import('./pages/delivery/DeliveryDashboard'))
+const ClientDashboard    = lazy(() => import('./pages/client/ClientDashboard'))
+const OperatorDashboard  = lazy(() => import('./pages/operator/OperatorDashboard'))
 
 // Shown only while the stored session is being checked — a fraction of a second
 // on a cold load. Rendering nothing here would flash the page white; redirecting
@@ -52,6 +55,7 @@ export default function App() {
       <FulfillmentProvider>
       <SupportProvider>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Suspense fallback={<SessionGate />}>
         <Routes>
           <Route path="/login" element={<LoginPage variant="client" />} />
           <Route path="/staff" element={<LoginPage variant="staff" />} />
@@ -79,6 +83,7 @@ export default function App() {
           } />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
+        </Suspense>
       </BrowserRouter>
       </SupportProvider>
       </FulfillmentProvider>
