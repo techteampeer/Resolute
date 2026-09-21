@@ -7,6 +7,19 @@
 import { clientByName } from '../data/mockData'
 import { PRODUCT_PRICE } from '../data/products'
 import { isSupabaseConfigured, fetchClientTerms, saveClientTerms } from './backend'
+// The pure money math now lives in the portable domain core (packages/domain).
+// This file keeps the I/O (localStorage + Supabase term persistence), the
+// catalogue binding for the invoice estimate, and the client-code resolver.
+import {
+  money, invoiceNumber, TERMS, termByKey, PAY_STATUS, paymentOf, payStatusOf,
+  isBillable, dueDate, isOverdue, buildPayment, confirmPayment, bouncePayment,
+  invoiceTotal, addDays,
+} from '@domain'
+
+export {
+  money, invoiceNumber, TERMS, termByKey, PAY_STATUS, paymentOf, payStatusOf,
+  isBillable, dueDate, isOverdue, buildPayment, confirmPayment, bouncePayment,
+}
 
 // ── Remittance details (PLACEHOLDERS — fill in real values here later) ──────
 export const REMITTANCE = {
@@ -19,15 +32,6 @@ export const REMITTANCE = {
   accountName: null,      // business name on the account
 }
 export const hasRemittanceDetails = Boolean(REMITTANCE.routingNumber && REMITTANCE.accountNumber)
-
-// ── Payment terms (Admin assigns per client; default per-order) ──────────────
-export const TERMS = [
-  { key: 'per_order', label: 'Per Order',  days: 0,  desc: 'Each invoice due upon receipt' },
-  { key: 'weekly',    label: 'Weekly',     days: 7,  desc: 'One statement, every 7 days' },
-  { key: 'net15',     label: 'Net 15',     days: 15, desc: 'One statement, 15-day cycle' },
-  { key: 'net30',     label: 'Net 30',     days: 30, desc: 'One statement, 30-day cycle' },
-]
-export const termByKey = (key) => TERMS.find(t => t.key === key) || TERMS[0]
 
 // Client terms: localStorage is the synchronous read cache; Supabase
 // clients.payment_terms is the durable source when configured (hydrate on
@@ -62,46 +66,12 @@ export const canConfirmPayments = (user) =>
 // ── Invoices ─────────────────────────────────────────────────────────────────
 // Estimate from the shared product catalog (the price the client saw when
 // ordering) until the Typer's final invoice total is stamped on the order
-// (workflow.invoiceAmount, set on Finalize). Quote-only products with no fixed
-// price fall back to a flat estimate.
-export const invoiceAmount = (o) =>
-  (o.workflow?.invoiceAmount ?? PRODUCT_PRICE[o.type] ?? 125) + (o.priority === 'rush' ? 50 : 0)
-export const invoiceNumber = (o) => `INV-${o.id}`
-export const money = (n) => (Number(n) || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+// (workflow.invoiceAmount, set on Finalize). invoiceTotal is the portable
+// computation; this binding supplies the catalogue. Quote-only products with no
+// fixed price fall back to a flat estimate inside invoiceTotal.
+export const invoiceAmount = (o) => invoiceTotal(o, { catalogue: PRODUCT_PRICE })
 
 export const clientCodeOf = (o) => o.clientCode || clientByName(o.client)?.code || null
-
-// Normalize legacy payment shapes ({status:'submitted'} from the old card).
-export function paymentOf(o) {
-  const p = o.workflow?.payment
-  if (!p) return null
-  return { ...p, status: p.status === 'submitted' ? 'marked' : p.status }
-}
-export const PAY_STATUS = {
-  unpaid:    { label: 'Unpaid',        color: '#5C6E8C' },
-  marked:    { label: 'Marked Paid',   color: '#b45309' },
-  confirmed: { label: 'Paid',          color: '#15803d' },
-  bounced:   { label: 'Bounced',       color: '#dc2626' },
-}
-export const payStatusOf = (o) => paymentOf(o)?.status || 'unpaid'
-// Billable = delivered (invoice after delivery; nothing is blocked on payment).
-export const isBillable = (o) => o.status === 'delivered'
-
-const addDays = (iso, days) => {
-  if (!iso) return null
-  const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-export function dueDate(o, termKey) {
-  const t = termByKey(termKey)
-  return addDays(o.completed || o.created, t.days)
-}
-export function isOverdue(o, termKey) {
-  const s = payStatusOf(o)
-  if (s === 'confirmed') return false
-  const due = dueDate(o, termKey)
-  return Boolean(due && due < new Date().toISOString().slice(0, 10))
-}
 
 // ── Statements (termed clients pay one consolidated amount) ──────────────────
 // The open statement for a client = all billable orders not yet confirmed,
@@ -120,15 +90,3 @@ export function openStatement(orders, clientCode, termKey) {
     overdue: items.some(o => isOverdue(o, termKey)),
   }
 }
-
-// Build the payment object written onto order.workflow.payment.
-export function buildPayment({ method, reference, checkDoc = null, statementId = null }) {
-  return {
-    method, reference: reference || null, checkDoc, statementId,
-    status: 'marked', markedAt: new Date().toISOString().slice(0, 10),
-  }
-}
-export const confirmPayment = (p, userName) =>
-  ({ ...p, status: 'confirmed', confirmedAt: new Date().toISOString().slice(0, 10), confirmedBy: userName })
-export const bouncePayment = (p, userName) =>
-  ({ ...p, status: 'bounced', bouncedAt: new Date().toISOString().slice(0, 10), confirmedBy: userName })
