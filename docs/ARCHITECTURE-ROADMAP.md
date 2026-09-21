@@ -60,8 +60,10 @@ Priorities: **P0** safety-critical / now → **P3** later.
 - [x] **F2** transition-guard trigger on `orders`: block cross-client moves and
       arbitrary desk reassignment for direct staff writes; enforce the admin
       gate server-side. **(done — PR #80; `orders_guard_handoff`)**
-- [ ] **F3** server-compute/validate invoice & payout **amounts** against the
-      product catalogue; treat client-supplied amounts as claims. **(next)**
+- [x] **F3** validate money **amounts** server-side: a bounds guard on
+      `orders.workflow` (invoice + abstractor fee: numeric, 0..ceiling), ceilings
+      on the ledger tables, and a server-side `product_prices` catalogue (super
+      -admin write). Custom quotes preserved. **(done — money-integrity PR)**
 - [x] Tighten sequence grants (`order_id_seq` — clients can `setval` today). **(done — PR #80)**
 - [ ] MFA for super-admins + the billing owner; session/password policy;
       failed-login backoff; rotate seed/demo credentials.
@@ -75,7 +77,9 @@ Priorities: **P0** safety-critical / now → **P3** later.
 - [x] Extract the order state machine from `OrderContext.jsx` into a pure,
       portable TypeScript module (`packages/domain`), no React dependency.
       Unit-tested (15 tests). **(done — domain-extraction PR)**
-- [ ] Move billing/payout math behind the same seam. **(next)**
+- [x] Move billing/payout math behind the same seam (`@domain/money.ts`);
+      unit-tested (20 tests). I/O (localStorage/Supabase) stays in the lib.
+      **(done — money-integrity PR)**
 - [ ] Integrity ops (advance-stage, confirm-payment, mark-payout-paid,
       set-invoice) as SECURITY DEFINER RPCs now → API endpoints at the GCP move.
 - [ ] Explicit state-transition table shared by enforcement + UI.

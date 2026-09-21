@@ -137,9 +137,10 @@ export function OrderProvider({ children }) {
   // outright; once any stage is underway it becomes a request parked for Admin.
   const cancelOrder = (orderId, actor = 'Client') => {
     const target = orders.find(o => o.id === orderId)
-    const mode = target?.status === 'received' ? 'cancelled' : 'requested'
-    // Optimistic local update — the cancel policy (free until screening) lives
-    // in the domain core now, so mock mode and the RPC can't drift.
+    // The cancel policy (free until screening) lives in the domain core; take the
+    // resulting mode from it rather than re-deriving the rule here.
+    const mode = target ? applyClientCancel(target, actor).mode : 'requested'
+    // Optimistic local update (same pure transition).
     setOrders(os => os.map(o => (o.id === orderId ? applyClientCancel(o, actor).next : o)))
     // Durable persistence: clients can't UPDATE orders (RLS), so go through the
     // SECURITY DEFINER RPC, which also records the order_events row that shows up

@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integrity": "node .audit/verify-order-integrity.mjs"
+    "test:integrity": "node .audit/verify-order-integrity.mjs && node .audit/verify-amounts.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
