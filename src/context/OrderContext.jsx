@@ -1,18 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { ORDERS, ACTIVITY, nextRoleFor, roleAfter, statusForRole } from '../data/mockData'
+import { ORDERS, ACTIVITY } from '../data/mockData'
+// The order state machine is now the portable domain core (packages/domain).
+// This context keeps the side effects (setState, persistence, logging) and
+// delegates every state transition to these pure functions.
+import {
+  applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
+  STAGE_BY_ROLE, todayISO,
+} from '@domain'
 import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
 import { useAuth } from './AuthContext'
 
 const OrderContext = createContext(null)
-
-// Status follows the owning role, so it advances one stage at a time in order.
-const PIPELINE = ['received', 'screening', 'examining', 'typing', 'delivery', 'delivered']
-const progressFor = (status) => {
-  const i = PIPELINE.indexOf(status)
-  return i <= 0 ? (status === 'received' ? 5 : 0) : Math.round((i / (PIPELINE.length - 1)) * 100)
-}
-const STAGE_BY_ROLE = { screener: 'screening', examiner: 'examination', typer: 'typing', delivery: 'delivery' }
-const todayISO = () => new Date().toISOString().slice(0, 10)
 
 export function OrderProvider({ children }) {
   const { user } = useAuth()
@@ -67,26 +65,13 @@ export function OrderProvider({ children }) {
   const assignOrder = (orderId, { queue, personName } = {}) => {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
-      const next = { ...o, assignedTo: queue }
-      // Routing to the Single Seating desk claims the order for that desk
-      // end-to-end; routing to a stage role releases it back to the pipeline.
-      if (queue === 'operator') next.workflow = { ...o.workflow, singleSeating: true }
-      else if (['screener', 'examiner', 'typer', 'delivery'].includes(queue)) next.workflow = { ...o.workflow, singleSeating: false }
-      if (personName) next[queue] = personName
-      // Status follows the owning role, always — pinning it to 'received' here
-      // left a freshly assigned order reading "Received" while it sat in the
-      // screener's queue. 'admin' and 'operator' aren't pipeline stages, so for
-      // those the status reflects the stage actually being worked next.
-      const STAGES = ['screener', 'examiner', 'typer', 'delivery']
-      next.status = statusForRole(STAGES.includes(queue) ? queue : nextRoleFor(o))
-      next.progress = progressFor(next.status)
+      const next = applyAssign(o, { queue, personName })
       persist(next)
       return next
     }))
     log({ id: Date.now(), orderId, action: `Admin assigned ${orderId} to ${queue}${personName ? ` · ${personName}` : ''}`, time: 'Just now', type: 'status', audience: 'staff' })
   }
 
-  let advancedTo = null
   // `extra` merges into workflow as part of the SAME write as the stage move.
   // Callers used to do updateOrder() for their documents and then completeStep()
   // for the move, as two independent un-awaited PATCHes; whichever landed last
@@ -95,23 +80,11 @@ export function OrderProvider({ children }) {
   // order off the caller's desk (orders_update_assigned), which is not
   // protection — it is luck, and it runs out for anyone with a broader policy.
   const completeStep = (orderId, role, userName, notes, extra = {}) => {
-    advancedTo = null
+    let advancedTo = null
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
-      const newDates = { ...o.completedDates, [role]: todayISO() }
-      // The stage that follows the one just completed — never the first incomplete
-      // stage, which would route the order backwards (see roleAfter).
-      const nextRole = roleAfter(role)
-      advancedTo = nextRole
-      const allDone = nextRole === null
-      const nextStatus = statusForRole(nextRole)   // owner and status stay in lockstep
-      const next = {
-        ...o, status: nextStatus, assignedTo: nextRole,
-        progress: allDone ? 100 : Math.max(o.progress || 0, progressFor(nextStatus)),
-        completed: allDone ? (o.completed || todayISO()) : o.completed,
-        completedDates: newDates, completedBy: { ...o.completedBy, [role]: userName },
-        workflow: { ...o.workflow, ...extra },
-      }
+      const { next, advancedTo: adv } = applyCompleteStep(o, role, userName, extra)
+      advancedTo = adv
       persist(next)
       return next
     }))
@@ -131,21 +104,7 @@ export function OrderProvider({ children }) {
   const returnToAdmin = (orderId, role, userName, notes, extra = {}) => {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
-      const newDates = { ...o.completedDates, [role]: todayISO() }
-      // The stage that follows the one just completed — never the first incomplete
-      // stage, which would route the order backwards (see roleAfter).
-      const nextRole = roleAfter(role)
-      const nextStatus = statusForRole(nextRole)
-      const next = {
-        ...o,
-        status: nextStatus,
-        assignedTo: 'admin',
-        // Pipeline finished → 100, never progressFor('delivery') = 80.
-        progress: nextRole === null ? 100 : Math.max(o.progress || 0, progressFor(nextStatus)),
-        completedDates: newDates,
-        completedBy: { ...o.completedBy, [role]: userName },
-        workflow: { ...o.workflow, ...extra },
-      }
+      const { next } = applyReturnToAdmin(o, role, userName, extra)
       persist(next)
       return next
     }))
@@ -178,15 +137,10 @@ export function OrderProvider({ children }) {
   // outright; once any stage is underway it becomes a request parked for Admin.
   const cancelOrder = (orderId, actor = 'Client') => {
     const target = orders.find(o => o.id === orderId)
-    const fresh = target?.status === 'received'
-    const mode = fresh ? 'cancelled' : 'requested'
-    // Optimistic local update.
-    setOrders(os => os.map(o => {
-      if (o.id !== orderId) return o
-      return fresh
-        ? { ...o, status: 'cancelled', assignedTo: null, progress: 0, workflow: { ...o.workflow, cancelRequested: null } }
-        : { ...o, workflow: { ...o.workflow, cancelRequested: { by: actor, at: todayISO() } } }
-    }))
+    const mode = target?.status === 'received' ? 'cancelled' : 'requested'
+    // Optimistic local update — the cancel policy (free until screening) lives
+    // in the domain core now, so mock mode and the RPC can't drift.
+    setOrders(os => os.map(o => (o.id === orderId ? applyClientCancel(o, actor).next : o)))
     // Durable persistence: clients can't UPDATE orders (RLS), so go through the
     // SECURITY DEFINER RPC, which also records the order_events row that shows up
     // in Admin's notifications. Mock mode just keeps the local update.
@@ -213,9 +167,7 @@ export function OrderProvider({ children }) {
   const resolveCancel = (orderId, approve, actor = 'Admin') => {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
-      const next = approve
-        ? { ...o, status: 'cancelled', assignedTo: null, progress: 0, workflow: { ...o.workflow, cancelRequested: null } }
-        : { ...o, workflow: { ...o.workflow, cancelRequested: null } }
+      const next = applyResolveCancel(o, approve)
       persist(next)
       return next
     }))

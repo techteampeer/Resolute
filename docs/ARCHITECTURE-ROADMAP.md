@@ -55,14 +55,14 @@ the one AWS touch-point and can stay or be swapped for a GCP mail provider.
 Priorities: **P0** safety-critical / now → **P3** later.
 
 ### A. Security & authorization hardening — P0
-- [ ] **F1** add `can_confirm_payments` to `profiles_guard_privilege_columns()`
-      (currently self-grantable via `PATCH /profiles`). **(Phase 0)**
-- [ ] **F2** transition-guard trigger on `orders`: block cross-client moves and
+- [x] **F1** add `can_confirm_payments` to `profiles_guard_privilege_columns()`
+      (currently self-grantable via `PATCH /profiles`). **(done — PR #80)**
+- [x] **F2** transition-guard trigger on `orders`: block cross-client moves and
       arbitrary desk reassignment for direct staff writes; enforce the admin
-      gate server-side. **(Phase 0)**
+      gate server-side. **(done — PR #80; `orders_guard_handoff`)**
 - [ ] **F3** server-compute/validate invoice & payout **amounts** against the
-      product catalogue; treat client-supplied amounts as claims.
-- [ ] Tighten sequence grants (`order_id_seq` — clients can `setval` today). **(Phase 0)**
+      product catalogue; treat client-supplied amounts as claims. **(next)**
+- [x] Tighten sequence grants (`order_id_seq` — clients can `setval` today). **(done — PR #80)**
 - [ ] MFA for super-admins + the billing owner; session/password policy;
       failed-login backoff; rotate seed/demo credentials.
 - [ ] Rate limiting / bot protection on the public client app + auth; decide
@@ -72,9 +72,10 @@ Priorities: **P0** safety-critical / now → **P3** later.
 - [ ] Storage-authorization plan for the GCP move (Cloud Storage bypasses RLS).
 
 ### B. Server-authoritative domain core — P0/P1
-- [ ] Extract the order state machine from `OrderContext.jsx` into a pure,
-      portable module (`packages/domain`), no React dependency.
-- [ ] Move billing/payout math behind the same seam.
+- [x] Extract the order state machine from `OrderContext.jsx` into a pure,
+      portable TypeScript module (`packages/domain`), no React dependency.
+      Unit-tested (15 tests). **(done — domain-extraction PR)**
+- [ ] Move billing/payout math behind the same seam. **(next)**
 - [ ] Integrity ops (advance-stage, confirm-payment, mark-payout-paid,
       set-invoice) as SECURITY DEFINER RPCs now → API endpoints at the GCP move.
 - [ ] Explicit state-transition table shared by enforcement + UI.
@@ -88,8 +89,8 @@ Priorities: **P0** safety-critical / now → **P3** later.
 - [ ] localStorage caches become read-through, not authoritative.
 
 ### D. App restructure (three front doors) — P1
-- [ ] Level-1 hygiene now: remove the client→staff cross-link
-      (`LoginPage.jsx:309`); code-split so clients never download staff chunks.
+- [x] Level-1 hygiene: remove the client→staff cross-link; code-split so clients
+      never download staff chunks (main bundle 1,339→553 kB). **(done — PR #80)**
 - [ ] Monorepo-lite: `apps/client`, `apps/ops`, shared `packages/*`.
 - [ ] Production-login consolidation → the `user` role (generalized Single
       Seating, admin gate kept); retire the four stage portals into stage views.
@@ -106,9 +107,9 @@ Priorities: **P0** safety-critical / now → **P3** later.
 - [ ] Plan the Realtime replacement for Cloud SQL (no Realtime there).
 
 ### F. Frontend quality & UX — P1/P2
-- [ ] Remove dead deps (three.js / @react-three trio — unused).
-- [ ] Code-split dashboards; scope `import * as d3` → `d3-geo`; lazy
-      recharts/USAMap.
+- [x] Remove dead deps (three.js / @react-three trio — unused). **(done — PR #80)**
+- [x] Code-split dashboards; scope `import * as d3`. Further vendor chunking
+      (recharts/USAMap into admin) still open. **(done — PR #80)**
 - [ ] Bundle-size budget in CI.
 - [ ] Accessibility (keyboard, focus, ARIA, contrast, reduced-motion).
 - [ ] Design-system extraction (tokens/components) shared across apps.
@@ -120,14 +121,17 @@ Priorities: **P0** safety-critical / now → **P3** later.
 - [ ] Delivery observability + backlog alerting.
 
 ### H. Testing & QA — P0/P1
-- [ ] `npm test` + exit-code assertions (convert the `.audit` probes).
+- [x] `npm test` (vitest) + exit-code integrity audit; domain unit tests (15).
+      Converting the rest of the `.audit` probes is ongoing. **(started)**
 - [ ] RLS allow-and-deny suite (the real-JWT `as(role)` pattern).
 - [ ] Test pyramid: unit (domain) / integration (RPCs) / E2E (Playwright).
 - [ ] Coverage gate on the integrity core.
 - [ ] De-couple audits from the single hardcoded machine; load test at 100 concurrent.
 
 ### I. CI/CD, environments & IaC — P0/P1
-- [ ] PR gate: build + lint + typecheck + tests; block merge on failure. **(Phase 0)**
+- [x] PR gate: build + unit tests + from-scratch migration apply (`.github/
+      workflows/ci.yml`). Lint/typecheck still to add. Mark required in branch
+      protection. **(done — PR #80)**
 - [ ] Migration integrity: repo is the only source of truth; from-scratch apply
       verified in CI; drift detection. (A prod-only migration already drifted once.)
 - [ ] dev → staging → prod environments; PR preview deploys.
