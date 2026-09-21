@@ -141,43 +141,12 @@ export const USERS = [
   { id: 16, name: 'Jordan Blake',  email: 'operator@resolute.com',   role: 'operator', status: 'active',   orders: 26, joined: '2025-03-01' },
 ]
 
-// Fixed order of pipeline roles. Routing flexibility = Admin chooses WHO does
-// each role; the role order itself stays screener → examiner → typer → delivery.
-export const ROLE_SEQUENCE = ['screener', 'examiner', 'typer', 'delivery']
-// The next role that still needs to act on an order (null once all four are done).
-export const nextRoleFor = (order) =>
-  ROLE_SEQUENCE.find(r => !(order.completedDates && order.completedDates[r])) || null
-
-// The role that FOLLOWS a stage that has just been completed (null after delivery).
-// Distinct from nextRoleFor, which finds the first *incomplete* stage: that answers
-// "who should act next on this order", and using it to route a completion sends the
-// order BACKWARDS whenever an earlier stage was skipped (delivery completing on an
-// un-typed order returned 'typer', dropping status/progress from delivery/80 to
-// typing/60 while the event log announced "delivered"). Handing off follows the
-// fixed sequence, so it can only ever move forward.
-export const roleAfter = (role) => {
-  const i = ROLE_SEQUENCE.indexOf(role)
-  return i === -1 || i === ROLE_SEQUENCE.length - 1 ? null : ROLE_SEQUENCE[i + 1]
-}
-
-// The single source of truth for status: it follows the owning role.
-// null role (all stages done) → 'delivered'.
-// BUG_010: a delivered order must never read "80% complete". Progress is
-// DERIVED from the order's terminal state rather than trusting the stored
-// column, which can lag (progressFor('delivery') is 80, and rows written at
-// that stage keep it after delivery).
-export const orderProgress = (order) => {
-  if (!order) return 0
-  if (order.status === 'cancelled') return 0
-  if (order.status === 'delivered' || order.completed) return 100
-  return Math.min(100, Math.max(0, Number(order.progress) || 0))
-}
-export const isOrderComplete = (order) =>
-  !!order && (order.status === 'delivered' || !!order.completed)
-
-export const statusForRole = (role) =>
-  role === null ? 'delivered'
-    : ({ screener: 'screening', examiner: 'examining', typer: 'typing', delivery: 'delivery' }[role] || 'received')
+// The order pipeline + state machine now lives in the portable domain package
+// (packages/domain, imported via the '@domain' alias). Re-exported here so the
+// many existing `from '../data/mockData'` imports keep working unchanged.
+export {
+  ROLE_SEQUENCE, nextRoleFor, roleAfter, statusForRole, orderProgress, isOrderComplete,
+} from '@domain'
 
 export const ACTIVITY = [
   { time: '10:42 AM', action: 'Order RTS-10044 received from Pinnacle Real Estate', type: 'new' },

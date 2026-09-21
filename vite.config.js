@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { execSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 // Build stamp — so "which build is this?" is answerable from the browser.
 // Vercel exposes the commit SHA; locally we ask git. Never fails the build.
@@ -16,6 +17,13 @@ export default defineConfig({
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   plugins: [react()],
+  resolve: {
+    alias: {
+      // The portable order domain core (packages/domain). Framework-free TS,
+      // transpiled by Vite. Also declared in tsconfig.json paths for the IDE.
+      '@domain': fileURLToPath(new URL('./packages/domain/src/index.ts', import.meta.url)),
+    },
+  },
   server: {
     port: parseInt(process.env.PORT) || 5173,
   },
