@@ -1,0 +1,56 @@
+# Continuous integration gate. Runs on every PR and on pushes to the main and
+# feature branches. Two jobs:
+#   build          — the gate that must always be green (npm ci + vite build).
+#   db-integrity   — applies ALL migrations from scratch on a real Supabase stack
+#                    (catches malformed migrations and repo/prod drift, which has
+#                    bitten this project before), then runs the RLS/integrity
+#                    audits over the real REST path.
+#
+# NOTE: this is Phase 0 of docs/ARCHITECTURE-ROADMAP.md workstream I. Lint,
+# typecheck and the full audit/E2E suite are added as those pieces land. Mark
+# `build` (and, once it has had a green shakeout run, `db-integrity`) as required
+# checks in the branch-protection settings.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'claude/**']
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+  db-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: PostgreSQL client (the audits shell out to psql)
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      # `supabase start` applies every migration in supabase/migrations in order
+      # plus supabase/seed.sql. A migration that fails to apply from scratch — the
+      # exact drift that hit 20260909120000 — fails the job here, before deploy.
+      - name: Start Supabase (applies migrations + seed from scratch)
+        run: supabase start
+      - name: Order-integrity + privilege-guard audit (RLS, real JWTs)
+        run: npm run test:integrity
