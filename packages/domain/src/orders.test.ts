@@ -49,9 +49,9 @@ describe('pipeline primitives', () => {
 })
 
 describe('applyAssign', () => {
-  it('operator claims the order end-to-end (singleSeating)', () => {
-    const next = applyAssign(order(), { queue: 'operator' })
-    expect(next.assignedTo).toBe('operator')
+  it('user (single seating) claims the order end-to-end', () => {
+    const next = applyAssign(order(), { queue: 'user' })
+    expect(next.assignedTo).toBe('user')
     expect(next.workflow!.singleSeating).toBe(true)
     expect(next.status).toBe('screening') // nextRoleFor of a fresh order
   })

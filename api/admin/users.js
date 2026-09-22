@@ -13,7 +13,7 @@ import { supabaseAdmin, hasSupabaseAdmin } from '../_lib/supabaseAdmin.js'
 
 const send = (res, code, body) => res.status(code).json(body)
 const genPassword = () => 'Rslt-' + Math.random().toString(36).slice(2, 10) + Math.floor(Math.random() * 900 + 100)
-const ROLES = ['admin', 'screener', 'examiner', 'typer', 'delivery', 'client', 'operator']
+const ROLES = ['admin', 'screener', 'examiner', 'typer', 'delivery', 'client', 'user']
 
 async function requireAdmin(req) {
   const authz = req.headers.authorization || ''

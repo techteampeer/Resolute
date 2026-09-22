@@ -20,7 +20,7 @@ const STAGES = [
 ]
 // Assignable queues: the four pipeline stages, plus the Single Seating desk
 // which works whichever stage is next (each step returns here for approval).
-const QUEUES = [...STAGES, { key:'operator', label:'Single Seating' }]
+const QUEUES = [...STAGES, { key:'user', label:'Single Seating' }]
 
 // Pre-select the queue that naturally owns the order's current status.
 const defaultStageFor = (status) => ({
@@ -36,7 +36,7 @@ export default function AssignModal({ order, user, onClose }) {
   // that still needs to act, then the status-based guess. 'admin' means the
   // order is parked here for approval — not a real queue.
   const [queue, setQueue]           = useState(
-    (order.workflow?.singleSeating ? 'operator' : null)
+    (order.workflow?.singleSeating ? 'user' : null)
     || (order.assignedTo && order.assignedTo !== 'admin' ? order.assignedTo : null)
     || nextRoleFor(order) || defaultStageFor(order.status))
   const [personName, setPersonName] = useState('')

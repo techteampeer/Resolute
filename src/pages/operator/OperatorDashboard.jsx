@@ -16,9 +16,9 @@ import NotificationSettings from '../../components/NotificationSettings'
 
 const ROLE_COLOR = '#2441E5'
 const NAV = [
-  { path: '/operator',          label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/operator/completed',label: 'Completed', icon: CheckCircle },
-  { path: '/operator/notifications', label: 'Notifications', icon: Bell },
+  { path: '/user',          label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/user/completed',label: 'Completed', icon: CheckCircle },
+  { path: '/user/notifications', label: 'Notifications', icon: Bell },
 ]
 
 // Stage each order is currently waiting on (first uncompleted production role).
@@ -31,8 +31,8 @@ const STAGE = {
 const ASSIGN = [['in_house', 'In-House'], ['abs', 'ABS (Abstract)'], ['both', 'Both']]
 
 // Full-page order detail that adapts to whichever stage the order is in.
-// Route: /operator/orders/:id  (the typing stage hands off to the full
-// fulfillment screen at /operator/order/:id).
+// Route: /user/orders/:id  (the typing stage hands off to the full
+// fulfillment screen at /user/order/:id).
 function OperatorOrderPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -51,7 +51,7 @@ function OperatorOrderPage() {
   if (!order) return (
     <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
       <div className="text-sm" style={{ color:'#5C6E8C' }}>Order not found, or it isn’t assigned to your desk.</div>
-      <button onClick={() => navigate('/operator')} className="btn-primary text-sm px-5 py-2.5">Back to Workspace</button>
+      <button onClick={() => navigate('/user')} className="btn-primary text-sm px-5 py-2.5">Back to Workspace</button>
     </div>
   )
 
@@ -63,7 +63,7 @@ function OperatorOrderPage() {
     } else {
       returnToAdmin(order.id, role, user?.name, notes || 'single seating', workflowPatch || {})
     }
-    navigate('/operator')
+    navigate('/user')
   }
   const canSubmit = role === 'screener' ? !!assignment
     : role === 'examiner' ? !!(doc && doc.status === 'done')
@@ -103,7 +103,7 @@ function OperatorOrderPage() {
             <div className="flex items-center gap-2 mb-1"><Keyboard className="w-4 h-4" style={{ color: '#0e7490' }} />
               <span className="font-semibold text-sm" style={{ color: '#12284C' }}>Type the commitment</span></div>
             <p className="text-xs mb-3" style={{ color: '#3D5171' }}>Opens the full sectioned fulfillment form. Submitting there sends the order to Admin for approval.</p>
-            <button onClick={() => navigate(`/operator/order/${order.id}`)}
+            <button onClick={() => navigate(`/user/order/${order.id}`)}
               className="btn-primary text-sm py-2.5 w-full flex items-center justify-center gap-2">
               <FileText className="w-4 h-4" /> Open Fulfillment Form
             </button>
@@ -167,7 +167,7 @@ function OperatorOrderPage() {
 
   return (
     <OrderDetailLayout order={order} user={user} accent={ROLE_COLOR}
-      backTo="/operator" backLabel="Back to Workspace" tabs={TABS}
+      backTo="/user" backLabel="Back to Workspace" tabs={TABS}
       statusPill={
         <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md"
           style={{ background: `${meta.color}22`, color: meta.color }}>{meta.label}</span>
@@ -192,8 +192,8 @@ function OperatorHome() {
   const { orders } = useOrders()
   const navigate = useNavigate()
   const active = orders.filter(o => o.status !== 'delivered' && nextRoleFor(o))
-  const actionable = active.filter(o => o.assignedTo === 'operator')
-  const awaiting   = active.filter(o => o.workflow?.singleSeating && o.assignedTo !== 'operator')
+  const actionable = active.filter(o => o.assignedTo === 'user')
+  const awaiting   = active.filter(o => o.workflow?.singleSeating && o.assignedTo !== 'user')
   const byStage = (r) => actionable.filter(o => nextRoleFor(o) === r).length
 
   return (
@@ -225,7 +225,7 @@ function OperatorHome() {
                 style={{ background: 'rgba(18,40,76,0.03)', border: '1px solid rgba(36,65,229,0.08)' }}
                 onMouseOver={e => e.currentTarget.style.borderColor = `${s.color}55`}
                 onMouseOut={e => e.currentTarget.style.borderColor = 'rgba(36,65,229,0.08)'}
-                onClick={() => navigate(`/operator/orders/${o.id}`)}>
+                onClick={() => navigate(`/user/orders/${o.id}`)}>
                 <div className="w-2 h-10 rounded-full flex-shrink-0" style={{ background: s.color }} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">

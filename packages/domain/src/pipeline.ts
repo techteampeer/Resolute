@@ -11,9 +11,9 @@
 export type StageRole = 'screener' | 'examiner' | 'typer' | 'delivery'
 
 // Who an order can be assigned to: a pipeline stage, the Admin approval queue,
-// the end-to-end single-seating desk ('operator' today; being renamed 'user'),
-// or nobody (completed / unassigned).
-export type Assignee = StageRole | 'admin' | 'operator' | 'user' | null
+// the consolidated end-to-end production desk ('user' — the generalized Single
+// Seating role), or nobody (completed / unassigned).
+export type Assignee = StageRole | 'admin' | 'user' | null
 
 export type Status =
   | 'received' | 'screening' | 'searching' | 'examining'

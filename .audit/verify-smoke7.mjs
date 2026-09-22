@@ -3,7 +3,7 @@ import { browser, login, watchNetwork, shot } from './harness.mjs'
 // seven shells, and hydrateFulfillment touches every fulfillment read.
 const ROLES = [['rajni','admin'],['admin','admin'],['vivek','admin'],['screener','screener'],
                ['examiner','examiner'],['typer','typer'],['delivery','delivery'],
-               ['operator','operator'],['client','client']]
+               ['operator','user'],['client','client']]
 const b = await browser()
 let fails = 0
 for (const [who] of ROLES) {

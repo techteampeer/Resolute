@@ -382,7 +382,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
     const assignedTo = form.assignedTo || null
     // Mirror assignOrder: routing to the Single Seating desk claims the order
     // end-to-end; routing to a stage role releases it back to the pipeline.
-    const workflow = assignedTo === 'operator' ? { ...order.workflow, singleSeating: true }
+    const workflow = assignedTo === 'user' ? { ...order.workflow, singleSeating: true }
       : ['screener', 'examiner', 'typer', 'delivery'].includes(assignedTo) ? { ...order.workflow, singleSeating: false }
       : order.workflow
     onSave({ ...order, ...form, assignedTo, workflow, completed })
@@ -624,7 +624,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                   <option value="examiner">Examiner</option>
                   <option value="typer">Typer</option>
                   <option value="delivery">Delivery</option>
-                  <option value="operator">Single Seating</option>
+                  <option value="user">Single Seating</option>
                 </select>
               </Field>
               <Field label="Status">
@@ -1188,7 +1188,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                   <td style={{ padding:'10px 16px', fontSize:12, whiteSpace:'nowrap',
                     color: o.assignedTo ? Q.text : Q.faint, textTransform:'capitalize' }}>
                     {o.assignedTo
-                      ? `${o.assignedTo === 'operator' ? 'single seating' : o.assignedTo}${o[o.assignedTo] ? ` · ${o[o.assignedTo]}` : ''}`
+                      ? `${o.assignedTo === 'user' ? 'single seating' : o.assignedTo}${o[o.assignedTo] ? ` · ${o[o.assignedTo]}` : ''}`
                       : '—'}
                   </td>
                   <td style={{ padding:'10px 16px', fontSize:12, whiteSpace:'nowrap',
@@ -1396,7 +1396,7 @@ function AdminOrders() {
 // Admin User Management (CRUD) — live users via the service-role serverless
 // endpoint (/api/admin/users) when Supabase is configured; falls back to the
 // read-only mock roster otherwise (e.g. local mock mode / no serverless).
-const USER_ROLES = ['admin', 'screener', 'examiner', 'typer', 'delivery', 'client', 'operator']
+const USER_ROLES = ['admin', 'screener', 'examiner', 'typer', 'delivery', 'client', 'user']
 
 async function usersApi(method, body) {
   const { data: { session } = {} } = await supabase.auth.getSession()

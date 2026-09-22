@@ -131,7 +131,7 @@ export const factsFor = (key, p = {}, role) => {
 // route that does not exist — including order.assigned, the one type whose
 // entire audience is those four desks.
 const ORDER_SEGMENT = {
-  admin: 'orders', client: 'orders', operator: 'orders',
+  admin: 'orders', client: 'orders', user: 'orders',
   screener: 'order', examiner: 'order', typer: 'order', delivery: 'order',
 }
 export const linkFor = (p = {}, baseUrl, role = 'admin') => {

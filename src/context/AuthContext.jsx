@@ -29,7 +29,7 @@ const MOCK_USERS = {
   'typer@resolute.com':     { password: 'typer123',     role: 'typer',    name: 'Priya Nair',    avatar: 'PN' },
   'delivery@resolute.com':  { password: 'delivery123',  role: 'delivery', name: 'Morgan Davis',  avatar: 'MD' },
   'client@resolute.com':    { password: 'client123',    role: 'client',   name: 'Taylor Brooks', avatar: 'TB', clientCode: 'CL01' },
-  'operator@resolute.com':  { password: 'operator123',  role: 'operator', name: 'Jordan Blake',   avatar: 'JB' },
+  'operator@resolute.com':  { password: 'operator123',  role: 'user',     name: 'Jordan Blake',   avatar: 'JB' },
 }
 
 export function AuthProvider({ children }) {

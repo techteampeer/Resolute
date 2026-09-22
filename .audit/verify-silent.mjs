@@ -11,7 +11,7 @@ const { page, ctx, errors } = await login(b,'operator')
 await page.waitForTimeout(1500)
 // deep-link straight to the fulfillment form for a foreign order (works now that
 // the session survives a direct navigation)
-await page.goto(`http://127.0.0.1:5173/operator/order/${foreign}`, { waitUntil:'domcontentloaded' })
+await page.goto(`http://127.0.0.1:5173/user/order/${foreign}`, { waitUntil:'domcontentloaded' })
 await page.waitForTimeout(3000)
 console.log('url:', page.url(), '| body chars:', (await page.locator('body').innerText()).length)
 // type into the form -> autosave fires -> RLS refuses it

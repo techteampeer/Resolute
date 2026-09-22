@@ -13,7 +13,7 @@ const ROLES = [
   { key: 'examiner', label: 'Examiner', icon: FileSearch,  color: '#a16207', desc: 'Examine title documents',    demo: 'examiner@resolute.com', pass: 'examiner123' },
   { key: 'typer',    label: 'Typer',    icon: Keyboard,    color: '#0e7490', desc: 'Type final reports',         demo: 'typer@resolute.com',    pass: 'typer123'    },
   { key: 'delivery', label: 'Delivery', icon: Truck,       color: '#b45309', desc: 'Deliver completed searches', demo: 'delivery@resolute.com', pass: 'delivery123' },
-  { key: 'operator', label: 'Single Seating', icon: Users, color: '#2441E5', desc: 'All stages · admin approved', demo: 'operator@resolute.com', pass: 'operator123' },
+  { key: 'user', label: 'Single Seating', icon: Users, color: '#2441E5', desc: 'All stages · admin approved', demo: 'operator@resolute.com', pass: 'operator123' },
   // Client is intentionally excluded — clients sign in at /login (their own
   // entry), never the staff picker.
 ]

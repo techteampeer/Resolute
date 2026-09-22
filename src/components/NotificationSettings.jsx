@@ -257,7 +257,7 @@ const MOCK_TYPES = [
   { key: 'order.new', label: 'New order placed', sort_order: 10, default_mode: 'immediate', default_roles: ['admin'],
     description: 'A client submitted a new order. It is parked with Admin for confirmation.' },
   { key: 'order.assigned', label: 'Work assigned to you', sort_order: 15, default_mode: 'immediate',
-    default_roles: ['screener', 'examiner', 'typer', 'delivery', 'operator'],
+    default_roles: ['screener', 'examiner', 'typer', 'delivery', 'user'],
     description: 'Admin assigned an order to your desk. Routed to the role that received it, not to Admin.' },
   { key: 'order.progress', label: 'Stage completed', sort_order: 20, default_mode: 'digest', default_roles: ['admin'],
     description: 'A production role finished its stage and handed the order on.' },

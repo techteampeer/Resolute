@@ -101,7 +101,7 @@ from (values
   ('typer@resolute.com',    'typer123',    'Priya Nair',    'typer'),
   ('delivery@resolute.com', 'delivery123', 'Morgan Davis',  'delivery'),
   ('client@resolute.com',   'client123',   'Taylor Brooks', 'client'),
-  ('operator@resolute.com', 'operator123', 'Jordan Blake',  'operator')
+  ('operator@resolute.com', 'operator123', 'Jordan Blake',  'user')
 ) as d(email, pass, name, role)
 where not exists (select 1 from auth.users u where u.email = d.email);
 
@@ -136,7 +136,7 @@ from (values
   ('typer@resolute.com',    'typer'),
   ('delivery@resolute.com', 'delivery'),
   ('client@resolute.com',   'client'),
-  ('operator@resolute.com', 'operator')
+  ('operator@resolute.com', 'user')
 ) as d(email, role)
 where p.email = d.email;
 

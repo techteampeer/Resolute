@@ -78,8 +78,8 @@ export default function App() {
           <Route path="/client/*" element={
             <ProtectedRoute allowedRole="client"><ClientDashboard /></ProtectedRoute>
           } />
-          <Route path="/operator/*" element={
-            <ProtectedRoute allowedRole="operator"><OperatorDashboard /></ProtectedRoute>
+          <Route path="/user/*" element={
+            <ProtectedRoute allowedRole="user"><OperatorDashboard /></ProtectedRoute>
           } />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

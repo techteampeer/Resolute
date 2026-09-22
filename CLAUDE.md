@@ -49,7 +49,8 @@ Verify every new feature against these constraints before implementing.
   role (`statusForRole`).
 - Between stages, orders park with Admin for approval
   (`returnToAdmin` in `src/context/OrderContext.jsx`, `assignedTo: 'admin'`).
-- **Single Seating** desk (role key `operator`): works orders end-to-end, but
+- **Single Seating** desk (role key `user` — the consolidated production role;
+  renamed from `operator`, see docs/adr/0001): works orders end-to-end, but
   only orders Admin explicitly assigns to it (`workflow.singleSeating`), with
   Admin approval after every phase.
 - Client identities: non-super-admins see client codes, not names

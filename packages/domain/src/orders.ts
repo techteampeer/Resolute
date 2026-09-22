@@ -12,12 +12,12 @@ const STAGES: string[] = ['screener', 'examiner', 'typer', 'delivery']
 
 export interface AssignParams { queue: string; personName?: string }
 
-// Admin routes an order to a queue. Routing to the single-seating desk
-// ('operator') claims it end-to-end; routing to a stage role releases it back
-// into the pipeline. Status follows the owning role.
+// Admin routes an order to a queue. Routing to the consolidated production desk
+// ('user') claims it end-to-end (single seating); routing to a stage role
+// releases it back into the pipeline. Status follows the owning role.
 export function applyAssign(order: Order, { queue, personName }: AssignParams): Order {
   const next: Order = { ...order, assignedTo: queue }
-  if (queue === 'operator') next.workflow = { ...order.workflow, singleSeating: true }
+  if (queue === 'user') next.workflow = { ...order.workflow, singleSeating: true }
   else if (STAGES.includes(queue)) next.workflow = { ...order.workflow, singleSeating: false }
   if (personName) next[queue] = personName
   next.status = statusForRole((STAGES.includes(queue) ? (queue as StageRole) : nextRoleFor(order)))
