@@ -1,10 +1,10 @@
 import { browser, login, sqlJson } from './harness.mjs'
-const SEG = { admin:'orders', client:'orders', operator:'orders', screener:'order', examiner:'order', typer:'order', delivery:'order' }
+const SEG = { admin:'orders', client:'orders', user:'orders', screener:'order', examiner:'order', typer:'order', delivery:'order' }
 const b = await browser()
 const staffOrder = 'RTS-10048'
 const clientOrder = (await sqlJson("select o.id from orders o join clients c on c.code=o.client_code join profiles p on p.client_code=c.code where p.email='client@resolute.com' limit 1"))[0]?.id
 console.log('client-visible order:', clientOrder)
-for (const [who, role] of [['rajni','admin'],['screener','screener'],['examiner','examiner'],['typer','typer'],['delivery','delivery'],['operator','operator'],['client','client']]) {
+for (const [who, role] of [['rajni','admin'],['screener','screener'],['examiner','examiner'],['typer','typer'],['delivery','delivery'],['operator','user'],['client','client']]) {
   const id = role === 'client' ? clientOrder : staffOrder
   const path = `/${role}/${SEG[role]}/${id}`
   const { page, ctx, errors } = await login(b, who)

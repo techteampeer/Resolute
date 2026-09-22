@@ -3,7 +3,7 @@ const b = await browser()
 const rows = () => sqlJson("select p.email, np.type_key, np.mode from notification_preferences np join profiles p on p.id=np.profile_id order by p.email, np.type_key")
 console.log('preference rows before:', JSON.stringify(await rows()))
 
-for (const [who, role] of [['rajni','admin'],['screener','screener'],['examiner','examiner'],['typer','typer'],['delivery','delivery'],['operator','operator'],['client','client']]) {
+for (const [who, role] of [['rajni','admin'],['screener','screener'],['examiner','examiner'],['typer','typer'],['delivery','delivery'],['operator','user'],['client','client']]) {
   const { page, ctx, errors } = await login(b, who)
   await page.waitForTimeout(1400)
   await page.goto(`http://127.0.0.1:5173/${role}/notifications`, { waitUntil: 'domcontentloaded' })
