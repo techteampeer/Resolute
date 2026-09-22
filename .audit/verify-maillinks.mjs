@@ -1,5 +1,5 @@
 import { browser, login, sqlJson } from './harness.mjs'
-const SEG = { admin:'orders', client:'orders', operator:'orders', screener:'order', examiner:'order', typer:'order', delivery:'order' }
+const SEG = { admin:'orders', client:'orders', user:'orders', screener:'order', examiner:'order', typer:'order', delivery:'order' }
 const b = await browser()
 const staffOrder = 'RTS-10048'
 const clientOrder = (await sqlJson("select o.id from orders o join clients c on c.code=o.client_code join profiles p on p.client_code=c.code where p.email='client@resolute.com' limit 1"))[0]?.id
