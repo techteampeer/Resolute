@@ -107,9 +107,9 @@ function ScreenerOrderPage() {
         {intake && (
           <Panel title="Client intake">
             <div className="text-sm space-y-1.5">
-              {[['Property', intake.propertyAddress], ['Parcel / APN', intake.parcelNumberAPN],
+              {[['Property', intake.propertyAddress], ['Property type', intake.propertyType], ['Parcel / APN', intake.parcelNumberAPN],
                 ['Borrower', intake.borrowerName], ['Buyer', intake.buyer], ['Seller', intake.seller],
-                ['Special instructions', intake.specialInstructions]]
+                ['Custom search', intake.customSearch], ['Special instructions', intake.specialInstructions]]
                 .filter(([, v]) => v).map(([k, v]) => (
                 <div key={k}><span style={{ color:'#5C6E8C' }}>{k}: </span>
                   <span className="font-medium" style={{ color:'#12284C' }}>{v}</span></div>

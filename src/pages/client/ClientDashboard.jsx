@@ -362,6 +362,7 @@ function OrderDetailPage() {
           <div className="glass-card p-4 space-y-1.5 text-sm">
             <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Order details</div>
             <Row k="Property" v={intake?.propertyAddress} />
+            <Row k="Property type" v={intake?.propertyType} />
             <Row k="Parcel / APN" v={intake?.parcelNumberAPN} />
             <Row k="Your file #" v={order.clientFileNo} />
             <Row k="Buyer" v={intake?.buyer} />
@@ -490,8 +491,14 @@ function PlaceOrderPage() {
   // prefill from the signed-in profile (still editable per order).
   const [first = '', ...rest] = (user?.name || '').split(' ')
   const [form, setForm] = useState({
-    searchType:'', state:'', county:'', address:'', city:'', zip:'', parcelId:'', clientFileNo:'',
-    buyerFirst:'', buyerLast:'', borrowerFirst:'', borrowerLast:'', sellerFirst:'', sellerLast:'',
+    searchType:'', customSearch:'', state:'', county:'', address:'', city:'', zip:'', parcelId:'', clientFileNo:'',
+    propertyType:'', propertyTypeOther:'',
+    // Parties are a single-name list you can extend (add more buyers/sellers),
+    // rather than fixed first/last fields.
+    parties: [
+      { id: uid(), role:'Buyer',  name:'' },
+      { id: uid(), role:'Seller', name:'' },
+    ],
     priority:'normal',
     firstName: first, lastName: rest.join(' '),
     email: user?.email || '',
@@ -502,11 +509,17 @@ function PlaceOrderPage() {
   const [stepErr, setStepErr] = useState(false)
   const [submitErr, setSubmitErr] = useState('')
   const set = (k,v) => setForm(f => ({ ...f, [k]:v }))
+  // Party list helpers (single name field + role; add/remove rows).
+  const addParty = (role = 'Buyer') => setForm(f => ({ ...f, parties: [...f.parties, { id: uid(), role, name:'' }] }))
+  const setParty = (id, patch) => setForm(f => ({ ...f, parties: f.parties.map(p => p.id === id ? { ...p, ...patch } : p) }))
+  const removeParty = (id) => setForm(f => ({ ...f, parties: f.parties.filter(p => p.id !== id) }))
   // Required-field gate per step. The wizard unmounts prior steps, so relying on
   // HTML5 `required` at final submit let empty State/County slip through — guard
   // each step explicitly before advancing.
   const stepValid = (s) => {
     if (s === 1) return !!(form.state.trim() && form.county.trim())
+    // A product or a custom search must be chosen (the "Titled Products *" gate).
+    if (s === 2) return !!(form.searchType.trim() || form.customSearch.trim())
     if (s === 3) return !!(form.firstName.trim() && form.lastName.trim() && /\S+@\S+\.\S+/.test(form.email))
     return true
   }
@@ -516,12 +529,20 @@ function PlaceOrderPage() {
     setBusy(true)
     setSubmitErr('')
     try {
-      const fullName = (a, b) => `${a || ''} ${b || ''}`.trim()
-      const buyer = fullName(form.buyerFirst, form.buyerLast)
-      const borrower = fullName(form.borrowerFirst, form.borrowerLast)
-      const seller = fullName(form.sellerFirst, form.sellerLast)
+      // The party list is the source of truth; keep buyer/seller/borrower as the
+      // first named party of each role so existing order-detail views still read.
+      const parties = form.parties.map(p => ({ role: p.role, name: (p.name || '').trim() })).filter(p => p.name)
+      // Roll every name of a role into the buyer/seller/borrower fields the
+      // existing order views render, so added parties are visible to staff, not
+      // just the first one. The structured list stays on intake.parties.
+      const namesByRole = (role) => parties.filter(p => p.role === role).map(p => p.name).join(', ')
+      const buyer = namesByRole('Buyer'), seller = namesByRole('Seller'), borrower = namesByRole('Borrower')
+      const propertyType = form.propertyType === 'Other' ? (form.propertyTypeOther.trim() || 'Other') : form.propertyType
+      const customSearch = form.customSearch.trim()
+      // A custom (non-catalogue) search becomes the order type when no product is picked.
+      const type = form.searchType || customSearch || 'Full Search'
       const order = await createOrder({
-        state: form.state, county: form.county, type: form.searchType || 'Full Search',
+        state: form.state, county: form.county, type,
         priority: form.priority,
         clientFileNo: form.clientFileNo,
         // Attribute to the signed-in client so the order is trackable in My
@@ -531,7 +552,8 @@ function PlaceOrderPage() {
         intake: {
           source: 'web', propertyAddress: [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', '),
           parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
-          orderType: form.searchType, from: `${form.firstName} ${form.lastName} <${form.email}>`.trim(),
+          parties, propertyType: propertyType || null, customSearch: customSearch || null,
+          orderType: type, from: `${form.firstName} ${form.lastName} <${form.email}>`.trim(),
           company: form.company, role: form.role, specialInstructions: form.notes,
         },
       })
@@ -588,7 +610,7 @@ function PlaceOrderPage() {
       </div>
       <h2 className="text-2xl font-bold mb-2" style={{ color:'#12284C' }}>Order Submitted!</h2>
       <p className="text-sm mb-1" style={{ color:'#3D5171' }}>
-        Assigned <span className="font-mono font-bold" style={{ color:ROLE_COLOR }}>{createdId || 'RTS-10049'}</span>
+        Resolute file # <span className="font-mono font-bold" style={{ color:ROLE_COLOR }}>{createdId || 'RTS-10049'}</span>
       </p>
       <p className="text-xs mb-8" style={{ color:'#5C6E8C' }}>
         We'll email a quote to {form.email || 'your email'} within 1 business hour.
@@ -674,19 +696,42 @@ function PlaceOrderPage() {
                   </div>
                 </div>
                 <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Property Type <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    {['Residential','Commercial','Vacant Land','Agriculture','Other'].map(pt => (
+                      <button key={pt} type="button" onClick={() => set('propertyType', pt)}
+                        className="py-2 px-2 rounded-lg text-xs font-medium border transition-all"
+                        style={form.propertyType === pt
+                          ? { border:`1px solid ${ROLE_COLOR}66`, background:`${ROLE_COLOR}14`, color:'#12284C' }
+                          : { border:'1px solid #DDE3EC', background:'#fff', color:'#5C6E8C' }}>
+                        {pt}
+                      </button>
+                    ))}
+                  </div>
+                  {form.propertyType === 'Other' && (
+                    <input value={form.propertyTypeOther} onChange={e=>set('propertyTypeOther', e.target.value)}
+                      placeholder="Describe the property type" className="input-field text-sm mt-2"/>
+                  )}
+                </div>
+                <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Parties <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
                   <div className="space-y-2">
-                    {[
-                      { label:'Buyer',    first:'buyerFirst',    last:'buyerLast' },
-                      { label:'Borrower', first:'borrowerFirst', last:'borrowerLast' },
-                      { label:'Seller',   first:'sellerFirst',   last:'sellerLast' },
-                    ].map(p => (
-                      <div key={p.label} className="grid grid-cols-1 sm:grid-cols-[80px,1fr,1fr] gap-2 sm:items-center">
-                        <span className="text-xs font-medium" style={{ color:'#3D5171' }}>{p.label}</span>
-                        <input value={form[p.first]} onChange={e=>set(p.first,e.target.value)} placeholder="First Name" className="input-field text-sm"/>
-                        <input value={form[p.last]}  onChange={e=>set(p.last,e.target.value)}  placeholder="Last Name"  className="input-field text-sm"/>
+                    {form.parties.map(p => (
+                      <div key={p.id} className="grid grid-cols-[104px,1fr,auto] gap-2 items-center">
+                        <select value={p.role} onChange={e=>setParty(p.id, { role: e.target.value })} className="input-field text-sm">
+                          {['Buyer','Seller','Borrower'].map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                        <input value={p.name} onChange={e=>setParty(p.id, { name: e.target.value })} placeholder="Full name" className="input-field text-sm"/>
+                        <button type="button" onClick={()=>removeParty(p.id)} disabled={form.parties.length <= 1}
+                          title="Remove" className="p-2" style={{ color: form.parties.length <= 1 ? '#C7CFDB' : '#dc2626' }}>
+                          <Trash2 className="w-4 h-4"/>
+                        </button>
                       </div>
                     ))}
+                  </div>
+                  <div className="flex gap-3 mt-2">
+                    <button type="button" onClick={()=>addParty('Buyer')} className="text-xs font-semibold flex items-center gap-1" style={{ color:ROLE_COLOR }}><PlusCircle className="w-3.5 h-3.5"/> Add buyer</button>
+                    <button type="button" onClick={()=>addParty('Seller')} className="text-xs font-semibold flex items-center gap-1" style={{ color:ROLE_COLOR }}><PlusCircle className="w-3.5 h-3.5"/> Add seller</button>
                   </div>
                 </div>
               </div>
@@ -715,6 +760,12 @@ function PlaceOrderPage() {
                       )
                     })}
                   </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Custom search <span style={{textTransform:'none',opacity:.6}}>(not in the list above?)</span></label>
+                  <input value={form.customSearch} onChange={e=>set('customSearch', e.target.value)}
+                    placeholder="e.g. Mineral rights search, Foreclosure guarantee…" className="input-field text-sm"/>
+                  <div className="text-[11px] mt-1" style={{ color:'#9AA8BF' }}>Describe a search outside our standard products and we’ll quote it.</div>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color:'#5C6E8C' }}>Turnaround</label>
@@ -772,7 +823,10 @@ function PlaceOrderPage() {
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Review & Submit</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[['State',stateName(form.state)||'—'],['County',form.county||'—'],['Search Type',form.searchType||'—'],
+                  {[['State',stateName(form.state)||'—'],['County',form.county||'—'],
+                    ['Search Type',form.searchType || form.customSearch || '—'],
+                    ['Property Type',(form.propertyType==='Other' ? (form.propertyTypeOther.trim()||'Other') : form.propertyType) || '—'],
+                    ['Parties', form.parties.filter(p=>p.name.trim()).length ? `${form.parties.filter(p=>p.name.trim()).length} listed` : '—'],
                     ['Your file #',form.clientFileNo||'—'],
                     ['Priority',form.priority.toUpperCase()],['Contact',`${form.firstName} ${form.lastName}`.trim()||'—'],['Email',form.email||'—']].map(([k,v]) => (
                     <div key={k} className="glass p-3 rounded-xl">
@@ -794,6 +848,11 @@ function PlaceOrderPage() {
                     Rush order selected — additional fees apply. Delivery within 24 hours.
                   </div>
                 )}
+                <div className="flex items-start gap-2 p-3 rounded-xl text-[12px] leading-snug"
+                  style={{ background:'rgba(18,40,76,0.04)', border:'1px solid rgba(18,40,76,0.10)', color:'#3D5171' }}>
+                  <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color:'#15803d' }} />
+                  <span><strong>Free cancellation.</strong> There is no charge to cancel an order any time before we begin the title search (screening). Once work has started, a cancellation becomes a request our team reviews.</span>
+                </div>
               </div>
             )}
             {stepErr && !stepValid(step) && (
