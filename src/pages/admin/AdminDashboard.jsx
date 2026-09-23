@@ -594,6 +594,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 16px', fontSize:13 }}>
                   <Detail label="Property" value={intake.propertyAddress} wide />
                   <Detail label="County / State" value={[order.county, order.state].filter(Boolean).join(', ')} />
+                  <Detail label="Property type" value={intake.propertyType} />
                   <Detail label="Parcel / APN" value={intake.parcelNumberAPN} />
                   <Detail label="Client file #" value={order.clientFileNo} />
                   <Detail label="Buyer" value={intake.buyer} />

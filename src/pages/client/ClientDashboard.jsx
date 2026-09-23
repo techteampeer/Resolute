@@ -362,6 +362,7 @@ function OrderDetailPage() {
           <div className="glass-card p-4 space-y-1.5 text-sm">
             <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Order details</div>
             <Row k="Property" v={intake?.propertyAddress} />
+            <Row k="Property type" v={intake?.propertyType} />
             <Row k="Parcel / APN" v={intake?.parcelNumberAPN} />
             <Row k="Your file #" v={order.clientFileNo} />
             <Row k="Buyer" v={intake?.buyer} />
@@ -517,6 +518,8 @@ function PlaceOrderPage() {
   // each step explicitly before advancing.
   const stepValid = (s) => {
     if (s === 1) return !!(form.state.trim() && form.county.trim())
+    // A product or a custom search must be chosen (the "Titled Products *" gate).
+    if (s === 2) return !!(form.searchType.trim() || form.customSearch.trim())
     if (s === 3) return !!(form.firstName.trim() && form.lastName.trim() && /\S+@\S+\.\S+/.test(form.email))
     return true
   }
@@ -529,8 +532,11 @@ function PlaceOrderPage() {
       // The party list is the source of truth; keep buyer/seller/borrower as the
       // first named party of each role so existing order-detail views still read.
       const parties = form.parties.map(p => ({ role: p.role, name: (p.name || '').trim() })).filter(p => p.name)
-      const nameByRole = (role) => parties.find(p => p.role === role)?.name || ''
-      const buyer = nameByRole('Buyer'), seller = nameByRole('Seller'), borrower = nameByRole('Borrower')
+      // Roll every name of a role into the buyer/seller/borrower fields the
+      // existing order views render, so added parties are visible to staff, not
+      // just the first one. The structured list stays on intake.parties.
+      const namesByRole = (role) => parties.filter(p => p.role === role).map(p => p.name).join(', ')
+      const buyer = namesByRole('Buyer'), seller = namesByRole('Seller'), borrower = namesByRole('Borrower')
       const propertyType = form.propertyType === 'Other' ? (form.propertyTypeOther.trim() || 'Other') : form.propertyType
       const customSearch = form.customSearch.trim()
       // A custom (non-catalogue) search becomes the order type when no product is picked.
@@ -819,7 +825,7 @@ function PlaceOrderPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[['State',stateName(form.state)||'—'],['County',form.county||'—'],
                     ['Search Type',form.searchType || form.customSearch || '—'],
-                    ['Property Type',(form.propertyType==='Other' ? (form.propertyTypeOther||'Other') : form.propertyType) || '—'],
+                    ['Property Type',(form.propertyType==='Other' ? (form.propertyTypeOther.trim()||'Other') : form.propertyType) || '—'],
                     ['Parties', form.parties.filter(p=>p.name.trim()).length ? `${form.parties.filter(p=>p.name.trim()).length} listed` : '—'],
                     ['Your file #',form.clientFileNo||'—'],
                     ['Priority',form.priority.toUpperCase()],['Contact',`${form.firstName} ${form.lastName}`.trim()||'—'],['Email',form.email||'—']].map(([k,v]) => (
