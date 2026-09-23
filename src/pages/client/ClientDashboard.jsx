@@ -503,7 +503,9 @@ function PlaceOrderPage() {
   // BUG_008: a registered client shouldn't retype contact details every order —
   // prefill from the signed-in profile (still editable per order).
   const [first = '', ...rest] = (user?.name || '').split(' ')
-  const [form, setForm] = useState({
+  // A fresh blank form (contact prefilled from the profile). Used for the initial
+  // state and to fully reset on "Place Another" — new party ids each time.
+  const makeInitialForm = () => ({
     searchType:'', customSearch:'', state:'', county:'', address:'', city:'', zip:'', parcelId:'', clientFileNo:'',
     propertyType:'', propertyTypeOther:'',
     // Parties are a single-name list you can extend (add more buyers/sellers),
@@ -518,6 +520,7 @@ function PlaceOrderPage() {
     company: clientName(user?.clientCode) || '',
     role:'', notes:''
   })
+  const [form, setForm] = useState(makeInitialForm)
   const [submitted, setSubmitted] = useState(false)
   const [stepErr, setStepErr] = useState(false)
   const [submitErr, setSubmitErr] = useState('')
@@ -629,7 +632,7 @@ function PlaceOrderPage() {
         We'll email a quote to {form.email || 'your email'} within 1 business hour.
       </p>
       <div className="flex gap-3">
-        <button onClick={() => { setSubmitted(false); setStep(1); setCreatedId(null) }} className="btn-primary">Place Another</button>
+        <button onClick={() => { setSubmitted(false); setStep(1); setCreatedId(null); setForm(makeInitialForm()); setAttachments([]) }} className="btn-primary">Place Another</button>
         <button onClick={() => navigate('/client/orders')} className="btn-secondary">Track Order</button>
       </div>
     </motion.div>
@@ -879,7 +882,9 @@ function PlaceOrderPage() {
             )}
             {stepErr && !stepValid(step) && (
               <div className="mt-4 text-[12px] px-3 py-2 rounded-lg" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
-                {step===1 ? 'Property State and County are required.' : 'First name, last name, and a valid email are required.'}
+                {step===1 ? 'Property State and County are required.'
+                  : step===2 ? 'Choose a product or describe a custom search.'
+                  : 'First name, last name, and a valid email are required.'}
               </div>
             )}
             {submitErr && (
