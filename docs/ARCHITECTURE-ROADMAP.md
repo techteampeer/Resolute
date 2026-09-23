@@ -198,8 +198,9 @@ the `createOrder` domain seam and `workflow.intake` JSONB (no migration for P-A)
       manual entry; custom (non-catalogue) search field; free-cancellation clause
       on the review step; Resolute file # surfaced on confirmation. Multiple
       attachments and auto RTS file numbers were already supported. **(done)**
-- [ ] **P-B — county dropdown** cascading from state (adds a compact
-      `state→county` dataset; also cleans up by-county reporting).
+- [x] **P-B — county dropdown** cascading from state: `public/us-counties.json`
+      (us-atlas, 3,136 counties, 32 KB, fetched on demand) + a datalist-backed
+      county field; regen via `scripts/gen-counties.mjs`. **(done)**
 - [ ] **P-C — bulk / Excel import**: multiple properties per order + `.xlsx`/`.csv`
       import via SheetJS → parse → validate → create. Needs the parser dep and a
       one-order-per-property vs one-order-many-properties decision.

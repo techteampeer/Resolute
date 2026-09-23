@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Routes, Route, useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Layout from '../../components/Layout'
@@ -479,18 +479,33 @@ const TURNAROUND = [
   { key:'rush',   label:'Rush — 24 hrs',     fee:50, desc:'Priority processing, next business day' },
 ]
 
+// County list per state, served from public/ (us-atlas, ~32 KB) and fetched once
+// on demand so it never weighs down the initial bundle. Module-level cache keeps
+// it across wizard remounts. Absent/failed load → the county field is a plain
+// text input (still works), so it degrades gracefully offline.
+let _countiesCache = null
 function PlaceOrderPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { createOrder, updateOrder } = useOrders()
   const [step, setStep] = useState(1)
+  const [counties, setCounties] = useState(_countiesCache)
+  useEffect(() => {
+    if (_countiesCache) return
+    fetch(`${import.meta.env.BASE_URL}us-counties.json`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) { _countiesCache = d; setCounties(d) } })
+      .catch(() => {})
+  }, [])
   const [createdId, setCreatedId] = useState(null)
   const [attachments, setAttachments] = useState([])   // BUG_004: staged reference docs
   const [busy, setBusy] = useState(false)
   // BUG_008: a registered client shouldn't retype contact details every order —
   // prefill from the signed-in profile (still editable per order).
   const [first = '', ...rest] = (user?.name || '').split(' ')
-  const [form, setForm] = useState({
+  // A fresh blank form (contact prefilled from the profile). Used for the initial
+  // state and to fully reset on "Place Another" — new party ids each time.
+  const makeInitialForm = () => ({
     searchType:'', customSearch:'', state:'', county:'', address:'', city:'', zip:'', parcelId:'', clientFileNo:'',
     propertyType:'', propertyTypeOther:'',
     // Parties are a single-name list you can extend (add more buyers/sellers),
@@ -505,6 +520,7 @@ function PlaceOrderPage() {
     company: clientName(user?.clientCode) || '',
     role:'', notes:''
   })
+  const [form, setForm] = useState(makeInitialForm)
   const [submitted, setSubmitted] = useState(false)
   const [stepErr, setStepErr] = useState(false)
   const [submitErr, setSubmitErr] = useState('')
@@ -616,7 +632,7 @@ function PlaceOrderPage() {
         We'll email a quote to {form.email || 'your email'} within 1 business hour.
       </p>
       <div className="flex gap-3">
-        <button onClick={() => { setSubmitted(false); setStep(1); setCreatedId(null) }} className="btn-primary">Place Another</button>
+        <button onClick={() => { setSubmitted(false); setStep(1); setCreatedId(null); setForm(makeInitialForm()); setAttachments([]) }} className="btn-primary">Place Another</button>
         <button onClick={() => navigate('/client/orders')} className="btn-secondary">Track Order</button>
       </div>
     </motion.div>
@@ -661,14 +677,23 @@ function PlaceOrderPage() {
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Property Information</h2>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Property State *</label>
-                  <select value={form.state} onChange={e=>set('state',e.target.value)} className="input-field text-sm" required>
+                  <select value={form.state} onChange={e=>{ set('state', e.target.value); set('county', '') }} className="input-field text-sm" required>
                     <option value="">Select state…</option>
                     {US_STATES.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>County *</label>
-                  <input value={form.county} onChange={e=>set('county',e.target.value)} placeholder="e.g. Miami-Dade" className="input-field text-sm" required/>
+                  <input value={form.county} onChange={e=>set('county',e.target.value)}
+                    list="county-options" disabled={!form.state}
+                    placeholder={form.state ? 'Start typing or pick a county…' : 'Select a state first'}
+                    className="input-field text-sm" required/>
+                  <datalist id="county-options">
+                    {(counties?.[form.state] || []).map(c => <option key={c} value={c} />)}
+                  </datalist>
+                  {form.state && counties?.[form.state] && (
+                    <div className="text-[11px] mt-1" style={{ color:'#9AA8BF' }}>{counties[form.state].length} counties · type to filter</div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Property Address</label>
@@ -857,7 +882,9 @@ function PlaceOrderPage() {
             )}
             {stepErr && !stepValid(step) && (
               <div className="mt-4 text-[12px] px-3 py-2 rounded-lg" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
-                {step===1 ? 'Property State and County are required.' : 'First name, last name, and a valid email are required.'}
+                {step===1 ? 'Property State and County are required.'
+                  : step===2 ? 'Choose a product or describe a custom search.'
+                  : 'First name, last name, and a valid email are required.'}
               </div>
             )}
             {submitErr && (
