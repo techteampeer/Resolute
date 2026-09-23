@@ -190,6 +190,20 @@ Priorities: **P0** safety-critical / now → **P3** later.
 
 ---
 
+### P. Client order intake (Place-Order form) — P1, client-side
+Business-requested form features. Independent of D (staff-side); routed through
+the `createOrder` domain seam and `workflow.intake` JSONB (no migration for P-A).
+- [x] **P-A — form fields** (this PR): party fields → single name + add
+      buyers/sellers (`workflow.intake.parties[]`); property type select +
+      manual entry; custom (non-catalogue) search field; free-cancellation clause
+      on the review step; Resolute file # surfaced on confirmation. Multiple
+      attachments and auto RTS file numbers were already supported. **(done)**
+- [ ] **P-B — county dropdown** cascading from state (adds a compact
+      `state→county` dataset; also cleans up by-county reporting).
+- [ ] **P-C — bulk / Excel import**: multiple properties per order + `.xlsx`/`.csv`
+      import via SheetJS → parse → validate → create. Needs the parser dep and a
+      one-order-per-property vs one-order-many-properties decision.
+
 ## Phases
 
 - **Phase 0 — Stabilize & make safe (wks 1–3, P0):** A (F1/F2 + grants),
