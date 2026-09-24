@@ -98,11 +98,13 @@ language plpgsql
 set search_path = public
 as $$
 declare
-  v_seq  text[] := array['screener', 'examiner', 'typer', 'delivery'];
-  v_old  jsonb  := coalesce(old.completed_dates, '{}'::jsonb);
-  v_new  jsonb  := coalesce(new.completed_dates, '{}'::jsonb);
-  v_next text;
-  k      text;
+  v_seq      text[] := array['screener', 'examiner', 'typer', 'delivery'];
+  v_old      jsonb  := coalesce(old.completed_dates, '{}'::jsonb);
+  v_new      jsonb  := coalesce(new.completed_dates, '{}'::jsonb);
+  v_next     text;   -- next stage due on the STORED row (nextRoleFor of old)
+  v_after    text;   -- next stage due on the NEW row (nextRoleFor of new)
+  v_expected text;   -- the status derived from v_after (statusForRole)
+  k          text;
 begin
   -- Only guard direct end-user REST writes; RPCs (owner), service role and
   -- migrations/seed are trusted and pass through.
@@ -163,6 +165,11 @@ begin
     -- would let one user work every phase with no Admin approval between them —
     -- the gate CLAUDE.md requires. (nextRoleFor: the just-stamped stage is v_next.)
     if v_next is not null and (v_new ? v_next) and not (v_old ? v_next) then
+      -- The stamp must be a real ISO date (YYYY-MM-DD), not '' or arbitrary text —
+      -- otherwise a user could "stamp" junk to satisfy the presence checks below.
+      if (v_new ->> v_next) !~ '^\d{4}-\d{2}-\d{2}' then
+        raise exception 'a stage completion date must be a valid date (got %)', coalesce(v_new ->> v_next, 'null');
+      end if;
       if v_next = 'delivery' then
         if new.assigned_to is not null then
           raise exception 'completing delivery clears the desk (assigned_to must be null)';
@@ -187,12 +194,37 @@ begin
       raise exception
         'clearing an order''s desk is only valid on delivery completion (status must be delivered)';
     end if;
-    if not (v_old ->> 'screener' is not null
-            and v_old ->> 'examiner' is not null
-            and v_old ->> 'typer'    is not null) then
-      raise exception
-        'an order can only be completed from the delivery stage — screening, examination and typing must be done first';
+    -- The delivery stage must actually be stamped: without this a user could
+    -- clear the desk with the three prior dates present but never complete
+    -- delivery, leaving nextRoleFor() pointing at a stage on a "delivered" order.
+    if v_new ->> 'delivery' is null then
+      raise exception 'delivery completion must stamp the delivery date in completed_dates';
     end if;
+    -- (screener/examiner/typer are guaranteed present: ordered stamping means the
+    --  delivery date can only have been reached after them.)
+  end if;
+
+  -- 5. Status is DERIVED from the pipeline position (statusForRole · nextRoleFor),
+  --    never set freely: otherwise a pooled user could PATCH status='delivered'
+  --    while keeping the order in the pool (hiding an active order as done), or
+  --    pair a stamp with an unrelated status. It must equal the status of the
+  --    stage the NEW row is waiting on; `completed` is set only once delivered.
+  select s into v_after
+    from unnest(v_seq) with ordinality as t(s, ord)
+   where v_new ->> s is null
+   order by ord limit 1;
+  v_expected := case v_after
+    when 'screener' then 'screening'
+    when 'examiner' then 'examining'
+    when 'typer'    then 'typing'
+    when 'delivery' then 'delivery'
+    else 'delivered'                       -- all four stamped
+  end;
+  if new.status::text is distinct from v_expected then
+    raise exception 'order status is derived from the pipeline (expected %, got %)', v_expected, new.status;
+  end if;
+  if new.completed is not null and new.status::text is distinct from 'delivered' then
+    raise exception 'completed is set only on delivery';
   end if;
 
   return new;

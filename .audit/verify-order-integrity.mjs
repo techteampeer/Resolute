@@ -87,56 +87,57 @@ sql(`delete from orders where id = '${OID}'`)
 // it writes status 'delivered' AND the three earlier stages are already stamped.
 // That stops (a) jumping an early-stage order to done and (b) leaving an
 // unassigned order in an inconsistent state.
-console.log('── D3: terminal transition is delivery-completion only ──')
+console.log('── D3: pipeline state machine is server-authoritative ──')
 const TID = 'RTS-AUDIT-D3'
 const stat = () => sqlJson(`select assigned_to::text a, status::text s from orders where id = '${TID}'`)[0] || {}
-const reset = (dates) => {
+const dates = () => sqlJson(`select completed_dates cd from orders where id = '${TID}'`)[0]?.cd || {}
+const reset = (d, status = 'delivery') => {
   sql(`delete from orders where id = '${TID}'`)
   sql(`insert into orders (id, client_code, state, county, type, status, assigned_to, progress, created, completed_dates)
-       values ('${TID}', ${c1 ? `'${c1}'` : 'null'}, 'FL', 'Test', 'Full Search', 'delivery', 'user', 80, current_date, '${dates}'::jsonb)`)
+       values ('${TID}', ${c1 ? `'${c1}'` : 'null'}, 'FL', 'Test', 'Full Search', '${status}', 'user', 80, current_date, '${d}'::jsonb)`)
 }
 const DELIVERY_READY = '{"screener":"2026-06-01","examiner":"2026-06-02","typer":"2026-06-03"}'
+const P = (body) => as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify(body) })
 
 // A. early stage, nothing done -> jumping straight to delivered is refused
-reset('{}')
-const a3 = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ assigned_to: null, status: 'delivered' }) })
-check('early-stage terminal jump refused', a3.status >= 400, `HTTP ${a3.status}`)
+reset('{}', 'screening')
+check('early-stage terminal jump refused', (await P({ assigned_to: null, status: 'delivered' })).status >= 400)
 check('order still in pool', stat().a === 'user')
 
 // B. delivery-ready, but clearing the desk with a non-delivered status is refused
 reset(DELIVERY_READY)
-const b3 = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ assigned_to: null, status: 'screening' }) })
-check('clear-desk with wrong status refused', b3.status >= 400, `HTTP ${b3.status}`)
+check('clear-desk with wrong status refused', (await P({ assigned_to: null, status: 'screening' })).status >= 400)
 check('order not left unassigned/inconsistent', stat().a === 'user')
 
-// C. delivery-ready + status delivered -> the legitimate completion is allowed
+// B2. delivery-ready + delivered but WITHOUT stamping the delivery date is refused
 reset(DELIVERY_READY)
-const c3 = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ assigned_to: null, status: 'delivered' }) })
+check('completion without a delivery stamp refused', (await P({ assigned_to: null, status: 'delivered' })).status >= 400)
+check('still in pool', stat().a === 'user')
+
+// C. delivery-ready + delivery stamped + delivered -> the legitimate completion
+reset(DELIVERY_READY)
+const c3 = await P({ completed_dates: { screener: '2026-06-01', examiner: '2026-06-02', typer: '2026-06-03', delivery: '2026-06-04' }, assigned_to: null, status: 'delivered', completed: '2026-06-04' })
 check('legitimate delivery completion allowed', c3.status < 400, `HTTP ${c3.status}`)
 check('order delivered + desk cleared', stat().a == null && stat().s === 'delivered', `a=${stat().a} s=${stat().s}`)
 
-// D. completed_dates advances one stage at a time, in order — no back-fill. This
-//    is what makes the terminal check authoritative: a user can't stamp several
-//    stages at once (or out of order) to fake pipeline progress.
-const dates = () => sqlJson(`select completed_dates cd from orders where id = '${TID}'`)[0]?.cd || {}
-sql(`delete from orders where id = '${TID}'`)
-sql(`insert into orders (id, client_code, state, county, type, status, assigned_to, progress, created, completed_dates)
-     values ('${TID}', ${c1 ? `'${c1}'` : 'null'}, 'FL', 'Test', 'Full Search', 'screening', 'user', 20, current_date, '{}'::jsonb)`)
-const back = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ completed_dates: { screener: '2026-06-01', examiner: '2026-06-02', typer: '2026-06-03' } }) })
-check('back-filling multiple stage dates refused', back.status >= 400, `HTTP ${back.status}`)
+// D. completed_dates advances one stage at a time, in order — no back-fill.
+reset('{}', 'screening')
+check('back-filling multiple stage dates refused', (await P({ completed_dates: { screener: '2026-06-01', examiner: '2026-06-02', typer: '2026-06-03' } })).status >= 400)
 check('completed_dates unchanged', Object.keys(dates()).length === 0)
-const skip = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ completed_dates: { examiner: '2026-06-02' } }) })
-check('stamping out of order (skip screener) refused', skip.status >= 400, `HTTP ${skip.status}`)
+check('stamping out of order (skip screener) refused', (await P({ completed_dates: { examiner: '2026-06-02' } })).status >= 400)
+check('junk (non-date) stamp refused', (await P({ completed_dates: { screener: 'soon' }, assigned_to: 'admin', status: 'examining' })).status >= 400)
 // The Admin gate: stamping a non-delivery stage MUST return the order to Admin.
-// Stamping while keeping it on the desk (assigned_to='user') is refused, so a
-// single user can't work every phase without Admin approval between them.
-const nogate = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ completed_dates: { screener: '2026-06-01' } }) })
-check('stamping without returning to Admin refused', nogate.status >= 400, `HTTP ${nogate.status}`)
+check('stamping without returning to Admin refused', (await P({ completed_dates: { screener: '2026-06-01' } })).status >= 400)
 check('screener still unstamped', dates().screener == null)
 // Stamping the current stage AND handing back to Admin is the legitimate move.
-const step = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ completed_dates: { screener: '2026-06-01' }, assigned_to: 'admin', status: 'examining' }) })
+const step = await P({ completed_dates: { screener: '2026-06-01' }, assigned_to: 'admin', status: 'examining' })
 check('stamp + return-to-Admin allowed', step.status < 400, `HTTP ${step.status}`)
-check('screener date now set + parked with Admin', dates().screener != null && stat().a === 'admin')
+check('screener date set + parked with Admin', dates().screener != null && stat().a === 'admin')
+
+// E. status is derived from the pipeline: a pooled user can't set it freely.
+reset('{}', 'screening')
+check('setting status=delivered while in the pool refused', (await P({ status: 'delivered' })).status >= 400)
+check('status unchanged', stat().s === 'screening')
 
 sql(`delete from orders where id = '${TID}'`)
 

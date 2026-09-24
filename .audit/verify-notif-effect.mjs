@@ -18,20 +18,22 @@ console.log('preferences in force:', JSON.stringify(await sqlJson(
 }
 
 // Now the point of the screen: does a preference change what gets queued?
-// typer  order.assigned = off    -> must raise NOTHING for the typer
-// delivery order.assigned = digest -> must be queued with mode 'digest'
-// rajni  order.progress  = off    -> must be skipped for rajni only
+// Post-D3 (ADR 0001) an assignment targets the single `user` pool, so ONE
+// 'assigned to user' event fans out to every production user, honouring each
+// one's own preference. The former stage accounts are all role `user` now:
+//   typer@    order.assigned = off    -> must raise NOTHING for the typer
+//   delivery@ order.assigned = digest -> must be queued with mode 'digest'
+//   screener@ order.assigned untouched-> queued at its default
+//   rajni@    order.progress  = off    -> must be skipped for rajni only
 const ID = (await sqlJson("select id from orders where status='received' limit 1"))[0]?.id
   || (await sqlJson("select id from orders order by id desc limit 1"))[0]?.id
 console.log('\nusing order', ID)
 const before = (await sqlJson("select max(id) m from notification_outbox"))[0].m || 0
 
-// Raise one assignment per desk, and one stage-completion, straight through the
-// same trigger the app uses.
-for (const role of ['screener', 'typer', 'delivery']) {
-  sql(`insert into order_events (order_id, action, type, actor, actor_email, audience)
-       values ('${ID}', 'Admin assigned ${ID} to ${role} · Pref Test', 'status', 'Pref Test', null, 'staff')`)
-}
+// One assignment to the production pool, and one stage-completion, straight
+// through the same trigger the app uses.
+sql(`insert into order_events (order_id, action, type, actor, actor_email, audience)
+     values ('${ID}', 'Admin assigned ${ID} to user · Pref Test', 'status', 'Pref Test', null, 'staff')`)
 sql(`insert into order_events (order_id, action, type, actor, actor_email, audience)
      values ('${ID}', 'Pref Test completed screening on ${ID} → handed on', 'progress', 'Pref Test', null, 'staff')`)
 
