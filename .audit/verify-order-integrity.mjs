@@ -127,9 +127,16 @@ check('back-filling multiple stage dates refused', back.status >= 400, `HTTP ${b
 check('completed_dates unchanged', Object.keys(dates()).length === 0)
 const skip = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ completed_dates: { examiner: '2026-06-02' } }) })
 check('stamping out of order (skip screener) refused', skip.status >= 400, `HTTP ${skip.status}`)
-const step = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ completed_dates: { screener: '2026-06-01' } }) })
-check('stamping the current stage allowed', step.status < 400, `HTTP ${step.status}`)
-check('screener date now set', dates().screener != null)
+// The Admin gate: stamping a non-delivery stage MUST return the order to Admin.
+// Stamping while keeping it on the desk (assigned_to='user') is refused, so a
+// single user can't work every phase without Admin approval between them.
+const nogate = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ completed_dates: { screener: '2026-06-01' } }) })
+check('stamping without returning to Admin refused', nogate.status >= 400, `HTTP ${nogate.status}`)
+check('screener still unstamped', dates().screener == null)
+// Stamping the current stage AND handing back to Admin is the legitimate move.
+const step = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ completed_dates: { screener: '2026-06-01' }, assigned_to: 'admin', status: 'examining' }) })
+check('stamp + return-to-Admin allowed', step.status < 400, `HTTP ${step.status}`)
+check('screener date now set + parked with Admin', dates().screener != null && stat().a === 'admin')
 
 sql(`delete from orders where id = '${TID}'`)
 

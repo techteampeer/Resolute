@@ -156,6 +156,22 @@ begin
           'stages complete in order — only the current stage (%) may be stamped', coalesce(v_next, 'none');
       end if;
     end loop;
+    -- Stamping a stage completes it, which must hand the order to the Admin gate:
+    -- a non-final stage returns to Admin ('admin') for approval before the next
+    -- stage; the final (delivery) stage is the terminal completion (assigned_to
+    -- cleared, verified in check 4). Keeping assigned_to='user' across a stamp
+    -- would let one user work every phase with no Admin approval between them —
+    -- the gate CLAUDE.md requires. (nextRoleFor: the just-stamped stage is v_next.)
+    if v_next is not null and (v_new ? v_next) and not (v_old ? v_next) then
+      if v_next = 'delivery' then
+        if new.assigned_to is not null then
+          raise exception 'completing delivery clears the desk (assigned_to must be null)';
+        end if;
+      elsif new.assigned_to is distinct from 'admin' then
+        raise exception
+          'completing the % stage returns the order to Admin for approval (assigned_to must be admin)', v_next;
+      end if;
+    end if;
   end if;
 
   -- 4. Clearing the desk (assigned_to => null) is the delivery-completion

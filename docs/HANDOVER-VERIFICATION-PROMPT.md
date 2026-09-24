@@ -189,14 +189,14 @@ each case check: the page renders, the console is clean, the data on screen came
 from the database and not a fixture, and the empty / loading / error states are
 right.
 
+Post-D3 (ADR 0001) there are three staff/client front doors — Admin, the
+production `user` desk, and Client. The four stage portals were retired.
+
 ```
 /admin       dashboard, orders, orders/:id, order/:id (fulfillment),
              users, billing, support, map, reports, notifications, settings
-/screener    dashboard, queue, completed, order/:id, notifications
-/examiner    dashboard, examine, completed, order/:id, notifications
-/typer       dashboard, queue, completed, order/:id, notifications
-/delivery    dashboard, queue, sent, order/:id, notifications
-/operator    dashboard, completed, order/:id, orders/:id, notifications
+/user        dashboard, completed, order/:id (fulfillment), orders/:id, notifications
+             — the Production Desk: one desk works whichever stage is next
 /client      dashboard, order (place), orders, orders/:id, messages,
              billing, support
 /login  /staff  /  (role redirect)  and an unknown path
