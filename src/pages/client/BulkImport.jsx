@@ -3,7 +3,9 @@ import { motion } from 'framer-motion'
 import { UploadCloud, FileSpreadsheet, CheckCircle, AlertCircle, Download, Trash2, Loader2, ArrowRight } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
-import { stateCode, stateName, clientName } from '../../data/mockData'
+import { stateCode, stateName, clientName, US_STATES } from '../../data/mockData'
+
+const VALID_STATE_CODES = new Set(US_STATES.map(s => s.code))
 
 const ACCENT = '#2441E5'
 
@@ -44,7 +46,9 @@ const HEADER_MAP = {
 // Validity per row: State must resolve to a 2-letter code, County must be present.
 const rowErrors = (r) => {
   const errs = []
-  if (!r.state || !/^[A-Z]{2}$/.test(stateCode(r.state))) errs.push('state')
+  // Must resolve to a REAL state (stateCode passes unknown input through, so
+  // check membership — 'ZZ' is not a state).
+  if (!VALID_STATE_CODES.has(stateCode(r.state))) errs.push('state')
   if (!String(r.county || '').trim()) errs.push('county')
   return errs
 }
@@ -102,11 +106,14 @@ export default function BulkImport() {
   const valid = (rows || []).filter(r => !r._errors.length)
 
   const createAll = async () => {
-    if (busy || !valid.length) return
+    if (busy) return
+    // Keep the original spreadsheet row number for accurate failure reporting.
+    const toCreate = (rows || []).map((r, idx) => ({ r, srcRow: idx + 1 })).filter(x => !x.r._errors.length)
+    if (!toCreate.length) return
     setBusy(true); setProgress(0)
     const created = [], failed = []
-    for (let i = 0; i < valid.length; i++) {
-      const r = valid[i]
+    for (let i = 0; i < toCreate.length; i++) {
+      const { r, srcRow } = toCreate[i]
       try {
         const parties = [
           ...(r.buyer ? [{ role: 'Buyer', name: r.buyer }] : []),
@@ -130,11 +137,11 @@ export default function BulkImport() {
         })
         created.push(order.id)
       } catch (e) {
-        failed.push({ row: i + 1, error: e?.message || 'failed' })
+        failed.push({ row: srcRow, error: e?.message || 'failed' })
       }
       setProgress(i + 1)
     }
-    setResult({ created, failed })
+    setResult({ created, failed, skipped: (rows || []).length - toCreate.length })
     setBusy(false)
   }
 
@@ -145,8 +152,11 @@ export default function BulkImport() {
         <CheckCircle className="w-8 h-8" style={{ color: '#15803d' }} />
       </div>
       <h2 className="text-xl font-bold mb-1" style={{ color: '#12284C' }}>{result.created.length} order{result.created.length === 1 ? '' : 's'} placed</h2>
+      {result.skipped > 0 && (
+        <p className="text-sm" style={{ color: '#b45309' }}>{result.skipped} row{result.skipped === 1 ? '' : 's'} skipped (missing a valid State or County).</p>
+      )}
       {result.failed.length > 0 && (
-        <p className="text-sm mb-3" style={{ color: '#dc2626' }}>{result.failed.length} row{result.failed.length === 1 ? '' : 's'} could not be created.</p>
+        <p className="text-sm mb-1" style={{ color: '#dc2626' }}>{result.failed.length} row{result.failed.length === 1 ? '' : 's'} could not be created (rows {result.failed.map(f => f.row).join(', ')}).</p>
       )}
       <div className="text-[12px] font-mono mt-3 max-h-40 overflow-auto" style={{ color: ACCENT }}>{result.created.join(' · ')}</div>
       <button onClick={() => { setRows(null); setResult(null); setFileName('') }} className="btn-primary mt-5">Import another file</button>
