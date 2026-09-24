@@ -6,17 +6,16 @@
  * next to the API that depends on it.
  *
  * Reconciled from the project-lead script. Gmail and Vertex behaviour is theirs
- * and unchanged: the `label:resolute is:unread` queue, the RES- subject filter,
- * both the plain and HTML bodies sent to the model (HTML is what makes
- * customerLink extractable), the OAuth-token Vertex call, and the 5-minute
- * time-driven trigger.
+ * and unchanged: the `label:resolute is:unread` queue, both the plain and HTML
+ * bodies sent to the model (HTML is what makes customerLink extractable), the
+ * OAuth-token Vertex call, and the 5-minute time-driven trigger.
  *
  * What is added is the portal connection:
  *
  *   Gmail → Vertex AI → CLIENT_CODE_MAP → [optional Sheet test log]
  *         → POST /api/orders/email-intake → order parked with Admin
  *
- * Two behaviours changed deliberately, and only these:
+ * Three behaviours changed deliberately, and only these:
  *
  *  1. markRead() now happens ONLY after the API confirms the order (201) or
  *     confirms it already had it (200 duplicate). The lead script marked every
@@ -25,6 +24,9 @@
  *  2. The Spreadsheet is optional and observational. It is opened lazily inside
  *     a try/catch and a logging failure cannot affect whether an order was
  *     posted or a message was marked read. Set SPREADSHEET_ID to "" to disable.
+ *  3. There is no subject gate. Clients send unstructured emails, so EVERY
+ *     unread message under the label goes to Vertex AI. A RES- number in the
+ *     subject is read when present, as optional metadata, and never required.
  *
  * Dependencies:
  * - Gmail API
@@ -51,16 +53,14 @@ const VERTEX_AI_MODEL = "gemini-2.5-pro"; // Recommended for fast text extractio
 
 // --- SEARCH FILTER ---
 // For testing: Only look in the specific label and ensure it's unread.
-// For production (service account): You can change this to 'is:unread subject:"RES-"' or similar.
+// For production: point this at the dedicated intake mailbox/label. Every unread
+// match is sent to Vertex AI — there is no subject filter.
 const GMAIL_SEARCH_QUERY = 'label:resolute is:unread';
 
-// Ashly's forwards start with "Fwd:" but still contain "RES-", so the subject
-// filter — not an AI judgement call — is what decides this is a Resolute order.
-const SUBJECT_MUST_CONTAIN = "RES-";
-
 // The RES- order number as it appears in the subject, e.g. RES-2026-1937.
-// Read deterministically rather than trusted from the model: the filter above
-// guarantees it is in the subject, and a regex cannot hallucinate one.
+// Optional metadata: most client emails will not carry one. When the subject
+// does, it is read deterministically rather than trusted from the model — a
+// regex cannot hallucinate one.
 const RES_ORDER_NUMBER = /RES-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/;
 
 // --- OPTIONAL TEST LOG (testing only, never production logic) ---
@@ -148,16 +148,10 @@ function processResoluteEmailsWithVertexAI() {
       // Ensure we only process unread messages within the thread
       if (!message.isUnread()) continue;
 
-      const subject = message.getSubject();
-
-      // Skip emails that don't look like Resolute emails, even if they are in
-      // the label. This filter replaces any AI "is this an order?" judgement.
-      if (!subject.includes(SUBJECT_MUST_CONTAIN)) {
-        Logger.log(`Skipping non-Resolute email in label: ${subject}`);
-        continue;
-      }
-
-      processResoluteMessage(message, subject);
+      // No subject gate: every unread message under the label goes to Vertex
+      // AI. Anything that is not a complete order fails extraction or API
+      // validation and stays unread for a human.
+      processResoluteMessage(message, message.getSubject());
     }
   }
 }
@@ -239,8 +233,9 @@ function processResoluteMessage(message, subject) {
 
 /**
  * The RES- order number read straight out of the subject line. Deterministic:
- * no model call, nothing to hallucinate. Returns null when the subject carries
- * the "RES-" marker but no readable number after it.
+ * no model call, nothing to hallucinate. Returns null when the subject has no
+ * RES- number — the usual case for an unstructured client email. Optional
+ * metadata only; never a processing gate.
  */
 function orderNumberFromSubject(subject) {
   const match = String(subject || "").match(RES_ORDER_NUMBER);

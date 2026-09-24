@@ -294,8 +294,6 @@ test('client_identifier and email_message_id come only from Apps Script and Gmai
 
 test('the lead script Gmail behaviour is preserved', () => {
   assert.match(GS, /const GMAIL_SEARCH_QUERY = 'label:resolute is:unread'/)
-  assert.match(GS, /const SUBJECT_MUST_CONTAIN = "RES-"/)
-  assert.match(GS, /subject\.includes\(SUBJECT_MUST_CONTAIN\)/)
   // Both bodies still reach the model — the HTML is what carries customerLink.
   assert.match(GS, /const plainBody = message\.getPlainBody\(\)/)
   assert.match(GS, /const htmlBody = message\.getBody\(\)/)
@@ -315,8 +313,17 @@ test('the lead script Vertex and trigger config is preserved', () => {
   assert.match(GS, /const functionName = 'processResoluteEmailsWithVertexAI'/)
 })
 
-test('there is no AI is-this-an-order gate — the RES- filter is the gate', () => {
+test('there is no AI is-this-an-order gate', () => {
   assert.equal(/is_order_request/.test(GS), false)
+})
+
+test('every unread message under the label reaches Vertex — there is no RES- subject gate', () => {
+  // Clients send unstructured emails; the model reads them, the API validates.
+  assert.equal(/SUBJECT_MUST_CONTAIN/.test(GS), false)
+  assert.equal(/subject\.includes\(/.test(GS), false)
+  assert.equal(/Skipping non-Resolute/.test(GS), false)
+  // The only skip left in the loop is the unread check.
+  assert.match(GS, /if \(!message\.isUnread\(\)\) continue;\s*(\/\/[^\n]*\s*)*processResoluteMessage\(message, message\.getSubject\(\)\);/)
 })
 
 test('the RES- order number is read from the subject, deterministically', () => {
@@ -332,8 +339,10 @@ test('the RES- order number is read from the subject, deterministically', () => 
   assert.equal(from('Re: [External] order RES-2026-1937.'), 'RES-2026-1937')
   assert.equal(from('RES-1937'), 'RES-1937')
   assert.equal(from('RES-2026-PTMD-1922'), 'RES-2026-PTMD-1922')
-  // Passes the SUBJECT_MUST_CONTAIN filter but carries no readable number.
+  // Carries the RES- marker but no readable number.
   assert.equal(from('RES- please advise'), null)
+  // The usual unstructured client email: no RES- number at all, still processed.
+  assert.equal(from('Title search needed — 880 Main St, Houston'), null)
   assert.match(GS, /function orderNumberFromSubject\(subject\)/)
   assert.match(GS, /orderNumberFromSubject\(subject\) \|\| extractedJsonData\.orderNumber/)
 })

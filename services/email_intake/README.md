@@ -7,7 +7,7 @@ to this app. Nothing here reads Gmail, and no AI library is added to the Vercel
 deployment.
 
 ```
-client email → Gmail (label:resolute is:unread, subject contains RES-)
+client email → Gmail (label:resolute is:unread — every message, no subject filter)
              → Vertex AI / Gemini → CLIENT_CODE_MAP → [optional Sheet test log]
                                           ↓ structured JSON
                           POST /api/orders/email-intake   (x-intake-secret)
@@ -18,10 +18,12 @@ client email → Gmail (label:resolute is:unread, subject contains RES-)
 ```
 
 The Gmail and Vertex half is the project-lead Apps Script, unchanged: the
-`label:resolute is:unread` queue, the `RES-` subject filter (which is what
-decides a message is an order — there is no AI gate), both the plain and HTML
-bodies sent to the model so `customerLink` survives as a real href, the
-OAuth-token Vertex call, and the 5-minute time-driven trigger.
+`label:resolute is:unread` queue, both the plain and HTML bodies sent to the
+model so `customerLink` survives as a real href, the OAuth-token Vertex call,
+and the 5-minute time-driven trigger. There is **no subject gate**: clients send
+unstructured emails, so every unread message under the label goes to Vertex AI.
+A `RES-` number in the subject is read as optional metadata when present and is
+never required.
 
 The Google Sheet is a **testing aid only** — it records what was extracted and
 what the API answered so a pilot run can be eyeballed. Nothing is read back out
@@ -227,7 +229,7 @@ is sent as a header and is never logged or written to the sheet.
 
 Gmail, Vertex and the test sheet stay as top-level constants in the lead
 script's own style — `GCP_PROJECT_ID`, `GCP_REGION`, `VERTEX_AI_MODEL`,
-`GMAIL_SEARCH_QUERY`, `SUBJECT_MUST_CONTAIN`, and `SPREADSHEET_ID` /
+`GMAIL_SEARCH_QUERY`, and `SPREADSHEET_ID` /
 `TARGET_SHEET_NAME` (set `SPREADSHEET_ID` to `""` to disable logging).
 
 ## Manual test
