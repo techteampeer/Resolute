@@ -61,9 +61,11 @@ const b = await as('user', `/orders?id=eq.${OID}`, {
 check('direct desk-to-desk handoff refused', b.status >= 400, `HTTP ${b.status}`)
 check('assigned_to still user in DB', assignedNow().assigned_to === 'user')
 
-// C. return to Admin (the legitimate handoff) — allowed
+// C. return to Admin (the legitimate handoff) — allowed. Like the app's
+//    returnToAdmin, it stamps the completing stage (screener) and moves the
+//    status to the next stage; the guard requires status to stay derived.
 const c = await as('user', `/orders?id=eq.${OID}`, {
-  method: 'PATCH', body: JSON.stringify({ assigned_to: 'admin', status: 'examining' }),
+  method: 'PATCH', body: JSON.stringify({ assigned_to: 'admin', status: 'examining', completed_dates: { screener: '2026-06-01' } }),
 })
 check('return-to-Admin allowed', c.status < 400, `HTTP ${c.status}`)
 check('assigned_to now admin in DB', assignedNow().assigned_to === 'admin')
