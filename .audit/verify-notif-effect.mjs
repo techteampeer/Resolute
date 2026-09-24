@@ -5,7 +5,7 @@ console.log('preferences in force:', JSON.stringify(await sqlJson(
 
 // Catch the "Saved" pill while it is still on screen.
 {
-  const { page, ctx } = await login(b, 'user')
+  const { page, ctx } = await login(b, 'delivery')
   await page.waitForTimeout(1400)
   await page.goto('http://127.0.0.1:5173/user/notifications', { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(2600)

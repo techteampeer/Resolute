@@ -97,6 +97,12 @@ returns trigger
 language plpgsql
 set search_path = public
 as $$
+declare
+  v_seq  text[] := array['screener', 'examiner', 'typer', 'delivery'];
+  v_old  jsonb  := coalesce(old.completed_dates, '{}'::jsonb);
+  v_new  jsonb  := coalesce(new.completed_dates, '{}'::jsonb);
+  v_next text;
+  k      text;
 begin
   -- Only guard direct end-user REST writes; RPCs (owner), service role and
   -- migrations/seed are trusted and pass through.
@@ -125,22 +131,49 @@ begin
       'a stage hands an order back to Admin, not directly to another desk (assigned_to must be admin, unchanged, or cleared)';
   end if;
 
-  -- 3. Clearing the desk (assigned_to => null) is the delivery-completion
-  --    transition and nothing else for a pooled user. It is valid only when it
-  --    (a) writes status 'delivered' — so it can't leave an unassigned order in
-  --    an earlier state — and (b) happens from the delivery stage: the three
-  --    earlier stages must already be stamped on the STORED row (which the caller
-  --    can't forge), so a pooled user can't jump an early-stage order to done.
-  --    (Client/admin cancellations also clear the desk, but those run as the RPC
-  --    owner or admin and are handled by the short-circuits above.)
+  -- 3. The pipeline advances ONE stage at a time, in order. completed_dates may
+  --    gain at most the single NEXT-stage date and must never lose or rewrite an
+  --    earlier one. Without this a pooled user could back-fill all three
+  --    pre-delivery dates in one PATCH (or over several) and then clear the desk,
+  --    skipping the pipeline — trusting completed_dates in check 4 is not enough
+  --    because the same caller can modify that column. Enforcing the transition
+  --    here makes it authoritative: stages can only be stamped in sequence.
+  if v_new is distinct from v_old then
+    select s into v_next
+      from unnest(v_seq) with ordinality as t(s, ord)
+     where v_old ->> s is null
+     order by ord limit 1;
+    -- No earlier stage date may be cleared or changed.
+    for k in select jsonb_object_keys(v_old) loop
+      if not (v_new ? k) or (v_new ->> k) is distinct from (v_old ->> k) then
+        raise exception 'a completed stage date cannot be changed or cleared';
+      end if;
+    end loop;
+    -- Any newly added date must be exactly the next stage due.
+    for k in select jsonb_object_keys(v_new) loop
+      if not (v_old ? k) and k is distinct from v_next then
+        raise exception
+          'stages complete in order — only the current stage (%) may be stamped', coalesce(v_next, 'none');
+      end if;
+    end loop;
+  end if;
+
+  -- 4. Clearing the desk (assigned_to => null) is the delivery-completion
+  --    transition and nothing else for a pooled user. Valid only when it (a)
+  --    writes status 'delivered' — so it can't leave an unassigned order in an
+  --    earlier state — and (b) happens from the delivery stage: the three earlier
+  --    stages must already be stamped on the STORED row. With check 3 enforcing
+  --    ordered stamping, those three can only have arrived by working the pipeline
+  --    in sequence. (Client/admin cancellations also clear the desk, but run as
+  --    the RPC owner or admin and are handled by the short-circuits above.)
   if new.assigned_to is null and old.assigned_to is not null then
     if new.status is distinct from 'delivered' then
       raise exception
         'clearing an order''s desk is only valid on delivery completion (status must be delivered)';
     end if;
-    if not (old.completed_dates ->> 'screener' is not null
-            and old.completed_dates ->> 'examiner' is not null
-            and old.completed_dates ->> 'typer'    is not null) then
+    if not (v_old ->> 'screener' is not null
+            and v_old ->> 'examiner' is not null
+            and v_old ->> 'typer'    is not null) then
       raise exception
         'an order can only be completed from the delivery stage — screening, examination and typing must be done first';
     end if;

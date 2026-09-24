@@ -11,7 +11,7 @@ sql(`create policy notif_pref_audit_block on public.notification_preferences
      with check (profile_id <> (select id from profiles where email='typer@resolute.com'))`)
 const b = await browser()
 try {
-  const { page, ctx, errors } = await login(b, 'user')
+  const { page, ctx, errors } = await login(b, 'typer')
   await page.waitForTimeout(1400)
   await page.goto('http://127.0.0.1:5173/user/notifications', { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(2600)

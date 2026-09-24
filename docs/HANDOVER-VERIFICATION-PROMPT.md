@@ -111,8 +111,7 @@ to find out whether something is already covered.
 
 ```bash
 node .audit/verify-smoke7.mjs        # every portal, every sidebar entry, nine accounts
-node .audit/e2e.mjs                  # a client order carried to delivered
-node .audit/e2e-single.mjs           # the same through Single Seating
+node .audit/e2e-single.mjs           # a client order carried to delivered through the Production Desk (/user)
 node .audit/verify-real-numbers.mjs  # every dashboard figure against the database
 ```
 

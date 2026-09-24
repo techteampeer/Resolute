@@ -115,6 +115,22 @@ const c3 = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSO
 check('legitimate delivery completion allowed', c3.status < 400, `HTTP ${c3.status}`)
 check('order delivered + desk cleared', stat().a == null && stat().s === 'delivered', `a=${stat().a} s=${stat().s}`)
 
+// D. completed_dates advances one stage at a time, in order — no back-fill. This
+//    is what makes the terminal check authoritative: a user can't stamp several
+//    stages at once (or out of order) to fake pipeline progress.
+const dates = () => sqlJson(`select completed_dates cd from orders where id = '${TID}'`)[0]?.cd || {}
+sql(`delete from orders where id = '${TID}'`)
+sql(`insert into orders (id, client_code, state, county, type, status, assigned_to, progress, created, completed_dates)
+     values ('${TID}', ${c1 ? `'${c1}'` : 'null'}, 'FL', 'Test', 'Full Search', 'screening', 'user', 20, current_date, '{}'::jsonb)`)
+const back = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ completed_dates: { screener: '2026-06-01', examiner: '2026-06-02', typer: '2026-06-03' } }) })
+check('back-filling multiple stage dates refused', back.status >= 400, `HTTP ${back.status}`)
+check('completed_dates unchanged', Object.keys(dates()).length === 0)
+const skip = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ completed_dates: { examiner: '2026-06-02' } }) })
+check('stamping out of order (skip screener) refused', skip.status >= 400, `HTTP ${skip.status}`)
+const step = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ completed_dates: { screener: '2026-06-01' } }) })
+check('stamping the current stage allowed', step.status < 400, `HTTP ${step.status}`)
+check('screener date now set', dates().screener != null)
+
 sql(`delete from orders where id = '${TID}'`)
 
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed')

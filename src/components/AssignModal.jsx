@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { X, UserCheck, AlertTriangle } from 'lucide-react'
 import { displayClient, nextRoleFor } from '../data/mockData'
-import { useProfiles, namesForRole } from '../lib/useProfiles'
 import { useOrders } from '../context/OrderContext'
 
 const ROLE_COLOR = '#2441E5'
@@ -32,12 +31,7 @@ export default function AssignModal({ order, user, onClose }) {
   // stale row still stamped with a retired stage desk (never re-select that, or
   // Confirm would write the order back to a desk no `user` can act on).
   const [queue, setQueue]           = useState('user')
-  const [personName, setPersonName] = useState('')
 
-  // Real staff only. This filtered mockData's USERS fixture, which offers six
-  // people who have no profiles row and no login, so Admin could assign an order
-  // to someone who does not exist and the row recorded their name.
-  const people = namesForRole(useProfiles(), queue)
   const cd = order.completedDates || {}
   const cb = order.completedBy || {}
 
@@ -46,7 +40,7 @@ export default function AssignModal({ order, user, onClose }) {
   const nextIdx = STAGES.findIndex(s => s.key === nextRoleFor(order))
   const blockedLabel = nextIdx === -1 ? '' : STAGES[nextIdx].label
 
-  const pickQueue = (key) => { setQueue(key); setPersonName('') }   // reset pin on stage change
+  const pickQueue = (key) => { setQueue(key) }
 
   const noPrice = order.workflow?.invoiceAmount == null
   const noDate  = !order.eta
@@ -58,7 +52,10 @@ export default function AssignModal({ order, user, onClose }) {
 
   const confirm = () => {
     if (!queue) return
-    assignOrder(order.id, { queue, personName: personName || undefined })
+    // Post-D3 an order routes to the `user` pool, not a named person: any
+    // production user works whatever is in the pool, and there is no per-person
+    // `user` column to persist a pin to. So no personName is passed.
+    assignOrder(order.id, { queue })
     onClose()
   }
 
@@ -69,11 +66,6 @@ export default function AssignModal({ order, user, onClose }) {
     color:      active ? ROLE_COLOR : Q.muted,
     border:     active ? `1px solid ${ROLE_COLOR}` : `1px solid ${Q.border}`,
   })
-
-  const selectStyle = {
-    width:'100%', padding:'9px 11px', borderRadius:8, border:`1px solid ${Q.border}`,
-    background:Q.bg, color:Q.text, fontSize:13, outline:'none',
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -134,14 +126,6 @@ export default function AssignModal({ order, user, onClose }) {
               stage-role accounts to service them, so routing an order to one
               would strand it under the new RLS. The Production Desk is the only
               production owner; it works whichever stage is next. */}
-
-          {/* Person */}
-          <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
-            letterSpacing:'0.05em', color:Q.faint, marginBottom:8 }}>Person</label>
-          <select style={selectStyle} value={personName} onChange={e => setPersonName(e.target.value)}>
-            <option value="">Any available</option>
-            {people.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
 
           {/* Per-stage completion history */}
           <div style={{ marginTop:18, background:Q.bg, border:`1px solid ${Q.border}`,
