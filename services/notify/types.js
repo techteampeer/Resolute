@@ -124,15 +124,12 @@ export const factsFor = (key, p = {}, role) => {
 // unless the login flow preserves it, which is why ProtectedRoute carries
 // `from` — without that these links land everyone on their dashboard.
 //
-// The segment is not the same in every portal. Admin, client and Single Seating
-// route an order detail at /orders/:id; the four production desks route theirs
-// at /order/:id. This built /orders/:id for everybody, so the "Open the order"
-// link in every mail to a screener, examiner, typer or delivery pointed at a
-// route that does not exist — including order.assigned, the one type whose
-// entire audience is those four desks.
+// The segment is not the same in every portal: Admin, client and the production
+// (`user`) workspace route an order detail at /orders/:id. Post-D3 (ADR 0001)
+// the four stage portals are retired, so `user` is the only production
+// recipient of order.assigned — its "Open the order" link is /user/orders/:id.
 const ORDER_SEGMENT = {
   admin: 'orders', client: 'orders', user: 'orders',
-  screener: 'order', examiner: 'order', typer: 'order', delivery: 'order',
 }
 export const linkFor = (p = {}, baseUrl, role = 'admin') => {
   const base = String(baseUrl || '').replace(/\/+$/, '')

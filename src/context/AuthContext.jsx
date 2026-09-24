@@ -24,10 +24,13 @@ const MOCK_USERS = {
   'saravanan@resolute.com': { password: 'admin123',     role: 'admin',    name: 'Saravanan',     avatar: 'SV', superAdmin: true },
   'vivek@resolute.com':     { password: 'vivek123',     role: 'admin',    name: 'Vivek',         avatar: 'VK', superAdmin: true },
   'admin@resolute.com':     { password: 'admin123',     role: 'admin',    name: 'Alex Morrison', avatar: 'AM', superAdmin: false },
-  'screener@resolute.com':  { password: 'screener123',  role: 'screener', name: 'Sam Carter',    avatar: 'SC' },
-  'examiner@resolute.com':  { password: 'examiner123',  role: 'examiner', name: 'Jordan Lee',    avatar: 'JL' },
-  'typer@resolute.com':     { password: 'typer123',     role: 'typer',    name: 'Priya Nair',    avatar: 'PN' },
-  'delivery@resolute.com':  { password: 'delivery123',  role: 'delivery', name: 'Morgan Davis',  avatar: 'MD' },
+  // Post-D3 (ADR 0001) the stage login roles are retired; these former stage
+  // staff are now production `user`s (mirrors seed.sql + the D3 migration).
+  // Emails are kept so existing mock-mode logins still resolve.
+  'screener@resolute.com':  { password: 'screener123',  role: 'user',     name: 'Sam Carter',    avatar: 'SC' },
+  'examiner@resolute.com':  { password: 'examiner123',  role: 'user',     name: 'Jordan Lee',    avatar: 'JL' },
+  'typer@resolute.com':     { password: 'typer123',     role: 'user',     name: 'Priya Nair',    avatar: 'PN' },
+  'delivery@resolute.com':  { password: 'delivery123',  role: 'user',     name: 'Morgan Davis',  avatar: 'MD' },
   'client@resolute.com':    { password: 'client123',    role: 'client',   name: 'Taylor Brooks', avatar: 'TB', clientCode: 'CL01' },
   'operator@resolute.com':  { password: 'operator123',  role: 'user',     name: 'Jordan Blake',   avatar: 'JB' },
 }

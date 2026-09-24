@@ -54,6 +54,16 @@ insert into public.orders
    '{"screener":"2026-06-08","examiner":"2026-06-10"}','{"screener":"Sam Carter","examiner":"Jordan Lee"}')
 on conflict (id) do nothing;
 
+-- Post-D3 (ADR 0001): the stage LOGIN roles are retired and production orders
+-- live in the `user` pool. The fixtures above are written on stage desks for
+-- readability; consolidate them into the pool exactly as the D3 migration
+-- re-points real in-flight data, so they surface on the Production Desk /user
+-- workspace. Their pipeline stage still derives from completed_dates.
+update public.orders
+   set assigned_to = 'user',
+       workflow = coalesce(workflow, '{}'::jsonb) || '{"singleSeating":true}'::jsonb
+ where assigned_to in ('screener', 'examiner', 'typer', 'delivery');
+
 -- Demo: attach screener/examiner docs to RTS-10044 (Files section).
 update public.orders
 set workflow = coalesce(workflow, '{}'::jsonb) || jsonb_build_object(
@@ -96,10 +106,13 @@ from (values
   ('saravanan@resolute.com','admin123',    'Saravanan',     'admin'),
   ('vivek@resolute.com',    'vivek123',    'Vivek',         'admin'),
   ('admin@resolute.com',    'admin123',    'Alex Morrison', 'admin'),
-  ('screener@resolute.com', 'screener123', 'Sam Carter',    'screener'),
-  ('examiner@resolute.com', 'examiner123', 'Jordan Lee',    'examiner'),
-  ('typer@resolute.com',    'typer123',    'Priya Nair',    'typer'),
-  ('delivery@resolute.com', 'delivery123', 'Morgan Davis',  'delivery'),
+  -- Post-D3: former stage staff are consolidated into the `user` production
+  -- role (the migration re-roles the same accounts on a real database). The
+  -- emails are kept so existing logins/bookmarks still resolve.
+  ('screener@resolute.com', 'screener123', 'Sam Carter',    'user'),
+  ('examiner@resolute.com', 'examiner123', 'Jordan Lee',    'user'),
+  ('typer@resolute.com',    'typer123',    'Priya Nair',    'user'),
+  ('delivery@resolute.com', 'delivery123', 'Morgan Davis',  'user'),
   ('client@resolute.com',   'client123',   'Taylor Brooks', 'client'),
   ('operator@resolute.com', 'operator123', 'Jordan Blake',  'user')
 ) as d(email, pass, name, role)
@@ -131,10 +144,10 @@ from (values
   ('saravanan@resolute.com','admin'),
   ('vivek@resolute.com',    'admin'),
   ('admin@resolute.com',    'admin'),
-  ('screener@resolute.com', 'screener'),
-  ('examiner@resolute.com', 'examiner'),
-  ('typer@resolute.com',    'typer'),
-  ('delivery@resolute.com', 'delivery'),
+  ('screener@resolute.com', 'user'),
+  ('examiner@resolute.com', 'user'),
+  ('typer@resolute.com',    'user'),
+  ('delivery@resolute.com', 'user'),
   ('client@resolute.com',   'client'),
   ('operator@resolute.com', 'user')
 ) as d(email, role)

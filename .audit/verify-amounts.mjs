@@ -17,31 +17,31 @@ const c1 = codes[0]
 const OID = 'RTS-AUDIT-F3'
 sql(`delete from orders where id = '${OID}'`)
 sql(`insert into orders (id, client_code, state, county, type, status, assigned_to, progress, created)
-     values ('${OID}', ${c1 ? `'${c1}'` : 'null'}, 'FL', 'Test', 'Full Search', 'screening', 'screener', 20, current_date)`)
+     values ('${OID}', ${c1 ? `'${c1}'` : 'null'}, 'FL', 'Test', 'Full Search', 'screening', 'user', 20, current_date)`)
 
 const invOf = () => sqlJson(`select workflow->>'invoiceAmount' as inv from orders where id = '${OID}'`)[0]?.inv ?? null
 
 // non-numeric -> rejected
-const bad = await as('screener', `/orders?id=eq.${OID}`, {
+const bad = await as('user', `/orders?id=eq.${OID}`, {
   method: 'PATCH', body: JSON.stringify({ workflow: { invoiceAmount: 'lots' } }),
 })
 check('non-numeric invoiceAmount rejected', bad.status >= 400, `HTTP ${bad.status}`)
 
 // over-ceiling -> rejected
-const big = await as('screener', `/orders?id=eq.${OID}`, {
+const big = await as('user', `/orders?id=eq.${OID}`, {
   method: 'PATCH', body: JSON.stringify({ workflow: { invoiceAmount: 9999999 } }),
 })
 check('over-ceiling invoiceAmount rejected', big.status >= 400, `HTTP ${big.status}`)
 
 // sane value -> accepted
-const ok = await as('screener', `/orders?id=eq.${OID}`, {
+const ok = await as('user', `/orders?id=eq.${OID}`, {
   method: 'PATCH', body: JSON.stringify({ workflow: { invoiceAmount: 175 } }),
 })
 check('sane invoiceAmount accepted', ok.status < 400, `HTTP ${ok.status}`)
 check('sane invoiceAmount persisted', Number(invOf()) === 175, `db=${invOf()}`)
 
 // negative (credit/discount) within magnitude -> accepted (bound is on magnitude)
-const neg = await as('screener', `/orders?id=eq.${OID}`, {
+const neg = await as('user', `/orders?id=eq.${OID}`, {
   method: 'PATCH', body: JSON.stringify({ workflow: { invoiceAmount: -25 } }),
 })
 check('negative (discount) invoiceAmount accepted', neg.status < 400, `HTTP ${neg.status}`)

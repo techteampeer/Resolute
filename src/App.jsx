@@ -9,11 +9,10 @@ import LoginPage from './pages/LoginPage'
 // not all seven. This also stops a client's bundle from carrying the admin,
 // billing, payout and fulfillment code (defence-in-depth + smaller client app).
 const AdminDashboard     = lazy(() => import('./pages/admin/AdminDashboard'))
-const ScreenerDashboard  = lazy(() => import('./pages/screener/ScreenerDashboard'))
-const ExaminerDashboard  = lazy(() => import('./pages/examiner/ExaminerDashboard'))
-const TyperDashboard     = lazy(() => import('./pages/typer/TyperDashboard'))
-const DeliveryDashboard  = lazy(() => import('./pages/delivery/DeliveryDashboard'))
 const ClientDashboard    = lazy(() => import('./pages/client/ClientDashboard'))
+// The single production workspace (ADR 0001). The four stage portals
+// (screener/examiner/typer/delivery) were retired in D3 — production staff log
+// in as `user` and work every stage here, with the Admin approval gate kept.
 const OperatorDashboard  = lazy(() => import('./pages/operator/OperatorDashboard'))
 
 // Shown only while the stored session is being checked — a fraction of a second
@@ -62,18 +61,6 @@ export default function App() {
           <Route path="/" element={<RoleRedirect />} />
           <Route path="/admin/*" element={
             <ProtectedRoute allowedRole="admin"><AdminDashboard /></ProtectedRoute>
-          } />
-          <Route path="/screener/*" element={
-            <ProtectedRoute allowedRole="screener"><ScreenerDashboard /></ProtectedRoute>
-          } />
-          <Route path="/examiner/*" element={
-            <ProtectedRoute allowedRole="examiner"><ExaminerDashboard /></ProtectedRoute>
-          } />
-          <Route path="/typer/*" element={
-            <ProtectedRoute allowedRole="typer"><TyperDashboard /></ProtectedRoute>
-          } />
-          <Route path="/delivery/*" element={
-            <ProtectedRoute allowedRole="delivery"><DeliveryDashboard /></ProtectedRoute>
           } />
           <Route path="/client/*" element={
             <ProtectedRoute allowedRole="client"><ClientDashboard /></ProtectedRoute>

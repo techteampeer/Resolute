@@ -37,12 +37,14 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 // This was built from mockData's USERS fixture, which offers six people who have
 // no profiles row and no login, so an order could be assigned to someone who does
 // not exist.
-const teamFrom = (profiles) => ({
-  screener: namesForRole(profiles, 'screener'),
-  examiner: namesForRole(profiles, 'examiner'),
-  typer:    namesForRole(profiles, 'typer'),
-  delivery: namesForRole(profiles, 'delivery'),
-})
+// Post-D3 (ADR 0001) the stage login roles are retired: every production staffer
+// is a single `user`, so each pipeline stage draws its people from the one
+// production pool. The keys stay per-stage — they name who worked each stage on
+// the order (order.screener / .examiner / …) — but they all resolve to `user`s.
+const teamFrom = (profiles) => {
+  const pool = namesForRole(profiles, 'user')
+  return { screener: pool, examiner: pool, typer: pool, delivery: pool }
+}
 
 const ROLE_COLOR  = '#2441E5'
 const ROLE_HOVER  = '#1B34C4'
@@ -380,10 +382,11 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
       ? (order.completed || order.eta)
       : null
     const assignedTo = form.assignedTo || null
-    // Mirror assignOrder: routing to the Single Seating desk claims the order
-    // end-to-end; routing to a stage role releases it back to the pipeline.
-    const workflow = assignedTo === 'user' ? { ...order.workflow, singleSeating: true }
-      : ['screener', 'examiner', 'typer', 'delivery'].includes(assignedTo) ? { ...order.workflow, singleSeating: false }
+    // Mirror assignOrder: routing to the production (`user`) desk claims the
+    // order end-to-end. Post-D3 that is the only production owner; Admin and
+    // Unassigned leave the workflow untouched.
+    const workflow = assignedTo === 'user'
+      ? { ...order.workflow, singleSeating: true }
       : order.workflow
     onSave({ ...order, ...form, assignedTo, workflow, completed })
     onClose()
@@ -621,11 +624,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 <select style={selectStyle} value={form.assignedTo} onChange={e => set('assignedTo', e.target.value)}>
                   <option value="">Unassigned</option>
                   <option value="admin">Admin (awaiting approval)</option>
-                  <option value="user">Production Desk (standard)</option>
-                  <option value="screener">Screener (stage desk)</option>
-                  <option value="examiner">Examiner (stage desk)</option>
-                  <option value="typer">Typer (stage desk)</option>
-                  <option value="delivery">Delivery (stage desk)</option>
+                  <option value="user">Production Desk</option>
                 </select>
               </Field>
               <Field label="Status">
@@ -1397,7 +1396,10 @@ function AdminOrders() {
 // Admin User Management (CRUD) — live users via the service-role serverless
 // endpoint (/api/admin/users) when Supabase is configured; falls back to the
 // read-only mock roster otherwise (e.g. local mock mode / no serverless).
-const USER_ROLES = ['admin', 'screener', 'examiner', 'typer', 'delivery', 'client', 'user']
+// Post-D3 the four stage login roles are retired: a new staff account is either
+// an admin or a production `user`. (client is set on the client side.) The enum
+// still carries the stage labels for history, but Admin never mints them.
+const USER_ROLES = ['admin', 'user', 'client']
 
 async function usersApi(method, body) {
   const { data: { session } = {} } = await supabase.auth.getSession()
@@ -1480,12 +1482,11 @@ function AdminUsers() {
     setEditing(null)
   })
 
+  // Post-D3 (ADR 0001) production staff are one consolidated `user` role, so the
+  // roster breaks down as Admins / Production / Clients — no per-stage buckets.
   const counts = [
     { role: 'Admins', count: users.filter(u => u.role === 'admin').length, color: '#2441E5' },
-    { role: 'Screeners', count: users.filter(u => u.role === 'screener').length, color: '#1B34C4' },
-    { role: 'Examiners', count: users.filter(u => u.role === 'examiner').length, color: '#d97706' },
-    { role: 'Typers', count: users.filter(u => u.role === 'typer').length, color: '#00B8D9' },
-    { role: 'Delivery', count: users.filter(u => u.role === 'delivery').length, color: '#00B8D9' },
+    { role: 'Production', count: users.filter(u => u.role === 'user').length, color: '#1B34C4' },
     { role: 'Clients', count: users.filter(u => u.role === 'client').length, color: '#2441E5' },
   ]
   const btn = (label, onClick, tone = 'muted', disabled = false) => (

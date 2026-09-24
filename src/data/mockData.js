@@ -122,22 +122,22 @@ export const stateName = (v) => NAME_BY_STATE_CODE[stateCode(v)] || String(v || 
 export const regionOf = (state) => REGION_BY_STATE[stateCode(state)] || '—'
 
 export const USERS = [
-  { id: 1, name: 'Sam Carter',     email: 'screener@resolute.com',   role: 'screener', status: 'active',   orders: 47, joined: '2025-01-15' },
-  { id: 2, name: 'Jordan Lee',     email: 'examiner@resolute.com',   role: 'examiner', status: 'active',   orders: 63, joined: '2025-02-20' },
-  { id: 3, name: 'Priya Nair',     email: 'typer@resolute.com',      role: 'typer',    status: 'active',   orders: 41, joined: '2025-02-10' },
-  { id: 4, name: 'Morgan Davis',   email: 'delivery@resolute.com',   role: 'delivery', status: 'active',   orders: 58, joined: '2025-01-08' },
+  { id: 1, name: 'Sam Carter',     email: 'screener@resolute.com',   role: 'user'    , status: 'active',   orders: 47, joined: '2025-01-15' },
+  { id: 2, name: 'Jordan Lee',     email: 'examiner@resolute.com',   role: 'user'    , status: 'active',   orders: 63, joined: '2025-02-20' },
+  { id: 3, name: 'Priya Nair',     email: 'typer@resolute.com',      role: 'user',    status: 'active',   orders: 41, joined: '2025-02-10' },
+  { id: 4, name: 'Morgan Davis',   email: 'delivery@resolute.com',   role: 'user'    , status: 'active',   orders: 58, joined: '2025-01-08' },
   { id: 5, name: 'Taylor Brooks',  email: 'client@resolute.com',     role: 'client',   status: 'active',   orders: 12, joined: '2025-03-10' },
   { id: 6, name: 'Casey Wilson',   email: 'casey@apexlending.com',   role: 'client',   status: 'active',   orders: 8,  joined: '2025-04-01' },
   { id: 7, name: 'Riley Stone',    email: 'riley@sterlinglaw.com',   role: 'client',   status: 'inactive', orders: 3,  joined: '2025-05-12' },
   { id: 8, name: 'Rajni',          email: 'rajni@resolute.com',      role: 'admin',    status: 'active',   orders: 0,  joined: '2024-12-01', superAdmin: true },
   { id: 9, name: 'Saravanan',      email: 'saravanan@resolute.com',  role: 'admin',    status: 'active',   orders: 0,  joined: '2024-12-01', superAdmin: true },
   // Additional staff per role, so Admin can route each stage to whoever is available.
-  { id: 10, name: 'Dana Iqbal',    email: 'dana.i@resolute.com',     role: 'screener', status: 'active',   orders: 22, joined: '2025-06-02' },
-  { id: 11, name: 'Marcus Reed',   email: 'marcus.r@resolute.com',   role: 'screener', status: 'active',   orders: 15, joined: '2025-07-14' },
-  { id: 12, name: 'Riley Cho',     email: 'riley.c@resolute.com',    role: 'examiner', status: 'active',   orders: 38, joined: '2025-03-19' },
-  { id: 13, name: 'Owen Park',     email: 'owen.p@resolute.com',     role: 'examiner', status: 'active',   orders: 27, joined: '2025-08-05' },
-  { id: 14, name: 'Leah Tran',     email: 'leah.t@resolute.com',     role: 'typer',    status: 'active',   orders: 19, joined: '2025-05-21' },
-  { id: 15, name: 'Nina Reyes',    email: 'nina.r@resolute.com',     role: 'delivery', status: 'active',   orders: 31, joined: '2025-04-12' },
+  { id: 10, name: 'Dana Iqbal',    email: 'dana.i@resolute.com',     role: 'user'    , status: 'active',   orders: 22, joined: '2025-06-02' },
+  { id: 11, name: 'Marcus Reed',   email: 'marcus.r@resolute.com',   role: 'user'    , status: 'active',   orders: 15, joined: '2025-07-14' },
+  { id: 12, name: 'Riley Cho',     email: 'riley.c@resolute.com',    role: 'user'    , status: 'active',   orders: 38, joined: '2025-03-19' },
+  { id: 13, name: 'Owen Park',     email: 'owen.p@resolute.com',     role: 'user'    , status: 'active',   orders: 27, joined: '2025-08-05' },
+  { id: 14, name: 'Leah Tran',     email: 'leah.t@resolute.com',     role: 'user',    status: 'active',   orders: 19, joined: '2025-05-21' },
+  { id: 15, name: 'Nina Reyes',    email: 'nina.r@resolute.com',     role: 'user'    , status: 'active',   orders: 31, joined: '2025-04-12' },
   { id: 16, name: 'Jordan Blake',  email: 'operator@resolute.com',   role: 'user',     status: 'active',   orders: 26, joined: '2025-03-01' },
 ]
 
