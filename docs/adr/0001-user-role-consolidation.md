@@ -1,6 +1,7 @@
 # ADR 0001 — Consolidate the production desks into one `user` role
 
 Status: **accepted (in progress)** · 2026-09-22 · Workstream D of the roadmap
+· D1 + D2 shipped; D3 remaining
 
 ## Context
 
@@ -38,9 +39,15 @@ Single Seating model, generalized and made the default.
   (`ALTER TYPE user_role RENAME VALUE 'operator' TO 'user'`), and the one DB
   function that hardcodes the role list (`notify_on_order_event`) is re-created to
   recognise `user`.
-- **D2 — make `user` the standard production workspace.** One `/user` workspace
-  that shows the current stage view, replacing the four separate stage portals in
-  the UI. Admin assigns orders into the `user` pool (or to a specific person).
+- **D2 — make `user` the standard production workspace** (done). The `/user`
+  workspace — which already shows the current stage view and works an order
+  end-to-end with the approval gate — is reframed as the standard **Production
+  Desk** (no longer a special "Single Seating" mode): renamed in the workspace
+  header, the staff login picker, and Admin's assignment surfaces. Admin now
+  routes into the `user` pool **by default** — the Assign modal pre-selects the
+  Production Desk and presents it first; the four stage desks drop to a secondary
+  "specific stage desk" group, kept working for accounts not yet migrated
+  (retired in D3). No schema or RLS change — those land in D3.
 - **D3 — retire the stage *login* roles + migrate accounts.** Re-role existing
   `screener`/`examiner`/`typer`/`delivery` accounts to `user`; tighten the RLS
   capability so a `user` may act on any order in a production stage assigned to

@@ -199,8 +199,8 @@ function OperatorHome() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>Single Seating Workspace</h1>
-        <p className="text-sm" style={{ color: '#3D5171' }}>Orders assigned to your desk — worked start to finish, with Admin approval at every phase</p>
+        <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>Production Workspace</h1>
+        <p className="text-sm" style={{ color: '#3D5171' }}>Orders assigned to your desk — worked start to finish through every stage, with Admin approval at every phase</p>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {Object.entries(STAGE).map(([r, s]) => (
@@ -303,7 +303,7 @@ function CompletedList() {
 
 export default function OperatorDashboard() {
   return (
-    <Layout navItems={NAV} role="single seating" roleColor={ROLE_COLOR}>
+    <Layout navItems={NAV} role="production" roleColor={ROLE_COLOR}>
       <Routes>
         <Route index element={<OperatorHome />} />
         <Route path="order/:id"  element={<FulfillmentScreen />} />

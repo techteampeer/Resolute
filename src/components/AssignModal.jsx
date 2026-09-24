@@ -18,27 +18,25 @@ const STAGES = [
   { key:'typer',    label:'Typer' },
   { key:'delivery', label:'Delivery' },
 ]
-// Assignable queues: the four pipeline stages, plus the Single Seating desk
-// which works whichever stage is next (each step returns here for approval).
-const QUEUES = [...STAGES, { key:'user', label:'Single Seating' }]
-
-// Pre-select the queue that naturally owns the order's current status.
-const defaultStageFor = (status) => ({
-  received:  'screener', screening: 'screener',
-  searching: 'examiner', examining: 'examiner',
-  typing:    'typer',    delivered: 'delivery',
-}[status] || '')
+const STAGE_KEYS = STAGES.map(s => s.key)
+// The consolidated production desk (ADR 0001). Post-D2 this is the STANDARD
+// place an order is worked: one desk carries it through whichever stage is next,
+// returning to Admin for approval between each. The four stage desks below it
+// remain only as a transitional route to a not-yet-migrated stage account
+// (retired in D3).
+const PRODUCTION = { key:'user', label:'Production Desk' }
 
 export default function AssignModal({ order, user, onClose }) {
   const { assignOrder } = useOrders()
-  // Single Seating orders default back to that desk on every approval so the
-  // same desk carries them start to finish. Otherwise default to the next role
-  // that still needs to act, then the status-based guess. 'admin' means the
-  // order is parked here for approval — not a real queue.
+  // The Production desk is now the standard target (ADR 0001 · D2): a fresh or
+  // Admin-parked order defaults there and one desk carries it start to finish,
+  // returning here for approval between stages. An order already on a legacy
+  // stage desk stays on it (so a mid-flight, not-yet-migrated assignment isn't
+  // silently re-routed); everything else defaults to Production. 'admin' means
+  // parked for approval — not a real queue.
   const [queue, setQueue]           = useState(
-    (order.workflow?.singleSeating ? 'user' : null)
-    || (order.assignedTo && order.assignedTo !== 'admin' ? order.assignedTo : null)
-    || nextRoleFor(order) || defaultStageFor(order.status))
+    order.workflow?.singleSeating ? 'user'
+    : (STAGE_KEYS.includes(order.assignedTo) ? order.assignedTo : 'user'))
   const [personName, setPersonName] = useState('')
 
   // Real staff only. This filtered mockData's USERS fixture, which offers six
@@ -127,11 +125,28 @@ export default function AssignModal({ order, user, onClose }) {
               </div>
             </div>
           )}
-          {/* Stage */}
+          {/* Desk — the Production desk is the standard target; one desk carries
+              the order through whichever stage is next. */}
           <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
-            letterSpacing:'0.05em', color:Q.faint, marginBottom:8 }}>Stage</label>
+            letterSpacing:'0.05em', color:Q.faint, marginBottom:8 }}>Desk</label>
+          <button onClick={() => pickQueue(PRODUCTION.key)}
+            style={{ ...radioStyle(queue === PRODUCTION.key), width:'100%', textAlign:'left',
+              display:'flex', alignItems:'center', gap:10, padding:'12px 14px', marginBottom:12 }}>
+            <UserCheck style={{ width:16, height:16, flexShrink:0 }} />
+            <span style={{ display:'flex', flexDirection:'column', alignItems:'flex-start' }}>
+              <span>{PRODUCTION.label} <span style={{ fontSize:11, fontWeight:600, opacity:0.7 }}>· standard</span></span>
+              <span style={{ fontSize:11, fontWeight:400, color: queue === PRODUCTION.key ? ROLE_COLOR : Q.muted }}>
+                {nextIdx !== -1 ? `Works the next stage (${blockedLabel}), then returns for approval` : 'Works the order end to end, with approval between stages'}
+              </span>
+            </span>
+          </button>
+
+          {/* Transitional: route straight to a not-yet-migrated stage desk. The
+              standard path is the Production desk above; these are retired in D3. */}
+          <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
+            letterSpacing:'0.05em', color:Q.faint, marginBottom:8 }}>Or a specific stage desk</label>
           <div style={{ display:'flex', gap:8, marginBottom:18, flexWrap:'wrap' }}>
-            {QUEUES.map(s => {
+            {STAGES.map(s => {
               const blocked = skipsAhead(s.key)
               return (
                 <button key={s.key} onClick={() => !blocked && pickQueue(s.key)} disabled={blocked}
