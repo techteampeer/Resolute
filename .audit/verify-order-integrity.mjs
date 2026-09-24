@@ -82,23 +82,39 @@ check('user cannot write an order outside the pool',
 // cleanup
 sql(`delete from orders where id = '${OID}'`)
 
-// ── D3: the pipeline stays ordered — no terminal jump from an early stage ────
-// A pooled user must not be able to PATCH an order still in screening straight
-// to delivered (skipping examination/typing/delivery). guard_order_handoff only
-// permits the terminal transition once the three earlier stages are stamped.
-console.log('── D3: terminal transition requires the delivery stage ──')
+// ── D3: the terminal transition is delivery-completion only ─────────────────
+// Clearing the desk (assigned_to -> null) for a pooled user is valid ONLY when
+// it writes status 'delivered' AND the three earlier stages are already stamped.
+// That stops (a) jumping an early-stage order to done and (b) leaving an
+// unassigned order in an inconsistent state.
+console.log('── D3: terminal transition is delivery-completion only ──')
 const TID = 'RTS-AUDIT-D3'
-sql(`delete from orders where id = '${TID}'`)
-// Fresh order in the pool, nothing completed yet (still at screening).
-sql(`insert into orders (id, client_code, state, county, type, status, assigned_to, progress, created, completed_dates)
-     values ('${TID}', ${c1 ? `'${c1}'` : 'null'}, 'FL', 'Test', 'Full Search', 'screening', 'user', 20, current_date, '{}'::jsonb)`)
-const jump = await as('user', `/orders?id=eq.${TID}`, {
-  method: 'PATCH', body: JSON.stringify({ assigned_to: null, status: 'delivered' }),
-})
-const jumped = sqlJson(`select assigned_to::text, status::text from orders where id = '${TID}'`)[0] || {}
-check('early-stage terminal jump refused', jump.status >= 400, `HTTP ${jump.status}`)
-check('order still in pool, not delivered', jumped.assigned_to === 'user' && jumped.status !== 'delivered',
-  `assigned_to=${jumped.assigned_to} status=${jumped.status}`)
+const stat = () => sqlJson(`select assigned_to::text a, status::text s from orders where id = '${TID}'`)[0] || {}
+const reset = (dates) => {
+  sql(`delete from orders where id = '${TID}'`)
+  sql(`insert into orders (id, client_code, state, county, type, status, assigned_to, progress, created, completed_dates)
+       values ('${TID}', ${c1 ? `'${c1}'` : 'null'}, 'FL', 'Test', 'Full Search', 'delivery', 'user', 80, current_date, '${dates}'::jsonb)`)
+}
+const DELIVERY_READY = '{"screener":"2026-06-01","examiner":"2026-06-02","typer":"2026-06-03"}'
+
+// A. early stage, nothing done -> jumping straight to delivered is refused
+reset('{}')
+const a3 = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ assigned_to: null, status: 'delivered' }) })
+check('early-stage terminal jump refused', a3.status >= 400, `HTTP ${a3.status}`)
+check('order still in pool', stat().a === 'user')
+
+// B. delivery-ready, but clearing the desk with a non-delivered status is refused
+reset(DELIVERY_READY)
+const b3 = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ assigned_to: null, status: 'screening' }) })
+check('clear-desk with wrong status refused', b3.status >= 400, `HTTP ${b3.status}`)
+check('order not left unassigned/inconsistent', stat().a === 'user')
+
+// C. delivery-ready + status delivered -> the legitimate completion is allowed
+reset(DELIVERY_READY)
+const c3 = await as('user', `/orders?id=eq.${TID}`, { method: 'PATCH', body: JSON.stringify({ assigned_to: null, status: 'delivered' }) })
+check('legitimate delivery completion allowed', c3.status < 400, `HTTP ${c3.status}`)
+check('order delivered + desk cleared', stat().a == null && stat().s === 'delivered', `a=${stat().a} s=${stat().s}`)
+
 sql(`delete from orders where id = '${TID}'`)
 
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed')

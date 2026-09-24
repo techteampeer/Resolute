@@ -125,17 +125,25 @@ begin
       'a stage hands an order back to Admin, not directly to another desk (assigned_to must be admin, unchanged, or cleared)';
   end if;
 
-  -- 3. The terminal transition (clearing the desk on delivery completion) is
-  --    valid only once the order has actually reached delivery: the three earlier
-  --    stages must already be stamped on the stored row. Otherwise a pooled user
-  --    could jump an order straight to delivered, skipping the pipeline.
-  if new.assigned_to is null
-     and old.assigned_to is not null
-     and not (old.completed_dates ->> 'screener' is not null
-              and old.completed_dates ->> 'examiner' is not null
-              and old.completed_dates ->> 'typer'    is not null) then
-    raise exception
-      'an order can only be completed from the delivery stage — screening, examination and typing must be done first';
+  -- 3. Clearing the desk (assigned_to => null) is the delivery-completion
+  --    transition and nothing else for a pooled user. It is valid only when it
+  --    (a) writes status 'delivered' — so it can't leave an unassigned order in
+  --    an earlier state — and (b) happens from the delivery stage: the three
+  --    earlier stages must already be stamped on the STORED row (which the caller
+  --    can't forge), so a pooled user can't jump an early-stage order to done.
+  --    (Client/admin cancellations also clear the desk, but those run as the RPC
+  --    owner or admin and are handled by the short-circuits above.)
+  if new.assigned_to is null and old.assigned_to is not null then
+    if new.status is distinct from 'delivered' then
+      raise exception
+        'clearing an order''s desk is only valid on delivery completion (status must be delivered)';
+    end if;
+    if not (old.completed_dates ->> 'screener' is not null
+            and old.completed_dates ->> 'examiner' is not null
+            and old.completed_dates ->> 'typer'    is not null) then
+      raise exception
+        'an order can only be completed from the delivery stage — screening, examination and typing must be done first';
+    end if;
   end if;
 
   return new;

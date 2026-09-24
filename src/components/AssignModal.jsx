@@ -18,7 +18,6 @@ const STAGES = [
   { key:'typer',    label:'Typer' },
   { key:'delivery', label:'Delivery' },
 ]
-const STAGE_KEYS = STAGES.map(s => s.key)
 // The consolidated production desk (ADR 0001). Post-D2 this is the STANDARD
 // place an order is worked: one desk carries it through whichever stage is next,
 // returning to Admin for approval between each. The four stage desks below it
@@ -28,15 +27,11 @@ const PRODUCTION = { key:'user', label:'Production Desk' }
 
 export default function AssignModal({ order, user, onClose }) {
   const { assignOrder } = useOrders()
-  // The Production desk is now the standard target (ADR 0001 · D2): a fresh or
-  // Admin-parked order defaults there and one desk carries it start to finish,
-  // returning here for approval between stages. An order already on a legacy
-  // stage desk stays on it (so a mid-flight, not-yet-migrated assignment isn't
-  // silently re-routed); everything else defaults to Production. 'admin' means
-  // parked for approval — not a real queue.
-  const [queue, setQueue]           = useState(
-    order.workflow?.singleSeating ? 'user'
-    : (STAGE_KEYS.includes(order.assignedTo) ? order.assignedTo : 'user'))
+  // Post-D3 the Production Desk (`user` pool) is the only production owner, so
+  // it is the only selectable queue and always the target — including for a
+  // stale row still stamped with a retired stage desk (never re-select that, or
+  // Confirm would write the order back to a desk no `user` can act on).
+  const [queue, setQueue]           = useState('user')
   const [personName, setPersonName] = useState('')
 
   // Real staff only. This filtered mockData's USERS fixture, which offers six
