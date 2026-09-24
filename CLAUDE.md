@@ -49,10 +49,15 @@ Verify every new feature against these constraints before implementing.
   role (`statusForRole`).
 - Between stages, orders park with Admin for approval
   (`returnToAdmin` in `src/context/OrderContext.jsx`, `assignedTo: 'admin'`).
-- **Single Seating** desk (role key `user` — the consolidated production role;
-  renamed from `operator`, see docs/adr/0001): works orders end-to-end, but
-  only orders Admin explicitly assigns to it (`workflow.singleSeating`), with
-  Admin approval after every phase.
+- **Production Desk** (role key `user` — the single, consolidated production
+  login; renamed from `operator`, generalized from "Single Seating", see
+  docs/adr/0001): the standard production workspace at `/user`. A `user` works
+  an order end-to-end through whichever stage is next, on orders Admin routes
+  into the `user` pool (`workflow.singleSeating`), with Admin approval after
+  every phase. The four stage *login* roles (screener/examiner/typer/delivery)
+  are retired (D3) — the stage names survive only as pipeline identifiers
+  (`ROLE_SEQUENCE`/`statusForRole`). RLS: `orders_update_assigned` =
+  `can_work_production()` (`my_role() = 'user'`) `and assigned_to = 'user'`.
 - Client identities: non-super-admins see client codes, not names
   (`displayClient`).
 
@@ -66,7 +71,8 @@ Verify every new feature against these constraints before implementing.
   `types.js`. Modes: `immediate`, and a daily `digest` so nobody gets forty
   mails a day. Staff set their own under **Notifications** in their portal
   (`components/NotificationSettings.jsx`, mounted at `/<role>/notifications` in
-  all six staff portals); no preference row means "follow the type's
+  the staff portals — Admin and the production `user` desk after D3); no
+  preference row means "follow the type's
   `default_mode`", and RLS keys on `auth.uid()`, so nobody — super admins
   included — edits anyone else's.
 - **Staff-only recipients.** Notifications go to Resolute team members by role.

@@ -6,7 +6,7 @@ export const STAGE_LABELS = ['Received','Screening','Examining','Typing','Out fo
 
 export const PAYMENT_METHODS = ['Check', 'ACH']
 
-export const ORDERS = [
+const _ORDERS = [
   { id: 'RTS-10041', client: 'Lakewood Title Group',    state: 'FL', county: 'Miami-Dade',  type: 'Full Search',     status: 'examining',  screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'rush',   payment: 'Wire',             clarification: null,        created: '2026-06-09', eta: '2026-06-11', completed: null,         progress: 65,  assignedTo: 'examiner', completedDates: { screener: '2026-06-09', examiner: null, typer: null, delivery: null }, completedBy: { screener: 'Sam Carter', examiner: null, typer: null, delivery: null } },
   { id: 'RTS-10042', client: 'Apex Lending Partners',   state: 'TX', county: 'Harris',      type: 'Current Owner',   status: 'delivered',  screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'normal', payment: 'ACH',              clarification: null,        created: '2026-06-08', eta: '2026-06-10', completed: '2026-06-10', progress: 100, assignedTo: null,       completedDates: { screener: '2026-06-08', examiner: '2026-06-09', typer: '2026-06-09', delivery: '2026-06-10' }, completedBy: { screener: 'Sam Carter', examiner: 'Jordan Lee', typer: 'Priya Nair', delivery: 'Morgan Davis' } },
   { id: 'RTS-10043', client: 'Sterling Law Firm',       state: 'CA', county: 'Los Angeles', type: 'Two-Owner',       status: 'examining',  screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'normal', payment: 'Credit Card',      clarification: 'responded', created: '2026-06-09', eta: '2026-06-12', completed: null,         progress: 45,  assignedTo: 'examiner', completedDates: { screener: '2026-06-09', examiner: null, typer: null, delivery: null }, completedBy: { screener: 'Sam Carter', examiner: null, typer: null, delivery: null } },
@@ -16,6 +16,17 @@ export const ORDERS = [
   { id: 'RTS-10047', client: 'Coastal Title Services',  state: 'NC', county: 'Mecklenburg', type: 'HOA Estoppel',    status: 'examining',  screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'rush',   payment: 'ACH',              clarification: null,        created: '2026-06-09', eta: '2026-06-11', completed: null,         progress: 55,  assignedTo: 'examiner', completedDates: { screener: '2026-06-09', examiner: null, typer: null, delivery: null }, completedBy: { screener: 'Sam Carter', examiner: null, typer: null, delivery: null } },
   { id: 'RTS-10048', client: 'Lakewood Title Group',    state: 'AZ', county: 'Maricopa',    type: 'Current Owner',   status: 'typing',     screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'normal', payment: 'Wire',             clarification: null,        created: '2026-06-08', eta: '2026-06-12', completed: null,         progress: 85,  assignedTo: 'typer',    completedDates: { screener: '2026-06-08', examiner: '2026-06-10', typer: null, delivery: null }, completedBy: { screener: 'Sam Carter', examiner: 'Jordan Lee', typer: null, delivery: null } },
 ]
+
+// Post-D3 (ADR 0001): production orders live in the single `user` pool. The
+// fixtures above are written on their stage desk for readability; consolidate
+// any still on a stage desk onto the Production Desk (mirrors seed.sql + the D3
+// migration) and mark them production-owned, so mock mode shows a populated
+// /user workspace. Delivered orders (assignedTo null) are left untouched.
+const STAGE_DESKS = ['screener', 'examiner', 'typer', 'delivery']
+export const ORDERS = _ORDERS.map(o =>
+  STAGE_DESKS.includes(o.assignedTo)
+    ? { ...o, assignedTo: 'user', workflow: { ...(o.workflow || {}), singleSeating: true } }
+    : o)
 
 // Client registry — codes assigned in registration order, stable per client.
 // Non-super-admins see the code; only super admins (Rajni, Saravanan) see the name + contact.
@@ -122,22 +133,22 @@ export const stateName = (v) => NAME_BY_STATE_CODE[stateCode(v)] || String(v || 
 export const regionOf = (state) => REGION_BY_STATE[stateCode(state)] || '—'
 
 export const USERS = [
-  { id: 1, name: 'Sam Carter',     email: 'screener@resolute.com',   role: 'screener', status: 'active',   orders: 47, joined: '2025-01-15' },
-  { id: 2, name: 'Jordan Lee',     email: 'examiner@resolute.com',   role: 'examiner', status: 'active',   orders: 63, joined: '2025-02-20' },
-  { id: 3, name: 'Priya Nair',     email: 'typer@resolute.com',      role: 'typer',    status: 'active',   orders: 41, joined: '2025-02-10' },
-  { id: 4, name: 'Morgan Davis',   email: 'delivery@resolute.com',   role: 'delivery', status: 'active',   orders: 58, joined: '2025-01-08' },
+  { id: 1, name: 'Sam Carter',     email: 'screener@resolute.com',   role: 'user'    , status: 'active',   orders: 47, joined: '2025-01-15' },
+  { id: 2, name: 'Jordan Lee',     email: 'examiner@resolute.com',   role: 'user'    , status: 'active',   orders: 63, joined: '2025-02-20' },
+  { id: 3, name: 'Priya Nair',     email: 'typer@resolute.com',      role: 'user',    status: 'active',   orders: 41, joined: '2025-02-10' },
+  { id: 4, name: 'Morgan Davis',   email: 'delivery@resolute.com',   role: 'user'    , status: 'active',   orders: 58, joined: '2025-01-08' },
   { id: 5, name: 'Taylor Brooks',  email: 'client@resolute.com',     role: 'client',   status: 'active',   orders: 12, joined: '2025-03-10' },
   { id: 6, name: 'Casey Wilson',   email: 'casey@apexlending.com',   role: 'client',   status: 'active',   orders: 8,  joined: '2025-04-01' },
   { id: 7, name: 'Riley Stone',    email: 'riley@sterlinglaw.com',   role: 'client',   status: 'inactive', orders: 3,  joined: '2025-05-12' },
   { id: 8, name: 'Rajni',          email: 'rajni@resolute.com',      role: 'admin',    status: 'active',   orders: 0,  joined: '2024-12-01', superAdmin: true },
   { id: 9, name: 'Saravanan',      email: 'saravanan@resolute.com',  role: 'admin',    status: 'active',   orders: 0,  joined: '2024-12-01', superAdmin: true },
   // Additional staff per role, so Admin can route each stage to whoever is available.
-  { id: 10, name: 'Dana Iqbal',    email: 'dana.i@resolute.com',     role: 'screener', status: 'active',   orders: 22, joined: '2025-06-02' },
-  { id: 11, name: 'Marcus Reed',   email: 'marcus.r@resolute.com',   role: 'screener', status: 'active',   orders: 15, joined: '2025-07-14' },
-  { id: 12, name: 'Riley Cho',     email: 'riley.c@resolute.com',    role: 'examiner', status: 'active',   orders: 38, joined: '2025-03-19' },
-  { id: 13, name: 'Owen Park',     email: 'owen.p@resolute.com',     role: 'examiner', status: 'active',   orders: 27, joined: '2025-08-05' },
-  { id: 14, name: 'Leah Tran',     email: 'leah.t@resolute.com',     role: 'typer',    status: 'active',   orders: 19, joined: '2025-05-21' },
-  { id: 15, name: 'Nina Reyes',    email: 'nina.r@resolute.com',     role: 'delivery', status: 'active',   orders: 31, joined: '2025-04-12' },
+  { id: 10, name: 'Dana Iqbal',    email: 'dana.i@resolute.com',     role: 'user'    , status: 'active',   orders: 22, joined: '2025-06-02' },
+  { id: 11, name: 'Marcus Reed',   email: 'marcus.r@resolute.com',   role: 'user'    , status: 'active',   orders: 15, joined: '2025-07-14' },
+  { id: 12, name: 'Riley Cho',     email: 'riley.c@resolute.com',    role: 'user'    , status: 'active',   orders: 38, joined: '2025-03-19' },
+  { id: 13, name: 'Owen Park',     email: 'owen.p@resolute.com',     role: 'user'    , status: 'active',   orders: 27, joined: '2025-08-05' },
+  { id: 14, name: 'Leah Tran',     email: 'leah.t@resolute.com',     role: 'user',    status: 'active',   orders: 19, joined: '2025-05-21' },
+  { id: 15, name: 'Nina Reyes',    email: 'nina.r@resolute.com',     role: 'user'    , status: 'active',   orders: 31, joined: '2025-04-12' },
   { id: 16, name: 'Jordan Blake',  email: 'operator@resolute.com',   role: 'user',     status: 'active',   orders: 26, joined: '2025-03-01' },
 ]
 

@@ -1,12 +1,13 @@
 import { browser, login, sqlJson, shot } from './harness.mjs'
-// RTS-10044 IS on the screener's desk: the same action must succeed, move the
-// row, and show no banner.
+// RTS-10044 IS in the production pool at the screening stage: the same action
+// (assign search route + send to Admin) on the /user workspace must succeed,
+// move the row, and show no banner.
 const ID = 'RTS-10044'
 const b = await browser()
 console.log('before:', JSON.stringify((await sqlJson(`select status, assigned_to, progress, workflow->>'searchRoute' route from orders where id='${ID}'`))[0]))
-const { page, ctx, errors } = await login(b, 'screener')
+const { page, ctx, errors } = await login(b, 'user')
 await page.waitForTimeout(1200)
-await page.goto(`http://127.0.0.1:5173/screener/order/${ID}`, { waitUntil: 'domcontentloaded' })
+await page.goto(`http://127.0.0.1:5173/user/orders/${ID}`, { waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(2500)
 await page.getByRole('button', { name: /^In-House$/ }).first().click()
 await page.waitForTimeout(400)

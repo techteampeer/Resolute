@@ -6,7 +6,7 @@ const rows = (email) => sqlJson(`select np.type_key, np.mode from notification_p
 {
   const { page, ctx, errors } = await login(b, 'typer')
   await page.waitForTimeout(1400)
-  await page.goto('http://127.0.0.1:5173/typer/notifications', { waitUntil: 'domcontentloaded' })
+  await page.goto('http://127.0.0.1:5173/user/notifications', { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(2600)
   const card = page.locator('.glass-card').filter({ hasText: 'Work assigned to you' }).first()
   console.log('typer rows at open:', JSON.stringify(await rows('typer@resolute.com')))

@@ -3,16 +3,15 @@ import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth, toErrorMessage } from '../context/AuthContext'
 import {
-  ShieldCheck, Users, Search, FileSearch, Truck, Keyboard,
+  ShieldCheck, Users,
   Eye, EyeOff, ArrowRight, MapPin, CheckCircle2, AlertCircle
 } from 'lucide-react'
 
 const ROLES = [
   { key: 'admin',    label: 'Admin',    icon: ShieldCheck, color: '#2441E5', desc: 'Full system control',        demo: 'rajni@resolute.com',    pass: 'admin123'    },
-  { key: 'screener', label: 'Screener', icon: Search,      color: '#2441E5', desc: 'Review incoming orders',     demo: 'screener@resolute.com', pass: 'screener123' },
-  { key: 'examiner', label: 'Examiner', icon: FileSearch,  color: '#a16207', desc: 'Examine title documents',    demo: 'examiner@resolute.com', pass: 'examiner123' },
-  { key: 'typer',    label: 'Typer',    icon: Keyboard,    color: '#0e7490', desc: 'Type final reports',         demo: 'typer@resolute.com',    pass: 'typer123'    },
-  { key: 'delivery', label: 'Delivery', icon: Truck,       color: '#b45309', desc: 'Deliver completed searches', demo: 'delivery@resolute.com', pass: 'delivery123' },
+  // Post-D3 (ADR 0001) the four stage login roles (screener/examiner/typer/
+  // delivery) are retired: production staff sign in here as a single `user` and
+  // work an order through every stage, with Admin approval between phases.
   { key: 'user', label: 'Production', icon: Users, color: '#2441E5', desc: 'Standard desk · all stages, admin approved', demo: 'operator@resolute.com', pass: 'operator123' },
   // Client is intentionally excluded — clients sign in at /login (their own
   // entry), never the staff picker.

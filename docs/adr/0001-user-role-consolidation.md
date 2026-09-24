@@ -1,7 +1,7 @@
 # ADR 0001 — Consolidate the production desks into one `user` role
 
-Status: **accepted (in progress)** · 2026-09-22 · Workstream D of the roadmap
-· D1 + D2 shipped; D3 remaining
+Status: **accepted — complete** · 2026-09-22 · Workstream D of the roadmap
+· D1 + D2 + D3 shipped
 
 ## Context
 
@@ -48,11 +48,20 @@ Single Seating model, generalized and made the default.
   Production Desk and presents it first; the four stage desks drop to a secondary
   "specific stage desk" group, kept working for accounts not yet migrated
   (retired in D3). No schema or RLS change — those land in D3.
-- **D3 — retire the stage *login* roles + migrate accounts.** Re-role existing
-  `screener`/`examiner`/`typer`/`delivery` accounts to `user`; tighten the RLS
-  capability so a `user` may act on any order in a production stage assigned to
-  the user pool; remove the stage portals. (This is where the account-migration
-  and RLS-capability decisions land — done as its own reviewed PR.)
+- **D3 — retire the stage *login* roles + migrate accounts** (done). A migration
+  re-roles every existing `screener`/`examiner`/`typer`/`delivery` profile to
+  `user` and re-points any in-flight order still on a stage desk into the `user`
+  pool. The RLS capability is tightened from `orders_update_assigned`'s
+  `assigned_to = my_role()` (login-role == queue-name coupling) to an explicit
+  production-capability check — `can_work_production()` (`my_role() = 'user'`)
+  `and assigned_to = 'user'` — so a `user` may act on any order in the production
+  pool. The four stage portals, routes, and login-picker entries are removed; the
+  Admin surfaces and `api/admin/users.js` no longer mint stage roles. Left
+  untouched by design: `orders_write_admin`, the Vivek `can_confirm_payments`
+  money controls, the `guard_order_handoff` gate (role-agnostic — still enforces
+  the Admin gate for `user`), and the `support_admin_reply` client-reply split.
+  The `user_role` enum keeps the stage labels (Postgres can't drop enum values;
+  they remain valid as pipeline identifiers / historical `assigned_to`).
 
 ## Consequences
 

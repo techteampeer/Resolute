@@ -1,8 +1,11 @@
 import { browser, login, watchNetwork, shot } from './harness.mjs'
-// Every portal's landing page after this batch: the Layout change touches all
-// seven shells, and hydrateFulfillment touches every fulfillment read.
-const ROLES = [['rajni','admin'],['admin','admin'],['vivek','admin'],['screener','screener'],
-               ['examiner','examiner'],['typer','typer'],['delivery','delivery'],
+// Every portal's landing page: Admin, the production `user` desk, and Client.
+// Post-D3 (ADR 0001) the four stage portals are retired, so the former
+// screener/examiner/typer/delivery accounts are all role `user` now — logging in
+// with each still resolves to /user (this doubles as a check that the migrated
+// accounts land somewhere valid).
+const ROLES = [['rajni','admin'],['admin','admin'],['vivek','admin'],['screener','user'],
+               ['examiner','user'],['typer','user'],['delivery','user'],
                ['operator','user'],['client','client']]
 const b = await browser()
 let fails = 0

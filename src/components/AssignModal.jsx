@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { X, UserCheck, AlertTriangle } from 'lucide-react'
 import { displayClient, nextRoleFor } from '../data/mockData'
-import { useProfiles, namesForRole } from '../lib/useProfiles'
 import { useOrders } from '../context/OrderContext'
 
 const ROLE_COLOR = '#2441E5'
@@ -18,7 +17,6 @@ const STAGES = [
   { key:'typer',    label:'Typer' },
   { key:'delivery', label:'Delivery' },
 ]
-const STAGE_KEYS = STAGES.map(s => s.key)
 // The consolidated production desk (ADR 0001). Post-D2 this is the STANDARD
 // place an order is worked: one desk carries it through whichever stage is next,
 // returning to Admin for approval between each. The four stage desks below it
@@ -28,36 +26,21 @@ const PRODUCTION = { key:'user', label:'Production Desk' }
 
 export default function AssignModal({ order, user, onClose }) {
   const { assignOrder } = useOrders()
-  // The Production desk is now the standard target (ADR 0001 · D2): a fresh or
-  // Admin-parked order defaults there and one desk carries it start to finish,
-  // returning here for approval between stages. An order already on a legacy
-  // stage desk stays on it (so a mid-flight, not-yet-migrated assignment isn't
-  // silently re-routed); everything else defaults to Production. 'admin' means
-  // parked for approval — not a real queue.
-  const [queue, setQueue]           = useState(
-    order.workflow?.singleSeating ? 'user'
-    : (STAGE_KEYS.includes(order.assignedTo) ? order.assignedTo : 'user'))
-  const [personName, setPersonName] = useState('')
+  // Post-D3 the Production Desk (`user` pool) is the only production owner, so
+  // it is the only selectable queue and always the target — including for a
+  // stale row still stamped with a retired stage desk (never re-select that, or
+  // Confirm would write the order back to a desk no `user` can act on).
+  const [queue, setQueue]           = useState('user')
 
-  // Real staff only. This filtered mockData's USERS fixture, which offers six
-  // people who have no profiles row and no login, so Admin could assign an order
-  // to someone who does not exist and the row recorded their name.
-  const people = namesForRole(useProfiles(), queue)
   const cd = order.completedDates || {}
   const cb = order.completedBy || {}
 
-  // Stages run in a fixed order, so a stage BEYOND the next one that still needs
-  // to act cannot be assigned: skipping typing and going straight to delivery left
-  // the order with a delivery stamp but no commitment, and it could never finish.
-  // Earlier stages stay open — sending work back for rework is legitimate.
+  // The stage the order is currently waiting on, shown on the Production Desk
+  // option so Admin sees which phase a `user` will pick up next.
   const nextIdx = STAGES.findIndex(s => s.key === nextRoleFor(order))
-  const skipsAhead = (key) => {
-    const i = STAGES.findIndex(s => s.key === key)
-    return i !== -1 && nextIdx !== -1 && i > nextIdx
-  }
   const blockedLabel = nextIdx === -1 ? '' : STAGES[nextIdx].label
 
-  const pickQueue = (key) => { setQueue(key); setPersonName('') }   // reset pin on stage change
+  const pickQueue = (key) => { setQueue(key) }
 
   const noPrice = order.workflow?.invoiceAmount == null
   const noDate  = !order.eta
@@ -69,7 +52,10 @@ export default function AssignModal({ order, user, onClose }) {
 
   const confirm = () => {
     if (!queue) return
-    assignOrder(order.id, { queue, personName: personName || undefined })
+    // Post-D3 an order routes to the `user` pool, not a named person: any
+    // production user works whatever is in the pool, and there is no per-person
+    // `user` column to persist a pin to. So no personName is passed.
+    assignOrder(order.id, { queue })
     onClose()
   }
 
@@ -80,11 +66,6 @@ export default function AssignModal({ order, user, onClose }) {
     color:      active ? ROLE_COLOR : Q.muted,
     border:     active ? `1px solid ${ROLE_COLOR}` : `1px solid ${Q.border}`,
   })
-
-  const selectStyle = {
-    width:'100%', padding:'9px 11px', borderRadius:8, border:`1px solid ${Q.border}`,
-    background:Q.bg, color:Q.text, fontSize:13, outline:'none',
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -141,35 +122,10 @@ export default function AssignModal({ order, user, onClose }) {
             </span>
           </button>
 
-          {/* Transitional: route straight to a not-yet-migrated stage desk. The
-              standard path is the Production desk above; these are retired in D3. */}
-          <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
-            letterSpacing:'0.05em', color:Q.faint, marginBottom:8 }}>Or a specific stage desk</label>
-          <div style={{ display:'flex', gap:8, marginBottom:18, flexWrap:'wrap' }}>
-            {STAGES.map(s => {
-              const blocked = skipsAhead(s.key)
-              return (
-                <button key={s.key} onClick={() => !blocked && pickQueue(s.key)} disabled={blocked}
-                  title={blocked ? `${blockedLabel} has not completed yet — stages run in order.` : undefined}
-                  style={{ ...radioStyle(queue === s.key), ...(blocked ? { opacity:0.4, cursor:'not-allowed' } : null) }}>
-                  {s.label}
-                </button>
-              )
-            })}
-          </div>
-          {nextIdx !== -1 && (
-            <div style={{ fontSize:12, color:Q.muted, marginTop:-10, marginBottom:18 }}>
-              Next stage due: <span style={{ color:ROLE_COLOR, fontWeight:600 }}>{blockedLabel}</span>. Later stages unlock once it is complete.
-            </div>
-          )}
-
-          {/* Person */}
-          <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
-            letterSpacing:'0.05em', color:Q.faint, marginBottom:8 }}>Person</label>
-          <select style={selectStyle} value={personName} onChange={e => setPersonName(e.target.value)}>
-            <option value="">Any available</option>
-            {people.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
+          {/* The four stage desks were retired in D3 (ADR 0001) — there are no
+              stage-role accounts to service them, so routing an order to one
+              would strand it under the new RLS. The Production Desk is the only
+              production owner; it works whichever stage is next. */}
 
           {/* Per-stage completion history */}
           <div style={{ marginTop:18, background:Q.bg, border:`1px solid ${Q.border}`,

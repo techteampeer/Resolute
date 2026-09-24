@@ -27,6 +27,11 @@ export const CREDS = {
   delivery:  ['delivery@resolute.com',  'delivery123'],
   client:    ['client@resolute.com',    'client123'],
   operator:  ['operator@resolute.com',  'operator123'],
+  // Post-D3 the single production login role is `user`; `operator@` holds it.
+  // `screener`/`examiner`/`typer`/`delivery` above still resolve to valid
+  // logins, but their accounts are now role `user` too (the stage login roles
+  // are retired), so tests of the production capability sign in as `user`.
+  user:      ['operator@resolute.com',  'operator123'],
 }
 
 // ── DB access (service role / superuser, bypasses RLS) ──────────────────────

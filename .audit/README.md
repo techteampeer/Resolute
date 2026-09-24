@@ -41,8 +41,7 @@ for the full timeout on Google Fonts — this container has no outbound egress.
 
 | Script | What it drives |
 | --- | --- |
-| `e2e.mjs` | A client places an order and it is carried to delivered through all four desks with Admin approval between each; checks the row after every transition, then the events, fulfillment, commitment PDF, invoice, payout obligation and notification fan-out |
-| `e2e-single.mjs` | The same, through the Single Seating desk's four phases |
+| `e2e-single.mjs` | A client places an order and the Production Desk (`/user`) carries it to delivered through all four pipeline phases with Admin approval between each; checks the row after every transition, then the events, fulfillment, commitment PDF, invoice, payout obligation and notification fan-out. (Post-D3 this is THE production flow — the former four-desk `e2e.mjs` was retired with the stage portals.) |
 | `verify-smoke7.mjs` | Every portal and every sidebar entry, for nine accounts, collecting page errors |
 
 **Writes that must not fail silently**
@@ -50,9 +49,8 @@ for the full timeout on Google Fonts — this container has no outbound egress.
 | Script | What it proves |
 | --- | --- |
 | `verify-silent.mjs` | A fulfillment write refused by RLS shows "Not saved" and does not persist |
-| `verify-legit-save.mjs` | The typer's and Admin's legitimate saves do persist, with `updated_by` stamped |
-| `verify-order-refusal.mjs` | Completing a stage on someone else's order shows the banner and leaves the row alone |
-| `verify-order-legit.mjs` | The same action on your own order succeeds silently and moves the row |
+| `verify-legit-save.mjs` | The production `user`'s and Admin's legitimate saves do persist, with `updated_by` stamped |
+| `verify-order-legit.mjs` | A stage action on an order in the `user` pool succeeds silently and moves the row (the cross-desk-refusal check, `verify-order-refusal.mjs`, was retired with the stage portals; its DB-level equivalent — a user cannot write an order outside the pool — is now asserted in `verify-order-integrity.mjs`) |
 
 **Admin's access to fulfillment**
 

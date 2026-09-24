@@ -13,7 +13,7 @@ const b = await browser()
 try {
   const { page, ctx, errors } = await login(b, 'typer')
   await page.waitForTimeout(1400)
-  await page.goto('http://127.0.0.1:5173/typer/notifications', { waitUntil: 'domcontentloaded' })
+  await page.goto('http://127.0.0.1:5173/user/notifications', { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(2600)
   const card = page.locator('.glass-card').filter({ hasText: 'Work assigned to you' }).first()
   const was = (await card.innerText()).match(/(Your choice|Following Resolute's default)[^\n]*/)?.[0]

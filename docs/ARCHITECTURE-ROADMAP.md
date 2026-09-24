@@ -96,12 +96,13 @@ Priorities: **P0** safety-critical / now → **P3** later.
 - [x] Level-1 hygiene: remove the client→staff cross-link; code-split so clients
       never download staff chunks (main bundle 1,339→553 kB). **(done — PR #80)**
 - [ ] Monorepo-lite: `apps/client`, `apps/ops`, shared `packages/*`.
-- [~] Production-login consolidation → the `user` role (generalized Single
-      Seating, admin gate kept). **D1 + D2 done** (rename `operator`→`user`,
-      ADR 0001; `/user` is now the standard Production Desk and Admin's default
-      routing target). D3 = retire the stage *login* roles + migrate accounts.
-- [ ] Authorization refactor: RLS from `assigned_to = my_role()` to a
-      production-capability check (D3). **Depends on F2.**
+- [x] Production-login consolidation → the `user` role (generalized Single
+      Seating, admin gate kept). **D1 + D2 + D3 done** (ADR 0001): rename
+      `operator`→`user`; `/user` is the standard Production Desk and Admin's
+      default routing target; stage *login* roles retired, accounts migrated,
+      stage portals removed.
+- [x] Authorization refactor: RLS from `assigned_to = my_role()` to a
+      production-capability check (`can_work_production()`), done in D3.
 - [ ] Admin/super-admin as a gated section of the ops app.
 - [ ] Edge access controls on the ops subdomain.
 

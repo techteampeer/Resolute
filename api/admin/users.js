@@ -13,7 +13,10 @@ import { supabaseAdmin, hasSupabaseAdmin } from '../_lib/supabaseAdmin.js'
 
 const send = (res, code, body) => res.status(code).json(body)
 const genPassword = () => 'Rslt-' + Math.random().toString(36).slice(2, 10) + Math.floor(Math.random() * 900 + 100)
-const ROLES = ['admin', 'screener', 'examiner', 'typer', 'delivery', 'client', 'user']
+// Post-D3 (ADR 0001) the four stage login roles are retired; a staff account is
+// an admin or a production `user`. The stage labels remain valid enum values for
+// historical rows, but new accounts are never minted with them.
+const ROLES = ['admin', 'user', 'client']
 
 async function requireAdmin(req) {
   const authz = req.headers.authorization || ''

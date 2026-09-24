@@ -29,6 +29,6 @@ async function drive(who, path, value) {
 }
 
 console.log('order state:', JSON.stringify((await sqlJson(`select id,status,assigned_to from orders where id='${ID}'`))[0]))
-await drive('typer',  `/typer/order/${ID}`, 'TYPER-UI-SAVE Lot 4, Block 2, RESTORED SUBDIVISION.')
+await drive('user',   `/user/order/${ID}`, 'USER-UI-SAVE Lot 4, Block 2, RESTORED SUBDIVISION.')
 await drive('rajni',  `/admin/order/${ID}`, 'ADMIN-UI-SAVE Lot 4, Block 2, RESTORED SUBDIVISION.')
 await b.close()
