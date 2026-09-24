@@ -59,9 +59,9 @@ function OperatorOrderPage() {
   // completing it delivers the order outright.
   const advance = (workflowPatch) => {
     if (role === 'delivery') {
-      completeStep(order.id, role, user?.name, notes || 'single seating', workflowPatch || {})
+      completeStep(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
     } else {
-      returnToAdmin(order.id, role, user?.name, notes || 'single seating', workflowPatch || {})
+      returnToAdmin(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
     }
     navigate('/user')
   }

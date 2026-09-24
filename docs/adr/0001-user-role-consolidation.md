@@ -31,7 +31,7 @@ Single Seating model, generalized and made the default.
 
 ## Increments
 
-- **D1 — rename `operator` → `user`** (this PR). A mechanical, backward-compatible
+- **D1 — rename `operator` → `user`** (done). A mechanical, backward-compatible
   rename establishing the `user` role and the `/user` workspace. The four stage
   roles keep working, so nothing breaks; RLS is untouched (it is generic:
   `is_staff()` = `role <> 'client'`, and `orders_update_assigned` keys on
