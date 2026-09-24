@@ -621,11 +621,11 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 <select style={selectStyle} value={form.assignedTo} onChange={e => set('assignedTo', e.target.value)}>
                   <option value="">Unassigned</option>
                   <option value="admin">Admin (awaiting approval)</option>
-                  <option value="screener">Screener</option>
-                  <option value="examiner">Examiner</option>
-                  <option value="typer">Typer</option>
-                  <option value="delivery">Delivery</option>
-                  <option value="user">Single Seating</option>
+                  <option value="user">Production Desk (standard)</option>
+                  <option value="screener">Screener (stage desk)</option>
+                  <option value="examiner">Examiner (stage desk)</option>
+                  <option value="typer">Typer (stage desk)</option>
+                  <option value="delivery">Delivery (stage desk)</option>
                 </select>
               </Field>
               <Field label="Status">
@@ -1189,7 +1189,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                   <td style={{ padding:'10px 16px', fontSize:12, whiteSpace:'nowrap',
                     color: o.assignedTo ? Q.text : Q.faint, textTransform:'capitalize' }}>
                     {o.assignedTo
-                      ? `${o.assignedTo === 'user' ? 'single seating' : o.assignedTo}${o[o.assignedTo] ? ` · ${o[o.assignedTo]}` : ''}`
+                      ? `${o.assignedTo === 'user' ? 'production' : o.assignedTo}${o[o.assignedTo] ? ` · ${o[o.assignedTo]}` : ''}`
                       : '—'}
                   </td>
                   <td style={{ padding:'10px 16px', fontSize:12, whiteSpace:'nowrap',

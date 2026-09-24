@@ -48,11 +48,11 @@ const adminToOperator = async (tag, confirmFirst=false) => {
   await btn.click(); await page.waitForTimeout(1300)
   const modal=page.locator('div.fixed.inset-0.z-50').first()
   if(!(await modal.innerText()).includes(ID)){ console.log('  !! wrong order in modal'); await ctx.close(); return }
-  await modal.getByRole('button',{name:'Single Seating',exact:true}).first().click(); await page.waitForTimeout(400)
+  await modal.getByRole('button',{name:/Production Desk/}).first().click(); await page.waitForTimeout(400)
   await modal.getByRole('button',{name:/Confirm Assignment/}).first().click(); await page.waitForTimeout(2200)
   await shot(page,`ss-admin-${tag}`); await ctx.close()
 }
-await adminToOperator('route-to-desk', true); await step('admin → Single Seating desk')
+await adminToOperator('route-to-desk', true); await step('admin → Production Desk')
 
 // operator works each phase; admin approves between
 const PHASES=['Screen & assign','Examine & upload','Type commitment','Deliver to client']
