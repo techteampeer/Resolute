@@ -201,9 +201,10 @@ the `createOrder` domain seam and `workflow.intake` JSONB (no migration for P-A)
 - [x] **P-B — county dropdown** cascading from state: `public/us-counties.json`
       (us-atlas, 3,136 counties, 32 KB, fetched on demand) + a datalist-backed
       county field; regen via `scripts/gen-counties.mjs`. **(done)**
-- [ ] **P-C — bulk / Excel import**: multiple properties per order + `.xlsx`/`.csv`
-      import via SheetJS → parse → validate → create. Needs the parser dep and a
-      one-order-per-property vs one-order-many-properties decision.
+- [x] **P-C — bulk / Excel import**: `.xlsx`/`.csv` upload (SheetJS, lazy-loaded
+      into its own chunk) → parse → preview + per-row validation → **one order per
+      property row**; downloadable CSV template. `components` in
+      `src/pages/client/BulkImport.jsx`. **(done)** — workstream P complete.
 
 ## Phases
 

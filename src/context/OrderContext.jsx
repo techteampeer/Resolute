@@ -12,6 +12,11 @@ import { useAuth } from './AuthContext'
 
 const OrderContext = createContext(null)
 
+// Mock-mode order-id sequence. Module-scoped so it survives across createOrder
+// calls that happen faster than React flushes state (e.g. a bulk import loop),
+// where the closed-over `orders` array would otherwise yield the same max twice.
+let mockIdSeq = null
+
 export function OrderProvider({ children }) {
   const { user } = useAuth()
   const [orders, setOrders]           = useState(ORDERS)
@@ -183,11 +188,16 @@ export function OrderProvider({ children }) {
   const createOrder = async (data = {}) => {
     let id = isSupabaseConfigured ? await nextOrderId() : null
     if (!id) {
-      const max = orders.reduce((m, o) => {
-        const n = parseInt(String(o.id).replace(/\D/g, ''), 10)
-        return Number.isNaN(n) ? m : Math.max(m, n)
-      }, 10048)
-      id = `RTS-${max + 1}`
+      // Seed the monotonic sequence once from the current max, then increment —
+      // so a rapid loop can't collide before setOrders flushes.
+      if (mockIdSeq === null) {
+        mockIdSeq = orders.reduce((m, o) => {
+          const n = parseInt(String(o.id).replace(/\D/g, ''), 10)
+          return Number.isNaN(n) ? m : Math.max(m, n)
+        }, 10048)
+      }
+      mockIdSeq += 1
+      id = `RTS-${mockIdSeq}`
     }
     const order = {
       id,

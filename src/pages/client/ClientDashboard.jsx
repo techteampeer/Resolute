@@ -19,6 +19,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useSupport } from '../../context/SupportContext'
 import { DEMO_ORDERS } from '../../data/demoData'
 import ClientBilling from './ClientBilling'
+import BulkImport from './BulkImport'
 import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '../../lib/billing'
 
 const ROLE_COLOR = '#2441E5'
@@ -489,6 +490,7 @@ function PlaceOrderPage() {
   const { user } = useAuth()
   const { createOrder, updateOrder } = useOrders()
   const [step, setStep] = useState(1)
+  const [mode, setMode] = useState('single')   // 'single' wizard | 'bulk' spreadsheet import
   const [counties, setCounties] = useState(_countiesCache)
   useEffect(() => {
     if (_countiesCache) return
@@ -645,6 +647,17 @@ function PlaceOrderPage() {
         <h1 className="text-2xl font-bold mb-1" style={{ color:'#12284C' }}>Place a New Order</h1>
         <p className="text-sm" style={{ color:'#5C6E8C' }}>Title search across all 50 states · Confirmation within minutes</p>
       </div>
+      {/* Single order vs bulk import */}
+      <div className="inline-flex p-1 rounded-xl mb-6" style={{ background:'rgba(18,40,76,0.05)' }}>
+        {[['single','Single order'],['bulk','Bulk import']].map(([k,l]) => (
+          <button key={k} type="button" onClick={()=>setMode(k)}
+            className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={mode===k ? { background:'#fff', color:'#12284C', boxShadow:'0 1px 2px rgba(18,40,76,0.10)' } : { color:'#5C6E8C' }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {mode === 'bulk' ? <BulkImport /> : (<>
       {/* Steps indicator */}
       <div className="flex items-center gap-2 mb-8">
         {STEPS.map((s,i) => (
@@ -904,6 +917,7 @@ function PlaceOrderPage() {
           </form>
         </motion.div>
       </AnimatePresence>
+      </>)}
     </div>
   )
 }
