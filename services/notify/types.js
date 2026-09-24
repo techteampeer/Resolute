@@ -131,9 +131,15 @@ export const factsFor = (key, p = {}, role) => {
 const ORDER_SEGMENT = {
   admin: 'orders', client: 'orders', user: 'orders',
 }
+// A notification_outbox row queued BEFORE the D3 deploy can still carry a retired
+// stage recipient_role (screener/examiner/typer/delivery). Those portals are
+// gone, so map any such role to the production `user` desk — otherwise the mail's
+// "Open the order" link would point at a deleted /<stage>/… route.
+const STAGE_ROLES = new Set(['screener', 'examiner', 'typer', 'delivery'])
 export const linkFor = (p = {}, baseUrl, role = 'admin') => {
   const base = String(baseUrl || '').replace(/\/+$/, '')
   if (!base) return null
-  const seg = ORDER_SEGMENT[role] || 'orders'
-  return p.orderId ? `${base}/${role}/${seg}/${p.orderId}` : `${base}/${role}`
+  const r = STAGE_ROLES.has(role) ? 'user' : role
+  const seg = ORDER_SEGMENT[r] || 'orders'
+  return p.orderId ? `${base}/${r}/${seg}/${p.orderId}` : `${base}/${r}`
 }

@@ -6,7 +6,7 @@ export const STAGE_LABELS = ['Received','Screening','Examining','Typing','Out fo
 
 export const PAYMENT_METHODS = ['Check', 'ACH']
 
-export const ORDERS = [
+const _ORDERS = [
   { id: 'RTS-10041', client: 'Lakewood Title Group',    state: 'FL', county: 'Miami-Dade',  type: 'Full Search',     status: 'examining',  screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'rush',   payment: 'Wire',             clarification: null,        created: '2026-06-09', eta: '2026-06-11', completed: null,         progress: 65,  assignedTo: 'examiner', completedDates: { screener: '2026-06-09', examiner: null, typer: null, delivery: null }, completedBy: { screener: 'Sam Carter', examiner: null, typer: null, delivery: null } },
   { id: 'RTS-10042', client: 'Apex Lending Partners',   state: 'TX', county: 'Harris',      type: 'Current Owner',   status: 'delivered',  screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'normal', payment: 'ACH',              clarification: null,        created: '2026-06-08', eta: '2026-06-10', completed: '2026-06-10', progress: 100, assignedTo: null,       completedDates: { screener: '2026-06-08', examiner: '2026-06-09', typer: '2026-06-09', delivery: '2026-06-10' }, completedBy: { screener: 'Sam Carter', examiner: 'Jordan Lee', typer: 'Priya Nair', delivery: 'Morgan Davis' } },
   { id: 'RTS-10043', client: 'Sterling Law Firm',       state: 'CA', county: 'Los Angeles', type: 'Two-Owner',       status: 'examining',  screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'normal', payment: 'Credit Card',      clarification: 'responded', created: '2026-06-09', eta: '2026-06-12', completed: null,         progress: 45,  assignedTo: 'examiner', completedDates: { screener: '2026-06-09', examiner: null, typer: null, delivery: null }, completedBy: { screener: 'Sam Carter', examiner: null, typer: null, delivery: null } },
@@ -16,6 +16,17 @@ export const ORDERS = [
   { id: 'RTS-10047', client: 'Coastal Title Services',  state: 'NC', county: 'Mecklenburg', type: 'HOA Estoppel',    status: 'examining',  screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'rush',   payment: 'ACH',              clarification: null,        created: '2026-06-09', eta: '2026-06-11', completed: null,         progress: 55,  assignedTo: 'examiner', completedDates: { screener: '2026-06-09', examiner: null, typer: null, delivery: null }, completedBy: { screener: 'Sam Carter', examiner: null, typer: null, delivery: null } },
   { id: 'RTS-10048', client: 'Lakewood Title Group',    state: 'AZ', county: 'Maricopa',    type: 'Current Owner',   status: 'typing',     screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'normal', payment: 'Wire',             clarification: null,        created: '2026-06-08', eta: '2026-06-12', completed: null,         progress: 85,  assignedTo: 'typer',    completedDates: { screener: '2026-06-08', examiner: '2026-06-10', typer: null, delivery: null }, completedBy: { screener: 'Sam Carter', examiner: 'Jordan Lee', typer: null, delivery: null } },
 ]
+
+// Post-D3 (ADR 0001): production orders live in the single `user` pool. The
+// fixtures above are written on their stage desk for readability; consolidate
+// any still on a stage desk onto the Production Desk (mirrors seed.sql + the D3
+// migration) and mark them production-owned, so mock mode shows a populated
+// /user workspace. Delivered orders (assignedTo null) are left untouched.
+const STAGE_DESKS = ['screener', 'examiner', 'typer', 'delivery']
+export const ORDERS = _ORDERS.map(o =>
+  STAGE_DESKS.includes(o.assignedTo)
+    ? { ...o, assignedTo: 'user', workflow: { ...(o.workflow || {}), singleSeating: true } }
+    : o)
 
 // Client registry — codes assigned in registration order, stable per client.
 // Non-super-admins see the code; only super admins (Rajni, Saravanan) see the name + contact.

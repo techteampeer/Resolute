@@ -82,5 +82,24 @@ check('user cannot write an order outside the pool',
 // cleanup
 sql(`delete from orders where id = '${OID}'`)
 
+// ── D3: the pipeline stays ordered — no terminal jump from an early stage ────
+// A pooled user must not be able to PATCH an order still in screening straight
+// to delivered (skipping examination/typing/delivery). guard_order_handoff only
+// permits the terminal transition once the three earlier stages are stamped.
+console.log('── D3: terminal transition requires the delivery stage ──')
+const TID = 'RTS-AUDIT-D3'
+sql(`delete from orders where id = '${TID}'`)
+// Fresh order in the pool, nothing completed yet (still at screening).
+sql(`insert into orders (id, client_code, state, county, type, status, assigned_to, progress, created, completed_dates)
+     values ('${TID}', ${c1 ? `'${c1}'` : 'null'}, 'FL', 'Test', 'Full Search', 'screening', 'user', 20, current_date, '{}'::jsonb)`)
+const jump = await as('user', `/orders?id=eq.${TID}`, {
+  method: 'PATCH', body: JSON.stringify({ assigned_to: null, status: 'delivered' }),
+})
+const jumped = sqlJson(`select assigned_to::text, status::text from orders where id = '${TID}'`)[0] || {}
+check('early-stage terminal jump refused', jump.status >= 400, `HTTP ${jump.status}`)
+check('order still in pool, not delivered', jumped.assigned_to === 'user' && jumped.status !== 'delivered',
+  `assigned_to=${jumped.assigned_to} status=${jumped.status}`)
+sql(`delete from orders where id = '${TID}'`)
+
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed')
 process.exit(failures ? 1 : 0)

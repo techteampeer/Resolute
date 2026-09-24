@@ -75,8 +75,70 @@ grant  execute on function public.can_work_production() to anon, authenticated;
 -- The WITH CHECK stays is_staff() (as before): the legitimate handoffs move
 -- assigned_to AWAY from the pool (to 'admin', or null on delivery), so a strict
 -- new-row test would break every handoff — guard_order_handoff() is what
--- constrains the target, and it is unchanged.
+-- constrains the target.
 drop policy if exists orders_update_assigned on public.orders;
 create policy orders_update_assigned on public.orders for update
   using (public.can_work_production() and assigned_to = 'user'::public.user_role)
   with check (public.is_staff());
+
+-- ── 4. Keep the pipeline ordered under the wider pool policy ─────────────────
+-- Before D3, orders_update_assigned scoped a non-admin write to ONE desk, so a
+-- staffer could only terminal-jump (clear the desk => delivered) an order that
+-- was already on their stage. Now that a `user` may write any order in the pool,
+-- guard_order_handoff must itself enforce that the terminal transition only
+-- happens FROM the delivery stage — otherwise a pooled user could PATCH an order
+-- still in screening straight to {assigned_to: null, status: delivered}, skipping
+-- examination/typing/delivery. Extend the guard (everything else is byte-for-byte
+-- the 20260921000000 version; only the new terminal-stage check is added). It
+-- reads the OLD (stored) row, which the caller cannot forge, so faking
+-- completed_dates in the same PATCH does not help.
+create or replace function public.guard_order_handoff()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  -- Only guard direct end-user REST writes; RPCs (owner), service role and
+  -- migrations/seed are trusted and pass through.
+  if current_user <> 'authenticated' then
+    return new;
+  end if;
+  -- Admins may reassign/route freely; their writes use orders_write_admin.
+  if public.is_admin() then
+    return new;
+  end if;
+
+  -- From here: a non-admin staff member updating an order in the pool.
+
+  -- 1. An order can never be moved to another client.
+  if new.client_code is distinct from old.client_code then
+    raise exception 'an order cannot be reassigned to a different client';
+  end if;
+
+  -- 2. Legitimate handoff targets only: back to Admin ('admin'), completed /
+  --    unassigned (null, delivery completion), or the same desk (mid-stage save).
+  --    Handing directly to any OTHER live desk is refused — that skips the gate.
+  if new.assigned_to is not null
+     and new.assigned_to <> 'admin'
+     and new.assigned_to is distinct from old.assigned_to then
+    raise exception
+      'a stage hands an order back to Admin, not directly to another desk (assigned_to must be admin, unchanged, or cleared)';
+  end if;
+
+  -- 3. The terminal transition (clearing the desk on delivery completion) is
+  --    valid only once the order has actually reached delivery: the three earlier
+  --    stages must already be stamped on the stored row. Otherwise a pooled user
+  --    could jump an order straight to delivered, skipping the pipeline.
+  if new.assigned_to is null
+     and old.assigned_to is not null
+     and not (old.completed_dates ->> 'screener' is not null
+              and old.completed_dates ->> 'examiner' is not null
+              and old.completed_dates ->> 'typer'    is not null) then
+    raise exception
+      'an order can only be completed from the delivery stage — screening, examination and typing must be done first';
+  end if;
+
+  return new;
+end $$;
+
+revoke execute on function public.guard_order_handoff() from public, anon, authenticated;
