@@ -34,34 +34,48 @@ export function OrderProvider({ children }) {
   // actually sees their own rows. Demo users have no backend session — skip.
   useEffect(() => {
     if (!isSupabaseConfigured || !user || user.demo) return
-    let unsub = () => {}
     let alive = true
-    // One full read to hydrate; realtime then applies DELTAS. The old handler
-    // re-ran fetchOrders() on every change, so N connected staff each re-read the
-    // whole orders table on every write — O(N²) traffic that melts at ~100
-    // concurrent. Now a change fetches only the row that changed (by id, with the
-    // same client-name join) and upserts it; a delete drops it. RLS still governs
-    // every read, so a row the caller may not see comes back null and no-ops.
-    fetchOrders().then(rows => { if (alive && rows) setOrders(rows) })
-    fetchActivity().then(rows => { if (alive && rows) setActivityLog(rows) })
+    let hydrated = false
+    const pending = new Set()   // ids that changed while the first snapshot was in flight
+
+    // Realtime applies DELTAS instead of re-reading the whole table. The old
+    // handler re-ran fetchOrders() on every change, so N connected staff each
+    // re-read every order on every write — O(N²) traffic that melts at ~100
+    // concurrent. Now a change fetches only the row that changed (by id, RLS-
+    // scoped, with the same client-name join) and upserts it, or drops it if it
+    // is gone/no-longer-visible.
+    const applyOne = (id) => fetchOrderById(id).then(row => {
+      if (!alive) return
+      setOrders(os => {
+        if (!row) return os.some(o => o.id === id) ? os.filter(o => o.id !== id) : os
+        const i = os.findIndex(o => o.id === row.id)
+        if (i === -1) return [row, ...os]
+        const next = os.slice(); next[i] = row; return next
+      })
+    })
+
     const onChange = (payload) => {
       const id = payload?.new?.id ?? payload?.old?.id
       if (!id) return
-      if (payload.eventType === 'DELETE') {
-        setOrders(os => os.filter(o => o.id !== id))
-        return
-      }
-      // INSERT / UPDATE: pull just this row (RLS-scoped) and upsert it.
-      fetchOrderById(id).then(row => {
-        if (!alive || !row) return
-        setOrders(os => {
-          const i = os.findIndex(o => o.id === row.id)
-          if (i === -1) return [row, ...os]
-          const next = os.slice(); next[i] = row; return next
-        })
-      })
+      // Until the first snapshot lands, buffer the ids that change — otherwise a
+      // delta applied now would be clobbered when the (older) full snapshot
+      // resolves. They are replayed against the DB's CURRENT state after hydrate.
+      if (!hydrated) { pending.add(id); return }
+      if (payload.eventType === 'DELETE') { setOrders(os => os.filter(o => o.id !== id)); return }
+      applyOne(id)   // INSERT / UPDATE
     }
-    unsub = subscribeOrders(onChange)
+
+    // Subscribe BEFORE hydrating so no change between the snapshot and the live
+    // handler is missed; then apply the snapshot and replay anything buffered.
+    const unsub = subscribeOrders(onChange)
+    fetchOrders().then(rows => {
+      if (!alive) return
+      if (rows) setOrders(rows)
+      hydrated = true
+      pending.forEach(applyOne)   // replay changes that raced the initial fetch
+      pending.clear()
+    })
+    fetchActivity().then(rows => { if (alive && rows) setActivityLog(rows) })
     return () => { alive = false; unsub() }
   }, [user?.email, user?.demo])
 
