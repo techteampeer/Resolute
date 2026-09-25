@@ -7,7 +7,7 @@ import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
   STAGE_BY_ROLE, todayISO,
 } from '@domain'
-import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
+import { isSupabaseConfigured, fetchOrders, fetchOrderById, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
 import { useAuth } from './AuthContext'
 
 const OrderContext = createContext(null)
@@ -35,11 +35,34 @@ export function OrderProvider({ children }) {
   useEffect(() => {
     if (!isSupabaseConfigured || !user || user.demo) return
     let unsub = () => {}
-    const load = () => fetchOrders().then(rows => { if (rows) setOrders(rows) })
-    load()
-    fetchActivity().then(rows => { if (rows) setActivityLog(rows) })
-    unsub = subscribeOrders(load)
-    return () => unsub()
+    let alive = true
+    // One full read to hydrate; realtime then applies DELTAS. The old handler
+    // re-ran fetchOrders() on every change, so N connected staff each re-read the
+    // whole orders table on every write — O(N²) traffic that melts at ~100
+    // concurrent. Now a change fetches only the row that changed (by id, with the
+    // same client-name join) and upserts it; a delete drops it. RLS still governs
+    // every read, so a row the caller may not see comes back null and no-ops.
+    fetchOrders().then(rows => { if (alive && rows) setOrders(rows) })
+    fetchActivity().then(rows => { if (alive && rows) setActivityLog(rows) })
+    const onChange = (payload) => {
+      const id = payload?.new?.id ?? payload?.old?.id
+      if (!id) return
+      if (payload.eventType === 'DELETE') {
+        setOrders(os => os.filter(o => o.id !== id))
+        return
+      }
+      // INSERT / UPDATE: pull just this row (RLS-scoped) and upsert it.
+      fetchOrderById(id).then(row => {
+        if (!alive || !row) return
+        setOrders(os => {
+          const i = os.findIndex(o => o.id === row.id)
+          if (i === -1) return [row, ...os]
+          const next = os.slice(); next[i] = row; return next
+        })
+      })
+    }
+    unsub = subscribeOrders(onChange)
+    return () => { alive = false; unsub() }
   }, [user?.email, user?.demo])
 
   // Local activity feed + best-effort append to the durable order_events audit

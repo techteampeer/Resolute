@@ -93,6 +93,17 @@ export async function fetchOrders() {
   return data.map(toAppOrder)
 }
 
+// One order by id, with the same client-name join fetchOrders() uses. Backs the
+// delta-realtime path: a change event fetches only the row that changed instead
+// of re-reading the whole table. RLS-scoped like every read — an order the
+// caller may not see comes back null (or as a plain not-found), so this never
+// leaks a row the full fetch would have hidden.
+export async function fetchOrderById(id) {
+  const { data, error } = await supabase.from('orders').select('*, clients(name)').eq('id', id).maybeSingle()
+  if (error) { console.error('[order]', error.message); return null }
+  return data ? toAppOrder(data) : null
+}
+
 // Returns { ok, error }. An RLS-filtered UPDATE is not an error in PostgREST —
 // it matches zero rows and returns 200 — so "did anything change?" has to be
 // answered by asking for the affected rows back. Without this the app could not
