@@ -31,7 +31,7 @@ export default function FulfillmentScreen() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { orders, updateOrder } = useOrders()
+  const { orders } = useOrders()
   const { byOrder, ensure, update, save, saveError } = useFulfillmentStore()
   const order = orders.find(o => o.id === id)
   const [tab, setTab] = useState('Fulfillment')
@@ -91,7 +91,7 @@ export default function FulfillmentScreen() {
       </div>
 
       {tab === 'Fulfillment'
-        ? <FulfillmentBody {...{ order, f, set, comp, save, saveError, user, updateOrder, navigate }} />
+        ? <FulfillmentBody {...{ order, f, set, comp, save, saveError, user, navigate }} />
         : tab === 'Overview'
         ? <OverviewTab order={order} f={f} user={user} />
         : tab === 'Inbox'
@@ -102,7 +102,7 @@ export default function FulfillmentScreen() {
 }
 
 // ── Fulfillment body: two-column layout ──────────────────────────────────────
-function FulfillmentBody({ order, f, set, comp, save, saveError, user, updateOrder, navigate }) {
+function FulfillmentBody({ order, f, set, comp, save, saveError, user, navigate }) {
   return (
     <div className="flex gap-6 px-5 md:px-7 py-5">
       <div className="flex-1 min-w-0 max-w-[860px]">
@@ -225,7 +225,7 @@ function FulfillmentBody({ order, f, set, comp, save, saveError, user, updateOrd
 
         {/* 18 — Finalize */}
         <Section n={18} title="Finalize Order" done={comp.done === comp.total}>
-          <Finalize comp={comp} order={order} f={f} user={user} updateOrder={updateOrder} navigate={navigate} />
+          <Finalize comp={comp} order={order} f={f} user={user} navigate={navigate} />
         </Section>
       </div>
 
@@ -521,7 +521,7 @@ function Supplementary({ order, f, set }) {
 }
 
 // ── Section 12: Finalize ─────────────────────────────────────────────────────
-function Finalize({ comp, order, f, user, updateOrder, navigate }) {
+function Finalize({ comp, order, f, user, navigate }) {
   const { returnToAdmin } = useOrders()
   const [showDoc, setShowDoc] = useState(false)
   const [submitting, setSubmitting] = useState(false)

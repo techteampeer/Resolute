@@ -57,7 +57,7 @@ export function FulfillmentProvider({ children }) {
       return { ...s, [orderId]: next }
     })
     pulse()
-  }, [pulse])
+  }, [pulse, settle])
 
   return (
     <FulfillmentContext.Provider value={{ byOrder, ensure, update, save, saveError }}>
