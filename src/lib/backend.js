@@ -178,6 +178,15 @@ export async function saveFulfillment(orderId, data) {
   if (error) console.error('[saveFulfillment]', error.message)
 }
 
+// ── Clients ───────────────────────────────────────────────────────────────────
+// The clients table — Admin's client directory, including clients created by
+// email intake. RLS: clients_read lets staff read every client.
+export async function fetchClients() {
+  const { data, error } = await supabase.from('clients').select('code, name').order('code')
+  if (error) { console.error('[clients]', error.message); return null }
+  return data
+}
+
 // ── Client payment terms ──────────────────────────────────────────────────────
 export async function fetchClientTerms() {
   const { data, error } = await supabase.from('clients').select('code, payment_terms')

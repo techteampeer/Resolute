@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
-import { openDocument } from '../../lib/backend'
+import { openDocument, fetchClients } from '../../lib/backend'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import AttachedDocs from '../../components/AttachedDocs'
 import { orderSubtitle } from '../../components/OrderDetailLayout'
@@ -75,7 +75,7 @@ const STATUS_MAP = {
 // from Reports, where the order-level export was less relevant).
 export function exportOrdersCsv(orders, user) {
   downloadCsv('orders.csv', [
-    { label: 'Order', get: o => o.id }, { label: 'Client', get: o => displayClient(o.client, user) },
+    { label: 'Order', get: o => o.id }, { label: 'Client', get: o => displayClient(o.client, user, o.clientCode) },
     { label: 'State', get: o => o.state }, { label: 'County', get: o => o.county },
     { label: 'Type', get: o => o.type }, { label: 'Status', get: o => STATUS_MAP[o.status]?.label || o.status },
     { label: 'Priority', get: o => o.priority }, { label: 'Payment', get: o => o.payment },
@@ -361,7 +361,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
           padding:'12px 22px 18px' }}>
           <div>
             <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:ROLE_COLOR }}>{order.id}</div>
-            <div style={{ fontSize:20, fontWeight:700, color:Q.text }}>{displayClient(order.client, user)}</div>
+            <div style={{ fontSize:20, fontWeight:700, color:Q.text }}>{displayClient(order.client, user, order.clientCode)}</div>
             <div style={{ fontSize:12, color:Q.muted }}>{orderSubtitle(order)}</div>
           </div>
           {order.priority === 'rush' && (
@@ -434,7 +434,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
               <div style={{ display:'flex', alignItems:'center', gap:8, background:Q.bg,
                 border:`1px solid ${Q.border}`, borderRadius:10, padding:'12px 14px', color:Q.muted, fontSize:13 }}>
                 <Lock style={{ width:14, height:14, color:Q.faint }} />
-                Client <strong style={{ color:Q.text }}>{cli?.code || displayClient(order.client, user)}</strong> — detailed info restricted to super admins.
+                Client <strong style={{ color:Q.text }}>{cli?.code || displayClient(order.client, user, order.clientCode)}</strong> — detailed info restricted to super admins.
               </div>
             )}
           </div>
@@ -457,6 +457,12 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                   <Detail label="Requested by" value={intake.from} wide />
                   <Detail label="Company" value={intake.company} />
                 </div>
+                {/* Internal intake metadata — Admin's view only, and by code only */}
+                {intake.clientCreated && (
+                  <div style={{ marginTop:10, fontSize:12.5, fontWeight:600, color:'#b45309' }}>
+                    New client created from email: {intake.clientCode}
+                  </div>
+                )}
                 {intake.specialInstructions && (
                   <div style={{ marginTop:10 }}>
                     <div style={{ fontSize:11, color:Q.faint, marginBottom:2 }}>Special instructions</div>
@@ -674,11 +680,29 @@ const routingState = (o) => {
 const awaitingApproval = (o) =>
   o.assignedTo === 'admin' && o.status !== 'delivered' && o.status !== 'cancelled'
 
+// Admin's client directory: the clients table when Supabase is live — so
+// clients created by email intake are listed — and the demo registry in mock
+// mode. Starts empty when live, so a demo client that may not exist in the
+// database is never offered.
+function useClientDirectory() {
+  const [clients, setClients] = useState(isSupabaseConfigured ? [] : CLIENTS)
+  useEffect(() => {
+    if (!isSupabaseConfigured) return
+    let live = true
+    fetchClients().then(rows => { if (live && rows) setClients(rows) })
+    return () => { live = false }
+  }, [])
+  return clients
+}
+
 // Admin-side intake. Orders placed here land in Admin's own queue
 // (createOrder parks with assignedTo 'admin'), exactly like a client-placed
 // order, so the approval path is identical.
 function NewOrderModal({ onClose }) {
   const { createOrder } = useOrders()
+  const { user } = useAuth()
+  const clients = useClientDirectory()
+  // f.client holds the picked client's CODE — the directory's stable key.
   const [f, setF] = useState({ client: '', state: '', county: '', type: 'Full Search', priority: 'normal', eta: '' })
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF(p => ({ ...p, [k]: v }))
@@ -687,8 +711,9 @@ function NewOrderModal({ onClose }) {
     if (!ready || busy) return
     setBusy(true)
     try {
+      const picked = clients.find(c => c.code === f.client)
       await createOrder({
-        client: f.client, clientCode: clientCode(f.client) || null,
+        client: picked?.name || f.client, clientCode: f.client,
         state: f.state.toUpperCase(), county: f.county, type: f.type,
         priority: f.priority, eta: f.eta || '',
         intake: { source: 'admin', propertyAddress: '', orderType: f.type },
@@ -712,7 +737,9 @@ function NewOrderModal({ onClose }) {
             <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>CLIENT</div>
             <select value={f.client} onChange={e => set('client', e.target.value)} style={field}>
               <option value="">Select a client…</option>
-              {CLIENTS.map(c => <option key={c.code} value={c.name}>{c.code} · {c.name}</option>)}
+              {clients.map(c => (
+                <option key={c.code} value={c.code}>{user?.superAdmin ? `${c.code} · ${c.name}` : c.code}</option>
+              ))}
             </select>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
@@ -818,7 +845,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
     const q = search.toLowerCase()
     // Include the client's own file number: it is the reference they quote on
     // the phone and in email subjects, so it has to be searchable here.
-    const matchSearch = !q || displayClient(o.client, user).toLowerCase().includes(q)
+    const matchSearch = !q || displayClient(o.client, user, o.clientCode).toLowerCase().includes(q)
       || o.id.toLowerCase().includes(q)
       || (o.clientFileNo || '').toLowerCase().includes(q)
     const matchTab    = activeTab === 'all' || lifecycleOf(o) === activeTab
@@ -985,7 +1012,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       )}
                     </div>
                   </td>
-                  <td style={{ padding:'10px 16px', fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o.client, user)}</td>
+                  <td style={{ padding:'10px 16px', fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o.client, user, o.clientCode)}</td>
                   <td style={{ padding:'10px 16px', color:Q.muted, whiteSpace:'nowrap' }}>{o.county}, {o.state}</td>
                   <td style={{ padding:'10px 16px', color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{o.type}</td>
                   <td style={{ padding:'10px 16px', whiteSpace:'nowrap' }}>
@@ -1474,7 +1501,7 @@ function AdminReports() {
     region:  o => regionOf(o.state),
     status:  o => STATUS_MAP[o.status]?.label || o.status,
     type:    o => o.type,
-    client:  o => displayClient(o.client, user),
+    client:  o => displayClient(o.client, user, o.clientCode),
     payment: o => o.payment,
   }[dim]
 
@@ -1503,7 +1530,7 @@ function AdminReports() {
   const exportSummary = () => downloadCsv(`report-${dim}.csv`,
     [{ label: dimLabel, get: r => r[0] }, { label: 'Orders', get: r => r[1] }], rows)
   const exportOrders = () => downloadCsv('orders.csv', [
-    { label: 'Order', get: o => o.id }, { label: 'Client', get: o => displayClient(o.client, user) },
+    { label: 'Order', get: o => o.id }, { label: 'Client', get: o => displayClient(o.client, user, o.clientCode) },
     { label: 'State', get: o => o.state }, { label: 'County', get: o => o.county },
     { label: 'Type', get: o => o.type }, { label: 'Status', get: o => STATUS_MAP[o.status]?.label || o.status },
     { label: 'Priority', get: o => o.priority }, { label: 'Payment', get: o => o.payment },

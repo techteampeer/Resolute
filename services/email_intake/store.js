@@ -24,7 +24,7 @@ const rethrow = (prefix, error) => {
   throw err
 }
 
-// Columns worth reporting back for an order we did not just build.
+// Columns worth reporting back for an order that already exists.
 const SUMMARY = 'id, status, assigned_to, client_code, type'
 
 export function createDeps(client = null) {
@@ -38,28 +38,26 @@ export function createDeps(client = null) {
       return data?.[0] || null
     },
 
-    // The repo's one deterministic client mapping: clients.code is the primary
-    // key and orders.client_code is its foreign key. Exact match only — there
-    // is no reliable address→client mapping in the schema to fall back on.
-    async resolveClient(code) {
-      const { data, error } = await c.from('clients').select('code, name')
-        .eq('code', code).maybeSingle()
-      if (error) rethrow('client lookup failed', error)
-      return data || null
-    },
-
-    // Same sequence-backed id the Place Order form uses, so email and website
-    // orders share one numbering with no chance of collision.
-    async nextOrderId() {
-      const { data, error } = await c.rpc('next_order_id')
-      if (error) rethrow('order id allocation failed', error)
-      return data || null
-    },
-
-    async insertOrder(row) {
-      const { data, error } = await c.from('orders').insert(row).select(SUMMARY).single()
-      if (error) rethrow('order insert failed', error)
-      return data
+    // Client + order in ONE database transaction: intake_create_order (in
+    // 20260925000000_email_intake_client_resolution.sql) matches the client —
+    // or creates it under a per-name lock — then draws the order id and inserts
+    // the order. If the insert fails, a client created by the same call rolls
+    // back with it, and the error (23505 included) propagates unchanged.
+    // contact/email only populate a NEW client; the database never matches on them.
+    // Returns { status: 'created', clientMatch, clientCode, order }
+    //       | { status: 'ambiguous', codes } | { status: 'unknown_client' }.
+    async createIntakeOrder({ row, clientIdentifier = null, company = null, contact = null, email = null }) {
+      const { data, error } = await c.rpc('intake_create_order', {
+        p_order: row, p_company: company, p_contact: contact, p_email: email,
+        p_client_code: clientIdentifier,
+      })
+      if (error) rethrow('order creation failed', error)
+      if (data?.status === 'ambiguous') return { status: 'ambiguous', codes: data.codes || [] }
+      if (data?.status === 'unknown_client') return { status: 'unknown_client' }
+      if (data?.status === 'created' && data.order?.id && data.clientCode) {
+        return { status: 'created', clientMatch: data.clientMatch, clientCode: data.clientCode, order: data.order }
+      }
+      throw new Error('email_intake: order creation returned an unexpected result')
     },
   }
 }

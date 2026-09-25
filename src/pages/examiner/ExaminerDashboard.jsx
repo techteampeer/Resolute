@@ -176,7 +176,7 @@ function ExaminerHome() {
                       style={{ background:'rgba(220,80,60,0.18)', color:'#dc2626' }}>RUSH</span>
                   )}
                 </div>
-                <div className="font-medium text-sm truncate" style={{ color:'#12284C' }}>{displayClient(o.client, user)}</div>
+                <div className="font-medium text-sm truncate" style={{ color:'#12284C' }}>{displayClient(o.client, user, o.clientCode)}</div>
                 <div className="text-xs" style={{ color:'#5C6E8C' }}>{o.type} · {o.state}, {o.county}</div>
                 <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background:'rgba(18,40,76,0.10)' }}>
                   <div className="h-full rounded-full transition-all"

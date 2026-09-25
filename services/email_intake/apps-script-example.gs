@@ -12,8 +12,9 @@
  *
  * What is added is the portal connection:
  *
- *   Gmail → Vertex AI → CLIENT_CODE_MAP → [optional Sheet test log]
- *         → POST /api/orders/email-intake → order parked with Admin
+ *   Gmail → Vertex AI → [optional Sheet test log]
+ *         → POST /api/orders/email-intake → client matched or created by the
+ *           portal → order parked with Admin
  *
  * Three behaviours changed deliberately, and only these:
  *
@@ -91,7 +92,7 @@ const MESSAGE_ID_COLUMN = 2;
 // File → Project properties → Script properties:
 //   INTAKE_API_URL           https://…/api/orders/email-intake
 //   EMAIL_INTAKE_API_SECRET  must match the portal's env var. Never logged.
-//   CLIENT_CODE_MAP          JSON, customer name → clients.code (see below)
+// There is no client map: the portal resolves the client from the company name.
 const PROPS = PropertiesService.getScriptProperties();
 
 /** Read-only accessor so a missing property fails with a useful message. */
@@ -205,15 +206,7 @@ function processResoluteMessage(message, subject) {
     delete extractedJsonData.client_identifier;
     delete extractedJsonData.clientCode;
 
-    const clientCode = clientCodeFor(extractedJsonData.customer);
-    if (!clientCode) {
-      // Do not call the API at all: there is nothing to attach the order to.
-      Logger.log(`Warning: no CLIENT_CODE_MAP entry for customer "${extractedJsonData.customer}" — not posted.`);
-      logToTestSheet(messageId, extractedJsonData, "unmapped-customer", "");
-      return;                                    // stays UNREAD
-    }
-
-    payload = buildIntakePayload(extractedJsonData, message, messageId, clientCode);
+    payload = buildIntakePayload(extractedJsonData, message, messageId);
     const outcome = postToPortal(payload);
     logToTestSheet(messageId, extractedJsonData, outcome.state, outcome.detail);
 
@@ -242,43 +235,26 @@ function orderNumberFromSubject(subject) {
   return match ? match[0] : null;
 }
 
-// --- CLIENT IDENTITY ---
-/**
- * Gemini MUST NOT invent a client code. It has no way to know that "Atlantic
- * Closing & Escrow, LLC" is CL01, and a hallucinated code would attach a real
- * order to the wrong client's billing. So the model returns the customer name
- * it read, and the mapping to clients.code happens here, from an explicit table
- * an operator maintains as a script property:
- *
- *   CLIENT_CODE_MAP = {"Atlantic Closing & Escrow, LLC":"CL01","Premier Title":"CL02"}
- *
- * An unmapped customer is NOT posted and its email is left unread, so it shows
- * up as unhandled mail for a human to map. Guessing is never the fallback.
- */
-function clientCodeFor(customer) {
-  const map = JSON.parse(prop('CLIENT_CODE_MAP', true));
-  const wanted = String(customer || "").trim().toLowerCase();
-  if (!wanted) return null;
-  const names = Object.keys(map);
-  for (let i = 0; i < names.length; i++) {
-    if (names[i].trim().toLowerCase() === wanted) return map[names[i]];
-  }
-  return null;
-}
-
 // --- PORTAL PAYLOAD ---
 /**
  * Maps the extracted fields onto the portal's official intake field set.
  *
  * Required by the API: property_state, county, property_address, city,
  * search_type, turnaround, contact_first_name, contact_last_name,
- * contact_email, client_identifier, email_message_id. Everything else is
- * optional and may be null.
+ * contact_email, email_message_id, and the client's company name. Everything
+ * else is optional and may be null.
  *
- * client_identifier comes from CLIENT_CODE_MAP and email_message_id from
- * Gmail — never from the model.
+ * CLIENT IDENTITY. Gemini MUST NOT invent a client code — it has no way to know
+ * that "Atlantic Closing & Escrow, LLC" is CL01, and a hallucinated code would
+ * attach a real order to the wrong client's billing. So no client code is sent
+ * at all: `company` carries the name the model read, and the PORTAL resolves it
+ * against its clients table — the existing client when exactly one matches, a
+ * new client when none does, a 422 (left unread) when the name is ambiguous.
+ * Nothing here maps names to codes, and sender addresses are never used.
+ *
+ * email_message_id comes from Gmail — never from the model.
  */
-function buildIntakePayload(x, message, messageId, clientCode) {
+function buildIntakePayload(x, message, messageId) {
   return {
     // required
     property_state:       x.propertyState || null,
@@ -290,8 +266,8 @@ function buildIntakePayload(x, message, messageId, clientCode) {
     contact_first_name:   x.contactFirstName || null,
     contact_last_name:    x.contactLastName || null,
     contact_email:        x.contactEmail || null,
-    client_identifier:    clientCode,
     email_message_id:     messageId,
+    company:              x.customer || null,   // the client, by name
     // optional
     zip:                  x.zip || null,
     parcel_apn:           x.parcelApn || null,
@@ -300,7 +276,6 @@ function buildIntakePayload(x, message, messageId, clientCode) {
     borrower:             x.borrower || null,
     seller:               x.seller || null,
     special_instructions: x.specialInstructions || null,
-    company:              x.customer || null,
     order_number:         x.orderNumber || null,
     customer_link:        x.customerLink || null,
     email_subject:        message.getSubject(),
@@ -334,7 +309,11 @@ function postToPortal(payload) {
     // Non-JSON error page (proxy, gateway); leave body empty.
   }
 
-  if (responseCode === 201) return { state: 'created', detail: body.orderId || "" };
+  // e.g. "RTS-10060 · client CL08 (created)" — how the portal resolved the client.
+  if (responseCode === 201) {
+    const client = body.clientCode ? ` · client ${body.clientCode}${body.clientMatch ? ` (${body.clientMatch})` : ""}` : "";
+    return { state: 'created', detail: `${body.orderId || ""}${client}` };
+  }
   if (responseCode === 200) return { state: 'duplicate', detail: body.orderId || "" };
 
   // 4xx means the payload is wrong: a retry sends the same bytes and fails the
@@ -376,7 +355,7 @@ function extractEntitiesViaVertexAI(emailText) {
     Schema:
     {
       "orderNumber": "Extract the order number that begins with 'RES-' (e.g., RES-2026-1937).",
-      "customer": "Extract the customer name (e.g., Atlantic Closing & Escrow, LLC or Premier Title).",
+      "customer": "The client company placing the order, exactly as written (e.g., Atlantic Closing & Escrow, LLC or Premier Title) — the title, escrow, lending or law firm, NOT the buyer, seller or borrower. '' if not stated.",
       "customerFile": "Extract the customer file identifier (e.g., ACE-26-13155 or 2026-PTMD-1922).",
       "customerLink": "Extract the primary URL to view the request, message, or customer file. Look for full http/https links.",
       "propertyAddress": "Extract the STREET LINE ONLY of the property (e.g., 880 Main St). Do not include city, state or ZIP. If no address is found, return ''.",

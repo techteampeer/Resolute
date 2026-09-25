@@ -2,7 +2,8 @@
 // through `deps`, so this runs in a unit test with no Supabase, no network and
 // no env, and unchanged on Lambda after the AWS move.
 //
-//   validate → deduplicate → resolve client → build the row → insert
+//   validate → deduplicate → build the row → [ resolve/create client + insert ]
+//                                               one database transaction
 //
 // The row it builds is a NORMAL Resolute order: the same columns and the same
 // initial state as an order placed through the Client Portal, differing only in
@@ -19,10 +20,19 @@ const todayISO = () => new Date().toISOString().slice(0, 10)
 const isDuplicateKey = (err) =>
   err?.code === '23505' || /duplicate key value violates unique constraint/i.test(err?.message || '')
 
-// Compose the special-instructions text Admin and the Screener actually read.
-// order_number and customer_link have no field on any portal screen, so they
-// are appended here rather than silently dropped — surfacing them in a rendered
-// field is what keeps this feature free of frontend changes.
+// How the order's client was established. The database records it — with the
+// code and a clientCreated flag — at workflow.intake.clientMatch / clientCode /
+// clientCreated: internal metadata, shown only on Admin's order view, never
+// written into anything a client or restricted role reads.
+//   code    an explicit client_identifier, looked up exactly
+//   name    the email's company name matched exactly one existing client
+//   created no client matched, so intake created one
+export const CLIENT_MATCH = ['code', 'name', 'created']
+
+// Compose the special-instructions text Admin and the Screener actually read —
+// client content only. order_number and customer_link have no field on any
+// portal screen, so the client's own references are appended here rather than
+// silently dropped. Internal intake information never goes in here.
 function instructionsFor(value) {
   const refs = [
     value.orderNumber ? `Client order number: ${value.orderNumber}` : null,
@@ -35,10 +45,14 @@ function instructionsFor(value) {
 // Map the validated payload onto the exact column set src/lib/backend.js
 // insertOrder() writes, with the defaults src/context/OrderContext.jsx
 // createOrder() applies. Exported so tests can assert the shape directly.
-export function buildOrderRow(value, client, id, today = todayISO()) {
+//
+// `id` and `client_code` are left null on purpose: intake_create_order fills
+// them — and the intake client metadata — inside the transaction that resolves
+// the client, because only the database knows them at that point.
+export function buildOrderRow(value, today = todayISO()) {
   return {
-    id,
-    client_code: client.code,
+    id: null,
+    client_code: null,
     state: value.propertyState,
     county: value.county,
     type: value.searchType,
@@ -74,7 +88,9 @@ export function buildOrderRow(value, client, id, today = todayISO()) {
         // "First Last <email>", the same shape the web form writes.
         from: `${value.contactFirstName} ${value.contactLastName} <${value.contactEmail}>`,
         subject: value.emailSubject,
-        company: value.company || client.name || null,
+        // The company as the email wrote it. With an explicit code and no
+        // company, the database falls back to the client's own name.
+        company: value.company,
         specialInstructions: instructionsFor(value),
         requestedTurnaround: value.requestedTurnaround,
         // Kept structurally as well as in the instructions above, so a future
@@ -82,7 +98,7 @@ export function buildOrderRow(value, client, id, today = todayISO()) {
         orderNumber: value.orderNumber,
         customerLink: value.customerLink,
         // The envelope sender, for provenance only. Never used to establish
-        // client identity — see resolveClient below.
+        // client identity — see processIntake below.
         sourceEmail: value.sourceEmail,
         // Idempotency key. The partial unique index on
         // workflow->'intake'->>'messageId' makes a replayed POST a database
@@ -93,11 +109,11 @@ export function buildOrderRow(value, client, id, today = todayISO()) {
   }
 }
 
-// deps: { findByMessageId, resolveClient, nextOrderId, insertOrder, today? }
-// Returns { ok: true, status: 'created' | 'duplicate', order }
+// deps: { findByMessageId, createIntakeOrder, today? }
+// Returns { ok: true, status: 'created' | 'duplicate', order, clientMatch?, clientCode? }
 //       | { ok: false, code, error, field? }
 export async function processIntake(payload, deps) {
-  const { findByMessageId, resolveClient, nextOrderId, insertOrder, today = todayISO } = deps
+  const { findByMessageId, createIntakeOrder, today = todayISO } = deps
 
   const parsed = validateIntake(payload)
   if (!parsed.ok) {
@@ -105,39 +121,52 @@ export async function processIntake(payload, deps) {
   }
   const value = parsed.value
 
-  // 1. Idempotency, before anything with a side effect. Apps Script and the
-  //    network both retry; the same email must only ever become one order.
+  // 1. Idempotency, before anything with a side effect — creating a client
+  //    included. Apps Script and the network both retry; the same email must
+  //    only ever become one order, and never a second client.
   const seen = await findByMessageId(value.messageId)
   if (seen) return { ok: true, status: 'duplicate', order: seen }
 
-  // 2. Client identity. `orders.client_code` is a foreign key to clients(code),
-  //    so an unresolvable identifier is rejected here rather than becoming a
-  //    constraint violation — or worse, an order attributed to nobody. The
-  //    caller must send a real clients.code: the company name and the sender
-  //    address are recorded but never consulted for identity.
-  const client = await resolveClient(value.clientIdentifier)
-  if (!client) {
-    return {
-      ok: false, code: 'unknown_client', field: 'client_identifier',
-      error: `No client matches client_identifier "${value.clientIdentifier}"`,
-    }
-  }
-
-  const id = await nextOrderId()
-  if (!id) return { ok: false, code: 'order_id_unavailable', error: 'Could not allocate an order id' }
-
-  const row = buildOrderRow(value, client, id, today())
+  // 2. Client + order in ONE database transaction (intake_create_order): the
+  //    client is matched — or created — and the order inserted together, so a
+  //    failed insert can never leave a new client behind. An explicit
+  //    client_identifier is an exact code lookup with no fallback to the name;
+  //    otherwise the company name is the only match key. The contact name and
+  //    email only populate a NEW client's record — nothing matches on an address.
+  let r
   try {
-    const created = await insertOrder(row)
-    return { ok: true, status: 'created', order: created || row }
+    r = await createIntakeOrder({
+      row: buildOrderRow(value, today()),
+      clientIdentifier: value.clientIdentifier,
+      company: value.clientIdentifier ? null : value.company,
+      contact: `${value.contactFirstName} ${value.contactLastName}`,
+      email: value.contactEmail,
+    })
   } catch (err) {
     // Two identical POSTs can both pass the pre-check above. The unique index
-    // lets exactly one insert win; the loser reports the winner's order rather
-    // than an error, so a retrying caller sees the same result either way.
+    // lets exactly one insert win — and the loser's whole transaction, any
+    // client it created included, rolls back. It reports the winner's order
+    // rather than an error, so a retrying caller sees the same result either way.
     if (isDuplicateKey(err)) {
       const winner = await findByMessageId(value.messageId)
       if (winner) return { ok: true, status: 'duplicate', order: winner }
     }
     throw err
   }
+
+  if (r.status === 'unknown_client') {
+    // orders.client_code is a foreign key to clients(code); nothing was written.
+    return {
+      ok: false, code: 'unknown_client', field: 'client_identifier',
+      error: `No client matches client_identifier "${value.clientIdentifier}"`,
+    }
+  }
+  if (r.status === 'ambiguous') {
+    return {
+      ok: false, code: 'ambiguous_client', field: 'company',
+      error: `company "${value.company}" matches ${r.codes.length} existing clients (${r.codes.join(', ')}). ` +
+        'Merge or rename the duplicate client records, then re-send.',
+    }
+  }
+  return { ok: true, status: 'created', order: r.order, clientMatch: r.clientMatch, clientCode: r.clientCode }
 }

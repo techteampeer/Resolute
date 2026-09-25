@@ -44,7 +44,11 @@ export const clientCode   = (name) => CODE_BY_NAME[name] || name
 export const clientName   = (code) => NAME_BY_CODE[code] || null
 export const clientByName = (name) => CLIENTS.find(c => c.name === name) || null
 // Returns the real client name for super admins, otherwise the stable client code.
-export const displayClient = (name, user) => (user && user.superAdmin) ? name : (CODE_BY_NAME[name] || name)
+// Pass the record's own clientCode (orders carry it from the database): the
+// name→code table above only knows the demo clients, so a real or newly created
+// client's name would otherwise reach roles that must see only its code.
+export const displayClient = (name, user, code) =>
+  (user && user.superAdmin) ? name : (code || CODE_BY_NAME[name] || name)
 
 export const STATE_ORDERS = {
   AL:2, AK:1, AZ:14, AR:3, CA:28, CO:9, CT:5, DE:2, FL:31, GA:18,

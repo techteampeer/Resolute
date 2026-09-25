@@ -225,7 +225,7 @@ function OperatorHome() {
                     <span className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{o.id}</span>
                     {o.priority === 'rush' && <span className="text-xs font-semibold px-2 py-0.5 rounded-md" style={{ background: 'rgba(220,80,60,0.18)', color: '#dc2626' }}>RUSH</span>}
                   </div>
-                  <div className="font-medium text-sm mt-0.5 truncate" style={{ color: '#12284C' }}>{displayClient(o.client, user)}</div>
+                  <div className="font-medium text-sm mt-0.5 truncate" style={{ color: '#12284C' }}>{displayClient(o.client, user, o.clientCode)}</div>
                   <div className="text-xs" style={{ color: '#5C6E8C' }}>{o.type} · {o.state}, {o.county}</div>
                 </div>
                 <div className="text-right flex-shrink-0">
@@ -253,7 +253,7 @@ function OperatorHome() {
                   <div className="w-2 h-10 rounded-full flex-shrink-0" style={{ background: '#9AA8BF' }} />
                   <div className="flex-1 min-w-0">
                     <span className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{o.id}</span>
-                    <div className="font-medium text-sm mt-0.5 truncate" style={{ color: '#12284C' }}>{displayClient(o.client, user)}</div>
+                    <div className="font-medium text-sm mt-0.5 truncate" style={{ color: '#12284C' }}>{displayClient(o.client, user, o.clientCode)}</div>
                     <div className="text-xs" style={{ color: '#5C6E8C' }}>{o.type} · {o.state}, {o.county}</div>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -284,7 +284,7 @@ function CompletedList() {
           <div key={o.id} className="flex items-center gap-3 p-3 rounded-xl">
             <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#15803d' }} />
             <span className="font-mono text-xs" style={{ color: '#3D5171' }}>{o.id}</span>
-            <span className="text-xs flex-1 truncate" style={{ color: '#3D5171' }}>{displayClient(o.client, user)}</span>
+            <span className="text-xs flex-1 truncate" style={{ color: '#3D5171' }}>{displayClient(o.client, user, o.clientCode)}</span>
             <span className="text-xs" style={{ color: '#5C6E8C' }}>{o.completed || o.eta}</span>
           </div>
         ))}

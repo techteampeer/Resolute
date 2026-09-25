@@ -51,7 +51,7 @@ export default function OrdersTable({ orders, showAssignees = false, onOrderClic
   const filtered = orders.filter(o => {
     const s = search.toLowerCase()
     const matchSearch = !s || o.id.toLowerCase().includes(s) ||
-      displayClient(o.client, user).toLowerCase().includes(s) || o.state.toLowerCase().includes(s)
+      displayClient(o.client, user, o.clientCode).toLowerCase().includes(s) || o.state.toLowerCase().includes(s)
     const matchFilter = filter === 'all' || o.status === filter
     return matchSearch && matchFilter
   })
@@ -110,7 +110,7 @@ export default function OrdersTable({ orders, showAssignees = false, onOrderClic
                     {order.id}
                   </td>
                   <td className="px-4 py-3 font-medium whitespace-nowrap" style={{ color: '#12284C' }}>
-                    {displayClient(order.client, user)}
+                    {displayClient(order.client, user, order.clientCode)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'rgba(18,40,76,0.52)' }}>
                     {order.state} · {order.county}

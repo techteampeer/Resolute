@@ -27,13 +27,17 @@ export const SEARCH_CATALOG = [...new Set([
 export const REQUIRED_FIELDS = [
   'property_state', 'county', 'property_address', 'city', 'search_type',
   'turnaround', 'contact_first_name', 'contact_last_name', 'contact_email',
-  'client_identifier', 'email_message_id',
+  'email_message_id',
 ]
 
+// The client is identified by ONE of these, so each is optional on its own and
+// validateIntake requires at least one: `company` (the name as written in the
+// email — how normal email intake identifies the client) or `client_identifier`
+// (an exact clients.code, for a trusted caller that already knows it).
 export const OPTIONAL_FIELDS = [
   'zip', 'parcel_apn', 'client_file_number', 'buyer', 'borrower', 'seller',
   'special_instructions', 'company', 'order_number', 'customer_link',
-  'email_subject', 'source_email',
+  'email_subject', 'source_email', 'client_identifier',
 ]
 
 export const INTAKE_KEYS = [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS]
@@ -62,6 +66,31 @@ export const normalizeMessageId = (raw) => {
   const s = str(raw)
   if (!s) return null
   return s.replace(/^<+/, '').replace(/>+$/, '').trim() || null
+}
+
+// ── Company name → the client match key ─────────────────────────────────────
+// The ONE normalisation rule for matching a company name to a client. It is
+// mirrored exactly by public.client_name_key() in
+// 20260925000000_email_intake_client_resolution.sql, which is where the match
+// actually happens; the tests hold the two in step. Deterministic, never fuzzy:
+//
+//   case-insensitive · '&' reads as 'and' · apostrophes and full stops are
+//   dropped (L.L.C. = LLC, O'Brien = OBrien) · any other run of punctuation or
+//   whitespace is one space
+//
+// Only A–Z is case-folded, on purpose: Postgres lower() folds other letters by
+// the database's locale, so ASCII-only folding is what keeps this and the SQL
+// identical on every database. Letters outside a–z / 0–9 count as separators.
+//
+// Returns null when nothing usable is left, so '---' cannot identify a client.
+export const normalizeCompanyName = (raw) => {
+  const s = str(raw)
+  if (!s) return null
+  return s.replace(/[A-Z]/g, (c) => c.toLowerCase())
+    .replace(/&/g, ' and ')
+    .replace(/['’.]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim() || null
 }
 
 // ── Search type ──────────────────────────────────────────────────────────────
@@ -208,11 +237,19 @@ export function validateIntake(raw) {
     return fail('contact_email', 'contact_email is not a valid email address')
   }
 
+  // Client identity. An explicit code is looked up exactly; otherwise the
+  // company name is the key, and it must survive normalisation. The sender and
+  // contact addresses are never an alternative.
+  const clientIdentifier = str(raw.client_identifier)
+  if (!clientIdentifier && !normalizeCompanyName(raw.company)) {
+    return fail('company', 'company is required: the client company name as written in the email')
+  }
+
   return {
     ok: true,
     value: {
       messageId,
-      clientIdentifier: str(raw.client_identifier),
+      clientIdentifier,
       searchType,
       priority,
       requestedTurnaround: str(raw.turnaround),   // the client's own wording, kept verbatim

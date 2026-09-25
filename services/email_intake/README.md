@@ -8,11 +8,11 @@ deployment.
 
 ```
 client email → Gmail (label:resolute is:unread — every message, no subject filter)
-             → Vertex AI / Gemini → CLIENT_CODE_MAP → [optional Sheet test log]
+             → Vertex AI / Gemini → [optional Sheet test log]
                                           ↓ structured JSON
                           POST /api/orders/email-intake   (x-intake-secret)
                                           ↓
-             validate → deduplicate → resolve client → insert order
+        validate → deduplicate → match or create the client → insert order
                                           ↓
                      one normal Resolute order, parked with Admin
 ```
@@ -70,22 +70,65 @@ Admin. Nothing in this module knows about either. Clients are never emailed.
 
 ## Client identity
 
-`client_identifier` must be a **`clients.code`** (`CL01`, …), matched exactly.
-That is the repo's only deterministic client mapping: `clients.code` is the
-primary key and `orders.client_code` is its foreign key. An unresolvable code is
-rejected (422) and no order is created.
-
 **Gemini never produces a client code.** It has no way to know that "Lakewood
 Title Group" is `CL01`, and a hallucinated code would attach a real order to the
-wrong client's billing. The model returns the company/customer name it read, and
-Apps Script maps that to a code through an explicit, operator-maintained
-`CLIENT_CODE_MAP` script property. An unmapped company is **not posted at all**
-and its email is left unread for a human to map.
+wrong client's billing. The model returns the company name it read, Apps Script
+sends it as `company`, and **the portal** resolves it against `clients` — there
+is no client map anywhere on the Google side.
 
-The company name (`workflow.intake.company`) and the sender address
-(`workflow.intake.sourceEmail`) are recorded for reference and are **never**
-consulted for identity — `clients.email` has no uniqueness constraint, and a
-sender address is spoofable.
+After the payload has been validated and the message id checked for a
+duplicate, **client and order are created in one database transaction**:
+`intake_create_order()` (`20260925000000_email_intake_client_resolution.sql`)
+resolves the client, draws the order id and inserts the order — so if the
+insert fails for any reason, a client created in the same call rolls back with
+it. It has no exception handler on purpose; the `orders_log_created` trigger
+(audit event → `order.new` notification) fires inside the same transaction:
+
+| Normalised `company` matches | Result | `workflow.intake.clientMatch` |
+|---|---|---|
+| exactly one client | that client | `name` |
+| more than one client | `422 ambiguous_client`, nothing created, email left unread | — |
+| no client | a **new** client, then the order | `created` |
+
+**The match is exact on a normalised name, never fuzzy.** `normalizeCompanyName()`
+(`schema.js`) and `client_name_key()` (the migration) apply the same rule:
+A–Z case-folded, `&` read as `and`, apostrophes and full stops dropped
+(`L.L.C.` = `LLC`, `O'Brien` = `OBrien`), any other run of punctuation or
+whitespace collapsed to one space. `Lakewood Title` and `Lakewood Title Group`
+are different clients. Only A–Z is folded because Postgres `lower()` folds other
+letters by database locale; letters outside a–z / 0–9 act as separators.
+
+**A new client** gets the next code — `CL08`, `CL09` … `CL99`, `CL100` — from
+`client_code_seq`, which the migration starts above the highest `CL<digits>`
+code actually in the table (the seed is not assumed to be complete). It is
+written with the email's company name, the contact's name and email, and
+today's `registered` date; `payment_terms` and every other column keep their
+defaults. The resolver takes a per-name advisory lock before it looks, held
+until the order commits, so two emails for the same new company create **one**
+client — the second waits, then matches it. A rolled-back creation can leave a
+gap in the `CL` numbering; codes are never reused.
+
+**Internal, not client content.** How the client was established is recorded as
+metadata — `workflow.intake.clientMatch` (`code` · `name` · `created`),
+`clientCode` and `clientCreated` — and never written into the special
+instructions, which carry only the client's own text (plus the client's order
+number and link). Admin's order view alone shows *"New client created from
+email: CL08"*, by code; no client or restricted-role screen reads these keys.
+
+**Trusted-queue assumption (pilot).** Automatic creation assumes the `resolute`
+Gmail label is a trusted intake queue: any email there that passes validation
+can create a client. Production hardening — sender allow-listing, provisional
+clients pending Admin review, spam filtering — is future work.
+
+**Addresses are never identity.** The sender (`workflow.intake.sourceEmail`) and
+the contact email are recorded, and the contact details populate a *new*
+client's record, but nothing matches on them — `clients.email` has no
+uniqueness constraint and a sender address is spoofable.
+
+A trusted caller that already knows the code may send `client_identifier`
+instead. It is an exact `clients.code` lookup with no fallback to the name: an
+unknown code is `422 unknown_client` and nothing is created (`clientMatch: code`).
+Apps Script never sends one.
 
 ## Layout
 
@@ -93,8 +136,8 @@ sender address is spoofable.
 |---|---|
 | `schema.js` | Validate + normalise the payload. Pure; no Supabase, no env. Owns `SEARCH_CATALOG`, derived from `src/data/products.js`. |
 | `intake.js` | `processIntake(payload, deps)` — the pipeline. Pure; every side effect is injected. Also exports `buildOrderRow()`. |
-| `store.js` | `createDeps()` — the only file that touches Supabase (service-role client). |
-| `apps-script-example.gs` | Reference only. The Google-side half: poll → extract → map company to code → post → mark read. Not deployed from here. |
+| `store.js` | `createDeps()` — the only file that touches Supabase (service-role client): the duplicate lookup and the one `intake_create_order` call. |
+| `apps-script-example.gs` | Reference only. The Google-side half: poll → extract → post → mark read. Not deployed from here. |
 | `__tests__/intake.test.js` | `node:test`. Runs with no database and no network. |
 
 Nothing in `services/email_intake/` knows it runs on Vercel — `api/orders/email-intake.js`
@@ -118,8 +161,14 @@ columns and the `workflow.intake` keys the portal already writes and renders.
 | `contact_first_name` | `intake.from`, as `"First Last <email>"` |
 | `contact_last_name` | `intake.from` |
 | `contact_email` | `intake.from`; validated with the same rule the Place Order form uses |
-| `client_identifier` | `orders.client_code` — an exact `clients.code` |
 | `email_message_id` | `intake.messageId` (the idempotency key) |
+
+**The client — at least one of**
+
+| Field | Lands on |
+|---|---|
+| `company` | the client match key (see *Client identity*) → `orders.client_code`; kept verbatim at `intake.company` |
+| `client_identifier` | trusted callers only: `orders.client_code` — an exact `clients.code` |
 
 **Optional**
 
@@ -132,7 +181,6 @@ columns and the `workflow.intake` keys the portal already writes and renders.
 | `borrower` | `intake.borrowerName` |
 | `seller` | `intake.seller` |
 | `special_instructions` | `intake.specialInstructions` |
-| `company` | `intake.company` (falls back to the resolved client's name) |
 | `order_number` | `intake.orderNumber`, **and** appended to `intake.specialInstructions` |
 | `customer_link` | `intake.customerLink`, **and** appended to `intake.specialInstructions` |
 | `email_subject` | `intake.subject` |
@@ -184,12 +232,13 @@ than accepting a product the portal cannot price.
 
 | Outcome | Status | Body |
 |---|---|---|
-| Order created | `201` | `{ ok: true, duplicate: false, orderId, status, assignedTo, clientCode }` |
+| Order created | `201` | `{ ok: true, duplicate: false, orderId, status, assignedTo, clientCode, clientMatch }` — `clientMatch` is `code`, `name` or `created` |
 | Already processed | `200` | `{ ok: true, duplicate: true, orderId, … }` |
 | Bad/missing fields | `400` | `{ error, code: 'invalid_payload', field }` |
 | Missing/wrong secret | `401` | `{ error: 'Unauthorized' }` |
 | Not a POST | `405` | `{ error: 'Method not allowed' }` |
-| Unknown client | `422` | `{ error, code: 'unknown_client', field }` |
+| Unknown `client_identifier` | `422` | `{ error, code: 'unknown_client', field: 'client_identifier' }` |
+| `company` matches several clients | `422` | `{ error, code: 'ambiguous_client', field: 'company' }` — the error lists the codes |
 | Secret not configured | `503` | `{ error: 'Email intake is not configured' }` |
 | Server/DB failure | `500` | `{ error: 'Intake failed' }` |
 
@@ -206,7 +255,8 @@ become one order:
 2. `20260902000000_email_intake_idempotency.sql` adds a **partial** unique index
    on that expression, so two simultaneous retries cannot both pass the check —
    one insert wins and the loser's `23505` is turned back into "here is the
-   order that already exists".
+   order that already exists". The loser's whole transaction rolls back, so a
+   client it had just created goes with it.
 
 The index is partial because website- and admin-placed orders never set
 `messageId`; they are not in the index and the Place Order flow is untouched.
@@ -224,8 +274,9 @@ genuinely different messages into one order.
 
 On the Google side, the portal connection lives in **script properties**, so
 rotating the secret or repointing the API is never a code change:
-`INTAKE_API_URL`, `EMAIL_INTAKE_API_SECRET`, and `CLIENT_CODE_MAP`. The secret
-is sent as a header and is never logged or written to the sheet.
+`INTAKE_API_URL` and `EMAIL_INTAKE_API_SECRET`. There is no client map to
+maintain. The secret is sent as a header and is never logged or written to the
+sheet.
 
 Gmail, Vertex and the test sheet stay as top-level constants in the lead
 script's own style — `GCP_PROJECT_ID`, `GCP_REGION`, `VERTEX_AI_MODEL`,
@@ -248,7 +299,7 @@ curl -sS -X POST "$PORTAL_URL/api/orders/email-intake" \
     "contact_first_name": "Dana",
     "contact_last_name":  "Whitfield",
     "contact_email":      "dana@lakewoodtitle.com",
-    "client_identifier":  "CL01",
+    "company":            "Lakewood Title Group",
     "email_message_id":   "18f2c9a4b1d0e5f7",
 
     "zip":                "77002",
@@ -258,7 +309,6 @@ curl -sS -X POST "$PORTAL_URL/api/orders/email-intake" \
     "borrower":           "Jordan Reyes",
     "seller":             "Avery Banks",
     "special_instructions": "Closing is tight.",
-    "company":            "Lakewood Title Group",
     "order_number":       "ORD-9911",
     "customer_link":      "https://client.example/orders/9911",
     "email_subject":      "Title search request — 880 Main St",
@@ -266,9 +316,11 @@ curl -sS -X POST "$PORTAL_URL/api/orders/email-intake" \
   }'
 ```
 
-First call → `201 {"ok":true,"duplicate":false,"orderId":"RTS-…","status":"received","assignedTo":"admin"}`.
+First call → `201 {"ok":true,"duplicate":false,"orderId":"RTS-…","status":"received","assignedTo":"admin","clientCode":"CL01","clientMatch":"name"}`.
 Re-run the identical command → `200` with `"duplicate":true` and the same
-`orderId`. The order appears in Admin's **Awaiting Approval** tab.
+`orderId`. The order appears in Admin's **Awaiting Approval** tab. Change
+`company` and `email_message_id` to an unknown company to see
+`"clientMatch":"created"` and a new `CL` code.
 
 ## Open items
 

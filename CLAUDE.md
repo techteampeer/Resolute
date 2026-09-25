@@ -57,7 +57,8 @@ Verify every new feature against these constraints before implementing.
   only orders Admin explicitly assigns to it (`workflow.singleSeating`), with
   Admin approval after every phase.
 - Client identities: non-super-admins see client codes, not names
-  (`displayClient`).
+  (`displayClient` — always pass the record's own `clientCode`; its demo
+  name→code table only knows CL01–CL07).
 
 ## Email — outbound rebuilt; the inbound mail READER stays removed
 
@@ -85,11 +86,20 @@ Verify every new feature against these constraints before implementing.
   AI / Gemini read the inbox and extract outside this repo, then POST already
   structured JSON to `POST /api/orders/email-intake` (shared secret in
   `x-intake-secret`; unset ⇒ 503, never open). The endpoint validates,
-  resolves the client by `clients.code`, deduplicates on the source
-  `Message-ID`, and inserts ONE normal order in the existing initial Admin
-  state — no email-only lifecycle, and the audit event plus the `order.new`
-  notification come from the existing `orders_log_created` trigger. Client
-  identity is never inferred from a sender address.
+  deduplicates on the source `Message-ID`, resolves the client from the
+  extracted `company` name, and inserts ONE normal order in the existing
+  initial Admin state — no email-only lifecycle, and the audit event plus the
+  `order.new` notification come from the existing `orders_log_created`
+  trigger. Client and order are ONE DB transaction (`intake_create_order`):
+  exact match on the normalised name → that client; several → 422; none → a
+  new `CL` client created under a per-name lock — rolled back if the order
+  insert fails. Never fuzzy, and Gemini never supplies a client code (an
+  explicit `client_identifier` is an exact-code path for trusted callers
+  only). Client identity is never inferred from a sender or contact address.
+  How the client was matched is internal metadata (`workflow.intake.clientMatch`
+  / `clientCode` / `clientCreated`) shown only on Admin's order view — never
+  in special instructions. Pilot assumption: the `resolute` label is a trusted
+  queue; production hardening of auto-creation is future work.
 - Supabase Database Webhooks must not point at this app — there is still no
   endpoint to receive them.
 

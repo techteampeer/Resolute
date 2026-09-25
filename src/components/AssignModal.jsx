@@ -78,7 +78,7 @@ export default function AssignModal({ order, user, onClose }) {
           padding:'18px 22px', borderBottom:`1px solid ${Q.border}` }}>
           <div>
             <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:ROLE_COLOR }}>{order.id}</div>
-            <div style={{ fontSize:18, fontWeight:700, color:Q.text }}>{displayClient(order.client, user)}</div>
+            <div style={{ fontSize:18, fontWeight:700, color:Q.text }}>{displayClient(order.client, user, order.clientCode)}</div>
             <div style={{ fontSize:12, color:Q.muted }}>{order.type} · {order.county}, {order.state}</div>
           </div>
           <button onClick={onClose} style={{ background:'transparent', border:'none', cursor:'pointer', color:Q.faint }}>

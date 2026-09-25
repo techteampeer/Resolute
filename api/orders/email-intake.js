@@ -32,7 +32,7 @@ function secretMatches(received, expected) {
 const STATUS_FOR = {
   invalid_payload: 400,
   unknown_client: 422,
-  order_id_unavailable: 503,
+  ambiguous_client: 422,
 }
 
 export default async function handler(req, res) {
@@ -75,6 +75,9 @@ export default async function handler(req, res) {
       status: order.status,
       assignedTo: order.assigned_to ?? null,
       clientCode: order.client_code ?? null,
+      // How the client was established on THIS call: code | name | created.
+      // Null for a duplicate, which created nothing.
+      clientMatch: duplicate ? null : (result.clientMatch ?? null),
     })
   } catch (err) {
     // Never echo the exception to the caller — it can carry connection strings.

@@ -25,7 +25,8 @@ POSTs the already-extracted JSON here. This app reads no mail and runs no
 extraction. Gated by a shared secret in the `x-intake-secret` header; an unset
 secret disables the endpoint (503) rather than opening it. Creates one normal
 order in the existing initial Admin state, deduplicated on the source
-`Message-ID`. Logic lives in `services/email_intake/` — see its README for the
+`Message-ID`, for the client matched by the extracted company name — or a new
+client it creates when none matches. Logic lives in `services/email_intake/` — see its README for the
 payload, the response table and the manual curl.
 
 ### Environment variables
