@@ -96,12 +96,14 @@ export async function fetchOrders() {
 // One order by id, with the same client-name join fetchOrders() uses. Backs the
 // delta-realtime path: a change event fetches only the row that changed instead
 // of re-reading the whole table. RLS-scoped like every read — an order the
-// caller may not see comes back null (or as a plain not-found), so this never
-// leaks a row the full fetch would have hidden.
+// caller may not see resolves to `{ row: null }`, so this never leaks a row the
+// full fetch would have hidden. Returns a DISCRIMINATED result: `{ row }` on a
+// real answer (row may be null = genuinely absent/hidden) vs `{ error }` on a
+// transient failure — so the caller never mistakes a network blip for a delete.
 export async function fetchOrderById(id) {
   const { data, error } = await supabase.from('orders').select('*, clients(name)').eq('id', id).maybeSingle()
-  if (error) { console.error('[order]', error.message); return null }
-  return data ? toAppOrder(data) : null
+  if (error) { console.error('[order]', error.message); return { error: error.message } }
+  return { row: data ? toAppOrder(data) : null }
 }
 
 // Returns { ok, error }. An RLS-filtered UPDATE is not an error in PostgREST —
@@ -144,10 +146,14 @@ export async function insertOrder(order) {
   if (error) { console.error('[insertOrder]', error.message); throw error }
 }
 
-export function subscribeOrders(cb) {
+// `onStatus` receives the channel lifecycle status ('SUBSCRIBED', 'CHANNEL_ERROR',
+// 'TIMED_OUT', 'CLOSED'). Callers that need to avoid a hydration race start their
+// snapshot only once the channel is actually SUBSCRIBED — before that, postgres
+// changes are not yet delivered, so a change in that window would be lost.
+export function subscribeOrders(cb, onStatus) {
   const channel = supabase.channel('orders-rt')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, cb)
-    .subscribe()
+    .subscribe((status) => { onStatus?.(status) })
   return () => supabase.removeChannel(channel)
 }
 

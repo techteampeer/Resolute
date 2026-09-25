@@ -35,48 +35,69 @@ export function OrderProvider({ children }) {
   useEffect(() => {
     if (!isSupabaseConfigured || !user || user.demo) return
     let alive = true
-    let hydrated = false
-    const pending = new Set()   // ids that changed while the first snapshot was in flight
+    let started = false          // snapshot fetch begun (once, after SUBSCRIBED)
+    let hydrated = false         // snapshot applied
+    const pending = new Set()    // ids that changed before the snapshot landed
+    const gen = new Map()        // per-id generation: the newest event/read wins
 
     // Realtime applies DELTAS instead of re-reading the whole table. The old
     // handler re-ran fetchOrders() on every change, so N connected staff each
     // re-read every order on every write — O(N²) traffic that melts at ~100
     // concurrent. Now a change fetches only the row that changed (by id, RLS-
-    // scoped, with the same client-name join) and upserts it, or drops it if it
-    // is gone/no-longer-visible.
-    const applyOne = (id) => fetchOrderById(id).then(row => {
-      if (!alive) return
-      setOrders(os => {
-        if (!row) return os.some(o => o.id === id) ? os.filter(o => o.id !== id) : os
-        const i = os.findIndex(o => o.id === row.id)
-        if (i === -1) return [row, ...os]
-        const next = os.slice(); next[i] = row; return next
+    // scoped, same client-name join) and upserts it, or drops it if it is gone.
+    const bump = (id) => { const g = (gen.get(id) || 0) + 1; gen.set(id, g); return g }
+
+    // Fetch this id's CURRENT row and apply it, unless a newer event superseded
+    // this read (generation guard — prevents a slow read from resurrecting a
+    // deleted row or applying stale data). A transient fetch error is ignored, so
+    // a network blip is never mistaken for a delete.
+    const refresh = (id) => {
+      const g = bump(id)
+      return fetchOrderById(id).then(res => {
+        if (!alive || gen.get(id) !== g || res.error) return
+        const row = res.row
+        setOrders(os => {
+          if (!row) return os.some(o => o.id === id) ? os.filter(o => o.id !== id) : os
+          const i = os.findIndex(o => o.id === row.id)
+          if (i === -1) return [row, ...os]
+          const next = os.slice(); next[i] = row; return next
+        })
       })
-    })
+    }
 
     const onChange = (payload) => {
       const id = payload?.new?.id ?? payload?.old?.id
       if (!id) return
-      // Until the first snapshot lands, buffer the ids that change — otherwise a
-      // delta applied now would be clobbered when the (older) full snapshot
-      // resolves. They are replayed against the DB's CURRENT state after hydrate.
+      // Before the snapshot lands, buffer ids — applying now would be clobbered by
+      // the snapshot; they are replayed against the CURRENT state after hydrate.
       if (!hydrated) { pending.add(id); return }
-      if (payload.eventType === 'DELETE') { setOrders(os => os.filter(o => o.id !== id)); return }
-      applyOne(id)   // INSERT / UPDATE
+      if (payload.eventType === 'DELETE') { bump(id); setOrders(os => os.filter(o => o.id !== id)); return }
+      refresh(id)   // INSERT / UPDATE
     }
 
-    // Subscribe BEFORE hydrating so no change between the snapshot and the live
-    // handler is missed; then apply the snapshot and replay anything buffered.
-    const unsub = subscribeOrders(onChange)
-    fetchOrders().then(rows => {
-      if (!alive) return
-      if (rows) setOrders(rows)
-      hydrated = true
-      pending.forEach(applyOne)   // replay changes that raced the initial fetch
-      pending.clear()
+    // Start the snapshot only once the channel is actually SUBSCRIBED — before
+    // that, postgres changes are not delivered, so a change would be neither seen
+    // nor buffered. On a channel error/timeout, hydrate anyway (degraded realtime
+    // beats an empty screen). Either way it runs once.
+    const startHydrate = () => {
+      if (started) return
+      started = true
+      fetchOrders().then(rows => {
+        if (!alive) return
+        if (rows) setOrders(rows)
+        hydrated = true
+        pending.forEach(refresh)   // replay changes that raced the snapshot
+        pending.clear()
+      })
+    }
+    const unsub = subscribeOrders(onChange, (status) => {
+      if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') startHydrate()
     })
+    // Safety net: if the channel never reports a status (realtime down/misconfig),
+    // hydrate anyway after a moment so data still loads (startHydrate is idempotent).
+    const fallback = setTimeout(startHydrate, 3000)
     fetchActivity().then(rows => { if (alive && rows) setActivityLog(rows) })
-    return () => { alive = false; unsub() }
+    return () => { alive = false; clearTimeout(fallback); unsub() }
   }, [user?.email, user?.demo])
 
   // Local activity feed + best-effort append to the durable order_events audit
