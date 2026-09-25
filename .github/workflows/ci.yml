@@ -6,10 +6,11 @@
 #                    bitten this project before), then runs the RLS/integrity
 #                    audits over the real REST path.
 #
-# NOTE: this is Phase 0 of docs/ARCHITECTURE-ROADMAP.md workstream I. Lint,
-# typecheck and the full audit/E2E suite are added as those pieces land. Mark
-# `build` (and, once it has had a green shakeout run, `db-integrity`) as required
-# checks in the branch-protection settings.
+# NOTE: this is Phase 0 of docs/ARCHITECTURE-ROADMAP.md workstream I. The `build`
+# job now also lints (eslint flat config, --max-warnings=0). Typecheck and the
+# full audit/E2E suite are added as those pieces land. Mark `build` (and, once it
+# has had a green shakeout run, `db-integrity`) as required checks in the
+# branch-protection settings.
 name: CI
 
 on:
@@ -31,6 +32,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run lint
       - run: npm test
       - run: npm run build
 

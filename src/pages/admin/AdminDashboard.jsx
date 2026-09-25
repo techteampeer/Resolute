@@ -16,7 +16,7 @@ import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument } from '../../lib/backend'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
-import { useProfiles, namesForRole, invalidateProfiles } from '../../lib/useProfiles'
+import { useProfiles, namesForRole } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
 import { money } from '../../lib/billing'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
@@ -920,7 +920,7 @@ function NewOrderModal({ onClose }) {
 
 function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const { user } = useAuth()
-  const { orders, updateOrder } = useOrders()
+  const { orders } = useOrders()
   const navigate = useNavigate()
   const [assigning, setAssigning] = useState(null)  // focused assign modal
   const [search, setSearch]     = useState('')
@@ -1666,13 +1666,6 @@ function AdminReports() {
   const dimLabel = DIMS.find(d => d.key === dim)?.label || 'Group'
   const exportSummary = () => downloadCsv(`report-${dim}.csv`,
     [{ label: dimLabel, get: r => r[0] }, { label: 'Orders', get: r => r[1] }], rows)
-  const exportOrders = () => downloadCsv('orders.csv', [
-    { label: 'Order', get: o => o.id }, { label: 'Client', get: o => displayClient(o, user) },
-    { label: 'State', get: o => o.state }, { label: 'County', get: o => o.county },
-    { label: 'Type', get: o => o.type }, { label: 'Status', get: o => STATUS_MAP[o.status]?.label || o.status },
-    { label: 'Priority', get: o => o.priority }, { label: 'Payment', get: o => o.payment },
-    { label: 'Created', get: o => o.created }, { label: 'ETA', get: o => o.eta }, { label: 'Completed', get: o => o.completed || '' },
-  ], scoped)
   const btn = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8,
     border: `1px solid ${Q.border}`, background: Q.card, color: Q.text, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: Q.shadow }
 

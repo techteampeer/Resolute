@@ -9,7 +9,7 @@ import { MapPin, LogOut, Bell, ChevronDown, Menu } from 'lucide-react'
 // BUG_001: notifications derive from the live activity feed. A stable per-item
 // key (durable id, else time+text) lets us track which the signed-in user has
 // already seen, persisted in localStorage so the badge doesn't reset on reload.
-const notifKey = (n, i) => String(n.id ?? `${n.time || ''}|${n.action || ''}`)
+const notifKey = (n) => String(n.id ?? `${n.time || ''}|${n.action || ''}`)
 const seenStoreKey = (user) => `resolute:notifSeen:${user?.email || user?.name || 'anon'}`
 const readSeen = (user) => {
   try { return new Set(JSON.parse(localStorage.getItem(seenStoreKey(user)) || '[]')) }

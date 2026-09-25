@@ -424,7 +424,7 @@ export async function nextOrderId() {
 
 // ── Storage (documents bucket) ────────────────────────────────────────────────
 export async function uploadDocument(orderId, file) {
-  const safe = file.name.replace(/[^\w.\-]+/g, '_')
+  const safe = file.name.replace(/[^\w.-]+/g, '_')
   const path = `orders/${orderId}/${Date.now()}-${safe}`
   const { error } = await supabase.storage.from('documents').upload(path, file)
   if (error) throw error

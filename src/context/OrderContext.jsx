@@ -98,6 +98,9 @@ export function OrderProvider({ children }) {
     const fallback = setTimeout(startHydrate, 3000)
     fetchActivity().then(rows => { if (alive && rows) setActivityLog(rows) })
     return () => { alive = false; clearTimeout(fallback); unsub() }
+    // Keyed on identity, not the whole `user` object: re-subscribe only when who's
+    // logged in actually changes, never on every render that hands us a fresh ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.email, user?.demo])
 
   // Local activity feed + best-effort append to the durable order_events audit
