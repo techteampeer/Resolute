@@ -388,7 +388,11 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
     const workflow = assignedTo === 'user'
       ? { ...order.workflow, singleSeating: true }
       : order.workflow
-    onSave({ ...order, ...form, assignedTo, workflow, completed })
+    // Keep the per-person owner (A1/A2) consistent with the queue: an order that
+    // leaves the `user` pool has no owner. Assigning a specific person is done in
+    // the Assign modal (a picker); this editor only clears a stale owner.
+    const assignedUserId = assignedTo === 'user' ? (order.assignedUserId ?? null) : null
+    onSave({ ...order, ...form, assignedTo, assignedUserId, workflow, completed })
     onClose()
   }
 
