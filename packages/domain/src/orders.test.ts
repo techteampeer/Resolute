@@ -5,6 +5,7 @@ import {
 } from './pipeline'
 import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
+  applySingleSeatStep, applyReassign, applyPartialHandoff,
 } from './orders'
 
 const order = (o: Record<string, any> = {}) => ({
@@ -119,6 +120,60 @@ describe('cancellation', () => {
     expect(applyResolveCancel(req, true).status).toBe('cancelled')
     expect(applyResolveCancel(req, false).workflow!.cancelRequested).toBeNull()
     expect(applyResolveCancel(req, false).status).toBe('examining')
+  })
+})
+
+describe('A3 — assignment, single-seating, reassign, handoff', () => {
+  it('applyAssign to a user records the owner + single-seating', () => {
+    const n = applyAssign(order(), { queue: 'user', userId: 'u1', personName: 'Priya' })
+    expect(n.assignedTo).toBe('user')
+    expect(n.assignedUserId).toBe('u1')
+    expect(n.workflow!.singleSeating).toBe(true)
+  })
+  it('applyAssign to a non-user queue clears the owner', () => {
+    const n = applyAssign(order({ assignedUserId: 'u1' }), { queue: 'admin' })
+    expect(n.assignedTo).toBe('admin')
+    expect(n.assignedUserId).toBeNull()
+  })
+  it('single-seat step keeps the same owner in-seat, no Admin gate', () => {
+    const o = order({ assignedTo: 'user', assignedUserId: 'u1', status: 'screening', workflow: { singleSeating: true } })
+    const { next, advancedTo } = applySingleSeatStep(o, 'screener', 'Priya')
+    expect(advancedTo).toBe('examiner')
+    expect(next.assignedTo).toBe('user')          // stays in the pool, same seat
+    expect(next.assignedUserId).toBe('u1')        // same owner
+    expect(next.status).toBe('examining')
+    expect(next.completedDates!.screener).toBeTruthy()
+    expect(next.completedBy!.screener).toBe('Priya')
+  })
+  it('single-seat step on delivery completes the order + clears the desk', () => {
+    const o = order({ assignedTo: 'user', assignedUserId: 'u1', status: 'delivery',
+      completedDates: { screener: '2026-06-01', examiner: '2026-06-02', typer: '2026-06-03' } })
+    const { next, advancedTo } = applySingleSeatStep(o, 'delivery', 'Priya')
+    expect(advancedTo).toBeNull()
+    expect(next.assignedTo).toBeNull()
+    expect(next.assignedUserId).toBeNull()
+    expect(next.status).toBe('delivered')
+    expect(next.completed).toBeTruthy()
+    expect(next.progress).toBe(100)
+  })
+  it('applyReassign moves the owner, keeps the pipeline position', () => {
+    const o = order({ assignedTo: 'user', assignedUserId: 'u1', status: 'examining',
+      completedDates: { screener: '2026-06-01' } })
+    const n = applyReassign(o, 'u2')
+    expect(n.assignedUserId).toBe('u2')
+    expect(n.assignedTo).toBe('user')
+    expect(n.status).toBe('examining')            // unchanged — screener done, examiner next
+    expect(n.completedDates!.screener).toBe('2026-06-01')
+  })
+  it('applyPartialHandoff parks with Admin, clears owner, records the note, stamps nothing', () => {
+    const o = order({ assignedTo: 'user', assignedUserId: 'u1', status: 'examining',
+      completedDates: { screener: '2026-06-01' } })
+    const n = applyPartialHandoff(o, 'stuck on legal description', 'Priya')
+    expect(n.assignedTo).toBe('admin')
+    expect(n.assignedUserId).toBeNull()
+    expect(n.status).toBe('examining')            // no stamp, position unchanged
+    expect(n.completedDates!.examiner).toBeUndefined()
+    expect(n.workflow!.handoff).toMatchObject({ note: 'stuck on legal description', from: 'Priya' })
   })
 })
 

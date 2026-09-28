@@ -10,19 +10,54 @@ import {
 
 const STAGES: string[] = ['screener', 'examiner', 'typer', 'delivery']
 
-export interface AssignParams { queue: string; personName?: string }
+export interface AssignParams { queue: string; personName?: string; userId?: string | null }
 
 // Admin routes an order to a queue. Routing to the consolidated production desk
 // ('user') claims it end-to-end (single seating); routing to a stage role
-// releases it back into the pipeline. Status follows the owning role.
-export function applyAssign(order: Order, { queue, personName }: AssignParams): Order {
+// releases it back into the pipeline. Status follows the owning role. When
+// routing to 'user', `userId` records the specific production owner (A1/A2); any
+// other queue clears the owner (the order has left the user pool).
+export function applyAssign(order: Order, { queue, personName, userId }: AssignParams): Order {
   const next: Order = { ...order, assignedTo: queue }
-  if (queue === 'user') next.workflow = { ...order.workflow, singleSeating: true }
-  else if (STAGES.includes(queue)) next.workflow = { ...order.workflow, singleSeating: false }
+  if (queue === 'user') {
+    next.workflow = { ...order.workflow, singleSeating: true }
+    next.assignedUserId = userId !== undefined ? userId : (order.assignedUserId ?? null)
+  } else {
+    if (STAGES.includes(queue)) next.workflow = { ...order.workflow, singleSeating: false }
+    next.assignedUserId = null
+  }
   if (personName) next[queue] = personName
   next.status = statusForRole((STAGES.includes(queue) ? (queue as StageRole) : nextRoleFor(order)))
   next.progress = progressFor(next.status as string)
   return next
+}
+
+// Admin moves an order to a DIFFERENT production user, keeping its pipeline
+// position (cover an absence, rebalance load). Admin writes bypass the handoff
+// guard, so this may set the owner directly — a production user cannot; they hand
+// the order back to Admin (applyPartialHandoff) instead.
+export function applyReassign(order: Order, toUserId: string): Order {
+  return {
+    ...order,
+    assignedTo: 'user',
+    assignedUserId: toUserId,
+    workflow: { ...order.workflow, singleSeating: true },
+    status: statusForRole(nextRoleFor(order)),
+  }
+}
+
+// A production user hands a PARTIALLY-completed order back to Admin, with an
+// internal note, instead of finishing it — Admin then reassigns it. Stamps no
+// stage (no completion); clears the owner and parks with Admin. Handoffs route
+// through Admin, never user-to-user (the DB guard enforces the same).
+export function applyPartialHandoff(order: Order, note: string, fromName: string): Order {
+  return {
+    ...order,
+    assignedTo: 'admin',
+    assignedUserId: null,
+    status: statusForRole(nextRoleFor(order)),
+    workflow: { ...order.workflow, handoff: { note, from: fromName, at: todayISO() } },
+  }
 }
 
 export interface StepResult { next: Order; advancedTo: StageRole | null }
@@ -41,6 +76,31 @@ export function applyCompleteStep(
     ...order,
     status: nextStatus,
     assignedTo: nextRole,
+    progress: allDone ? 100 : Math.max(order.progress || 0, progressFor(nextStatus)),
+    completed: allDone ? (order.completed || todayISO()) : order.completed,
+    completedDates: newDates,
+    completedBy: { ...order.completedBy, [role]: userName },
+    workflow: { ...order.workflow, ...extra },
+  }
+  return { next, advancedTo: nextRole }
+}
+
+// Single-seating: the OWNER completes a stage and CONTINUES on the same order
+// with no Admin gate (A1). A non-final stage stays assigned to the same user in
+// the pool; the final (delivery) stage is the terminal completion (desk cleared).
+// The DB guard permits this only for a single-seated order held by its owner.
+export function applySingleSeatStep(
+  order: Order, role: StageRole, userName: string, extra: Record<string, any> = {},
+): StepResult {
+  const newDates = { ...order.completedDates, [role]: todayISO() }
+  const nextRole = roleAfter(role)
+  const allDone = nextRole === null
+  const nextStatus = statusForRole(nextRole)
+  const next: Order = {
+    ...order,
+    status: nextStatus,
+    assignedTo: allDone ? null : 'user',
+    assignedUserId: allDone ? null : (order.assignedUserId ?? null),
     progress: allDone ? 100 : Math.max(order.progress || 0, progressFor(nextStatus)),
     completed: allDone ? (order.completed || todayISO()) : order.completed,
     completedDates: newDates,

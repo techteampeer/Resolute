@@ -5,6 +5,7 @@ import { ORDERS, ACTIVITY } from '../data/mockData'
 // delegates every state transition to these pure functions.
 import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
+  applySingleSeatStep, applyReassign, applyPartialHandoff,
   STAGE_BY_ROLE, todayISO,
 } from '@domain'
 import { isSupabaseConfigured, fetchOrders, fetchOrderById, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
@@ -128,14 +129,61 @@ export function OrderProvider({ children }) {
   }
   const clearWriteError = () => setWriteError(null)
 
-  const assignOrder = (orderId, { queue, personName } = {}) => {
+  const assignOrder = (orderId, { queue, personName, userId } = {}) => {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
-      const next = applyAssign(o, { queue, personName })
+      const next = applyAssign(o, { queue, personName, userId })
       persist(next)
       return next
     }))
-    log({ id: Date.now(), orderId, action: `Admin assigned ${orderId} to ${queue}${personName ? ` · ${personName}` : ''}`, time: 'Just now', type: 'status', audience: 'staff' })
+    log({ id: Date.now(), orderId, action: `Admin assigned ${orderId} to ${personName || queue}`, time: 'Just now', type: 'status', audience: 'staff' })
+  }
+
+  // Admin reassigns an order to a different production user (cover an absence,
+  // rebalance workload). Keeps the pipeline position; admin writes bypass the
+  // handoff guard, so this may set the owner directly.
+  const reassign = (orderId, toUserId, toName) => {
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const next = applyReassign(o, toUserId)
+      persist(next)
+      return next
+    }))
+    log({ id: Date.now(), orderId, action: `Admin reassigned ${orderId}${toName ? ` to ${toName}` : ''}`, time: 'Just now', type: 'status', audience: 'staff' })
+  }
+
+  // Single-seating: the owner completes a stage and CONTINUES on the same order
+  // with no Admin gate (A1). Delivery completes the order. Mirrors completeStep
+  // but keeps the order with the same production user between stages.
+  const advanceInSeat = (orderId, role, userName, notes, extra = {}) => {
+    let advancedTo = null
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const { next, advancedTo: adv } = applySingleSeatStep(o, role, userName, extra)
+      advancedTo = adv
+      persist(next)
+      return next
+    }))
+    log({
+      id: Date.now(), orderId, actor: userName,
+      action: `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId}`
+        + (advancedTo ? ` → continuing to ${STAGE_BY_ROLE[advancedTo] || advancedTo}` : ' → delivered') + (notes ? ` (${notes})` : ''),
+      time: 'Just now', type: 'progress',
+      audience: advancedTo ? 'staff' : 'all',
+    })
+  }
+
+  // A production user hands a partially-completed order back to Admin with an
+  // internal note (they can't finish it); Admin then reassigns it. No stage is
+  // stamped. Handoffs route through Admin, never user-to-user.
+  const partialHandoff = (orderId, note, userName) => {
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const next = applyPartialHandoff(o, note, userName)
+      persist(next)
+      return next
+    }))
+    log({ id: Date.now(), orderId, actor: userName, action: `${userName} handed ${orderId} back to Admin` + (note ? ` (${note})` : ''), time: 'Just now', type: 'status', audience: 'staff' })
   }
 
   // `extra` merges into workflow as part of the SAME write as the stage move.
@@ -289,7 +337,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, writeError, clearWriteError, assignOrder, completeStep, returnToAdmin, updateOrder, logAction, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, writeError, clearWriteError, assignOrder, reassign, advanceInSeat, partialHandoff, completeStep, returnToAdmin, updateOrder, logAction, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )
