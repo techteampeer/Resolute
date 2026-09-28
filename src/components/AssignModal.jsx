@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { X, UserCheck, AlertTriangle } from 'lucide-react'
-import { displayClient, nextRoleFor } from '../data/mockData'
+import { displayClient, nextRoleFor, activeCountForUser } from '../data/mockData'
 import { useOrders } from '../context/OrderContext'
+import { useProfiles } from '../lib/useProfiles'
 
 const ROLE_COLOR = '#2441E5'
 const Q = {
@@ -10,37 +11,40 @@ const Q = {
   muted:'#5C6E8C', faint:'#9AA8BF', bg:'#F3F5F8',
 }
 
-// Role queues in pipeline order. Each key doubles as the order's person field.
 const STAGES = [
   { key:'screener', label:'Screener' },
   { key:'examiner', label:'Examiner' },
   { key:'typer',    label:'Typer' },
   { key:'delivery', label:'Delivery' },
 ]
-// The consolidated production desk (ADR 0001). Post-D2 this is the STANDARD
-// place an order is worked: one desk carries it through whichever stage is next,
-// returning to Admin for approval between each. The four stage desks below it
-// remain only as a transitional route to a not-yet-migrated stage account
-// (retired in D3).
-const PRODUCTION = { key:'user', label:'Production Desk' }
 
+const initials = (name = '') =>
+  name.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('') || '?'
+
+// Admin routes an order to a specific production person (post-D3 single seating):
+// pick the teammate who will carry it end to end. Each teammate shows their live
+// workload so Admin can balance; the lightest queue is suggested.
 export default function AssignModal({ order, user, onClose }) {
-  const { assignOrder } = useOrders()
-  // Post-D3 the Production Desk (`user` pool) is the only production owner, so
-  // it is the only selectable queue and always the target — including for a
-  // stale row still stamped with a retired stage desk (never re-select that, or
-  // Confirm would write the order back to a desk no `user` can act on).
-  const [queue, setQueue]           = useState('user')
+  const { assignOrder, reassign, orders } = useOrders()
+  const profiles = useProfiles()
+
+  // The production roster + each person's current active-order count.
+  const team = profiles
+    .filter(p => p.role === 'user' && (p.status || 'active') === 'active')
+    .map(p => ({ ...p, load: activeCountForUser(orders, p.id) }))
+    .sort((a, b) => a.load - b.load)
+  const lightest = team.length ? team[0].load : 0
+
+  const alreadyOwned = order.assignedTo === 'user' && order.assignedUserId != null
+  // Default the selection to the current owner (reassign) or the lightest queue.
+  const [selectedId, setSelectedId] = useState(
+    alreadyOwned ? order.assignedUserId : (team[0]?.id ?? null),
+  )
 
   const cd = order.completedDates || {}
   const cb = order.completedBy || {}
-
-  // The stage the order is currently waiting on, shown on the Production Desk
-  // option so Admin sees which phase a `user` will pick up next.
-  const nextIdx = STAGES.findIndex(s => s.key === nextRoleFor(order))
-  const blockedLabel = nextIdx === -1 ? '' : STAGES[nextIdx].label
-
-  const pickQueue = (key) => { setQueue(key) }
+  const nextRole = nextRoleFor(order)
+  const blockedLabel = (STAGES.find(s => s.key === nextRole) || {}).label || ''
 
   const noPrice = order.workflow?.invoiceAmount == null
   const noDate  = !order.eta
@@ -51,21 +55,15 @@ export default function AssignModal({ order, user, onClose }) {
   ].filter(Boolean).join(' and ')
 
   const confirm = () => {
-    if (!queue) return
-    // Post-D3 an order routes to the `user` pool, not a named person: any
-    // production user works whatever is in the pool, and there is no per-person
-    // `user` column to persist a pin to. So no personName is passed.
-    assignOrder(order.id, { queue })
+    if (selectedId == null) return
+    const person = team.find(t => t.id === selectedId)
+    const name = person?.name
+    // Reassigning an already-owned order to a different person is a distinct
+    // action (clearer audit); a fresh assignment routes it into the pool.
+    if (alreadyOwned && selectedId !== order.assignedUserId) reassign(order.id, selectedId, name)
+    else assignOrder(order.id, { queue: 'user', userId: selectedId, personName: name })
     onClose()
   }
-
-  const radioStyle = (active) => ({
-    flex:1, padding:'10px 8px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer',
-    textAlign:'center', transition:'all 0.15s',
-    background: active ? `${ROLE_COLOR}14` : Q.bg,
-    color:      active ? ROLE_COLOR : Q.muted,
-    border:     active ? `1px solid ${ROLE_COLOR}` : `1px solid ${Q.border}`,
-  })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -89,12 +87,6 @@ export default function AssignModal({ order, user, onClose }) {
         </div>
 
         <div style={{ padding:'18px 22px' }}>
-          {/* Nothing forces Admin to confirm an order before routing it, and an
-              unconfirmed order has no agreed price and no committed date: driving
-              one straight from placement to delivery left invoiceAmount unset
-              until the typer stamped it, and eta NULL the whole way, so the
-              client's card read "ETA: to be confirmed" from start to finish.
-              Say so here, where the routing decision is actually made. */}
           {unpriced.length > 0 && (
             <div style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:16,
               padding:'10px 12px', borderRadius:8, background:'#fffbeb', border:'1px solid #fde68a' }}>
@@ -106,26 +98,52 @@ export default function AssignModal({ order, user, onClose }) {
               </div>
             </div>
           )}
-          {/* Desk — the Production desk is the standard target; one desk carries
-              the order through whichever stage is next. */}
-          <label style={{ display:'block', fontSize:11, fontWeight:600, textTransform:'uppercase',
-            letterSpacing:'0.05em', color:Q.faint, marginBottom:8 }}>Desk</label>
-          <button onClick={() => pickQueue(PRODUCTION.key)}
-            style={{ ...radioStyle(queue === PRODUCTION.key), width:'100%', textAlign:'left',
-              display:'flex', alignItems:'center', gap:10, padding:'12px 14px', marginBottom:12 }}>
-            <UserCheck style={{ width:16, height:16, flexShrink:0 }} />
-            <span style={{ display:'flex', flexDirection:'column', alignItems:'flex-start' }}>
-              <span>{PRODUCTION.label} <span style={{ fontSize:11, fontWeight:600, opacity:0.7 }}>· standard</span></span>
-              <span style={{ fontSize:11, fontWeight:400, color: queue === PRODUCTION.key ? ROLE_COLOR : Q.muted }}>
-                {nextIdx !== -1 ? `Works the next stage (${blockedLabel}), then returns for approval` : 'Works the order end to end, with approval between stages'}
-              </span>
-            </span>
-          </button>
 
-          {/* The four stage desks were retired in D3 (ADR 0001) — there are no
-              stage-role accounts to service them, so routing an order to one
-              would strand it under the new RLS. The Production Desk is the only
-              production owner; it works whichever stage is next. */}
+          <label style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline',
+            fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em',
+            color:Q.faint, marginBottom:8 }}>
+            <span>{alreadyOwned ? 'Reassign to' : 'Assign to'}</span>
+            {nextRole && <span style={{ textTransform:'none', letterSpacing:0, fontWeight:500 }}>Next stage: {blockedLabel}</span>}
+          </label>
+
+          {team.length === 0 && (
+            <div style={{ fontSize:13, color:Q.muted, padding:'12px 0' }}>Loading the team…</div>
+          )}
+
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {team.map(p => {
+              const active = p.id === selectedId
+              const isLightest = p.load === lightest
+              return (
+                <button key={p.id} onClick={() => setSelectedId(p.id)}
+                  style={{ display:'flex', alignItems:'center', gap:12, width:'100%', textAlign:'left',
+                    padding:'11px 13px', borderRadius:10, cursor:'pointer', transition:'all 0.15s',
+                    background: active ? `${ROLE_COLOR}14` : Q.bg,
+                    border: active ? `1px solid ${ROLE_COLOR}` : `1px solid ${Q.border}` }}>
+                  <span style={{ width:34, height:34, borderRadius:'50%', flexShrink:0, display:'grid',
+                    placeItems:'center', fontSize:13, fontWeight:700, color:'#fff', background:ROLE_COLOR }}>
+                    {initials(p.name)}
+                  </span>
+                  <span style={{ flex:1, minWidth:0 }}>
+                    <span style={{ display:'flex', alignItems:'center', gap:7, fontSize:14, fontWeight:600, color:Q.text }}>
+                      {p.name}
+                      {isLightest && (
+                        <span style={{ fontSize:9.5, fontWeight:700, letterSpacing:'0.04em', textTransform:'uppercase',
+                          color:'#16a34a', background:'#dcfce7', padding:'2px 6px', borderRadius:5 }}>Lightest</span>
+                      )}
+                      {order.assignedUserId === p.id && (
+                        <span style={{ fontSize:10, fontWeight:600, color:Q.faint }}>· current</span>
+                      )}
+                    </span>
+                    <span style={{ fontSize:12, color: active ? ROLE_COLOR : Q.muted }}>
+                      {p.load} active order{p.load === 1 ? '' : 's'}
+                    </span>
+                  </span>
+                  {active && <UserCheck style={{ width:16, height:16, color:ROLE_COLOR, flexShrink:0 }} />}
+                </button>
+              )
+            })}
+          </div>
 
           {/* Per-stage completion history */}
           <div style={{ marginTop:18, background:Q.bg, border:`1px solid ${Q.border}`,
@@ -146,12 +164,12 @@ export default function AssignModal({ order, user, onClose }) {
         </div>
 
         <div style={{ display:'flex', gap:10, padding:'0 22px 20px' }}>
-          <button onClick={confirm} disabled={!queue}
-            style={{ flex:1, padding:'10px', background: queue ? ROLE_COLOR : Q.border, border:'none',
+          <button onClick={confirm} disabled={selectedId == null}
+            style={{ flex:1, padding:'10px', background: selectedId != null ? ROLE_COLOR : Q.border, border:'none',
               borderRadius:8, color:'#fff', fontSize:13, fontWeight:600,
-              cursor: queue ? 'pointer' : 'not-allowed',
+              cursor: selectedId != null ? 'pointer' : 'not-allowed',
               display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-            <UserCheck style={{ width:15, height:15 }} /> Confirm Assignment
+            <UserCheck style={{ width:15, height:15 }} /> {alreadyOwned ? 'Reassign' : 'Assign'}
           </button>
           <button onClick={onClose} style={{ padding:'10px 18px', background:Q.bg,
             border:`1px solid ${Q.border}`, borderRadius:8, color:Q.muted, fontSize:13, fontWeight:600, cursor:'pointer' }}>
