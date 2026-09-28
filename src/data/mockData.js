@@ -157,6 +157,7 @@ export const USERS = [
 // many existing `from '../data/mockData'` imports keep working unchanged.
 export {
   ROLE_SEQUENCE, nextRoleFor, roleAfter, statusForRole, orderProgress, isOrderComplete,
+  activeCountForUser,
 } from '@domain'
 
 export const ACTIVITY = [
