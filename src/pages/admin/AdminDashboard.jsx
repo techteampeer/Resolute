@@ -922,6 +922,94 @@ function NewOrderModal({ onClose }) {
   )
 }
 
+// A small pill for a workload status (busiest / available).
+const wlChip = (fg, bg) => ({
+  fontSize: 9.5, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+  color: fg, background: bg, padding: '2px 6px', borderRadius: 5,
+})
+const wlInitials = (n = '') =>
+  n.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('') || '?'
+
+// A5 — Team Workload. Visualizes each production user's live active-order count
+// so Admin can spot who's overloaded vs idle and rebalance: expand a person to
+// see their orders and Reassign one (reuses the AssignModal person picker, which
+// on an already-owned order routes through reassign()).
+function TeamWorkload() {
+  const { orders } = useOrders()
+  const { user } = useAuth()
+  const profiles = useProfiles()
+  const [assigning, setAssigning] = useState(null)
+  const [openId, setOpenId] = useState(null)
+
+  const isClosed = (o) => o.status === 'delivered' || o.status === 'cancelled'
+  const team = profiles
+    .filter(p => p.role === 'user' && (p.status || 'active') === 'active')
+    .map(p => ({ ...p, active: orders.filter(o => o.assignedUserId === p.id && !isClosed(o)) }))
+    .sort((a, b) => b.active.length - a.active.length)   // busiest first
+  const maxLoad = Math.max(1, ...team.map(t => t.active.length))
+  const busiest = team.length ? team[0].active.length : 0
+
+  return (
+    <QCard className="p-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="text-sm font-semibold" style={{ color: Q.text }}>Team Workload</h2>
+        <span style={{ fontSize: 11, color: Q.faint }}>active orders per person · click to reassign and balance</span>
+      </div>
+      <div className="mt-3" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {team.length === 0 && <p style={{ fontSize: 13, color: Q.muted }}>Loading the team…</p>}
+        {team.map(p => {
+          const load = p.active.length
+          const overloaded = load > 1 && load === busiest
+          const idle = load === 0
+          return (
+            <div key={p.id} style={{ border: `1px solid ${Q.border}`, borderRadius: 10, padding: '10px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: load ? 'pointer' : 'default' }}
+                onClick={() => load && setOpenId(openId === p.id ? null : p.id)}>
+                <span style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, display: 'grid',
+                  placeItems: 'center', fontSize: 12, fontWeight: 700, color: '#fff', background: ROLE_COLOR }}>
+                  {wlInitials(p.name)}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, fontWeight: 600, color: Q.text }}>
+                    {p.name}
+                    {overloaded && <span style={wlChip('#d97706', '#fffbeb')}>Busiest</span>}
+                    {idle && <span style={wlChip('#16a34a', '#f0fdf4')}>Available</span>}
+                  </div>
+                  <div style={{ height: 6, borderRadius: 4, background: Q.bg, marginTop: 5, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.round(load / maxLoad * 100)}%`,
+                      background: overloaded ? '#d97706' : ROLE_COLOR, borderRadius: 4, transition: 'width 0.3s' }} />
+                  </div>
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: Q.text, fontVariantNumeric: 'tabular-nums',
+                  minWidth: 18, textAlign: 'right' }}>{load}</span>
+              </div>
+              {openId === p.id && load > 0 && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {p.active.map(o => (
+                    <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: Q.muted }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 600, color: Q.text }}>{o.id}</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {o.type} · {STATUS_MAP[o.status]?.label || o.status}
+                      </span>
+                      <button onClick={(e) => { e.stopPropagation(); setAssigning(o) }}
+                        style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11.5, fontWeight: 600, color: ROLE_COLOR,
+                          background: `${ROLE_COLOR}12`, border: `1px solid ${ROLE_COLOR}33`, borderRadius: 6,
+                          padding: '4px 9px', cursor: 'pointer' }}>
+                        Reassign
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {assigning && <AssignModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
+    </QCard>
+  )
+}
+
 function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const { user } = useAuth()
   const { orders } = useOrders()
@@ -1371,6 +1459,9 @@ function AdminHome() {
           </div>
         </QCard>
       </div>
+
+      {/* A5 — per-person workload, with reassign to rebalance */}
+      <TeamWorkload />
 
       {/* Qualia-like orders pipeline */}
       <OrdersPipeline />
