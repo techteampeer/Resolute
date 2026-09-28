@@ -14,10 +14,13 @@ const check = (name, pass, detail = '') => {
 console.log('── F3: order amount bounds ──')
 const codes = sqlJson('select code from clients order by code').map(r => r.code)
 const c1 = codes[0]
+// Owner-scoped RLS (A2): a production `user` may write only orders assigned to
+// them, so the amount-bounds order must be owned by the acting user (operator@).
+const UID = (sqlJson(`select id from profiles where email = 'operator@resolute.com'`)[0] || {}).id
 const OID = 'RTS-AUDIT-F3'
 sql(`delete from orders where id = '${OID}'`)
-sql(`insert into orders (id, client_code, state, county, type, status, assigned_to, progress, created)
-     values ('${OID}', ${c1 ? `'${c1}'` : 'null'}, 'FL', 'Test', 'Full Search', 'screening', 'user', 20, current_date)`)
+sql(`insert into orders (id, client_code, state, county, type, status, assigned_to, assigned_user_id, progress, created)
+     values ('${OID}', ${c1 ? `'${c1}'` : 'null'}, 'FL', 'Test', 'Full Search', 'screening', 'user', '${UID}', 20, current_date)`)
 
 const invOf = () => sqlJson(`select workflow->>'invoiceAmount' as inv from orders where id = '${OID}'`)[0]?.inv ?? null
 
