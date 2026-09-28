@@ -1,39 +1,53 @@
 name: Deploy Resolute Portal to GCP
 
 on:
-  workflow_dispatch: # Allows you to run the action manually from the GitHub UI
+  workflow_dispatch:
+    inputs:
+      gcp_project_id:
+        description: 'Target GCP Project ID'
+        required: true
+        default: 'resolute-509617'
+      region:
+        description: 'GCP Region'
+        required: true
+        default: 'us-central1'
 
 jobs:
   deploy:
     name: Build and Deploy Frontend to Cloud Run
     runs-on: ubuntu-latest
 
+    # Required for OIDC authentication
+    permissions:
+      contents: read
+      id-token: write
+
     steps:
       # 1. Clone the repository code
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Authenticate to Google Cloud using the Service Account Secret
+      # 2. Keyless Authentication via Workload Identity Federation
       - name: Authenticate to Google Cloud
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+          workload_identity_provider: 'projects/618339248528/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'github-actions-deploy@resolute-509617.iam.gserviceaccount.com'
 
-      # 3. Set up Google Cloud CLI tools
+      # 3. Set up Google Cloud SDK
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # 4. Deploy the frontend app to Cloud Run
+      # 4. Deploy Frontend App to Cloud Run
       - name: Deploy Frontend App to Cloud Run
         run: |
-          # Deploy the Vite frontend using the Nginx Dockerfile in the root directory.
-          # Note: Database credentials and Cloud SQL connections have been intentionally 
-          # removed from this step. The frontend should never connect directly to the DB.
-          # DB variables belong ONLY in the backend API deployment workflow.
+          TARGET_PROJECT="${{ github.event.inputs.gcp_project_id }}"
+          REGION="${{ github.event.inputs.region }}"
+          
           gcloud run deploy resolute-portal \
             --quiet \
             --source . \
-            --region us-central1 \
+            --region "$REGION" \
             --allow-unauthenticated \
-            --project resolute-508323
+            --project "$TARGET_PROJECT"
