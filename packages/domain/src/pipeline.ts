@@ -19,12 +19,37 @@ export type Status =
   | 'received' | 'screening' | 'searching' | 'examining'
   | 'typing' | 'delivery' | 'delivered' | 'onhold' | 'cancelled'
 
+// A single property covered by an order. An order may span several (the bulk
+// "combine into one order" import); a plain single-property order carries one
+// entry, or the equivalent fields at the intake root. Lives at
+// workflow.intake.properties on the order.
+export interface PropertyItem {
+  address?: string
+  city?: string
+  state?: string
+  county?: string
+  zip?: string
+  parcelId?: string
+}
+
+// The internal note attached when a partially-completed single-seating order is
+// handed back to Admin for reassignment. Lives at workflow.handoff on the order.
+export interface HandoffNote {
+  note: string
+  from?: string        // the user handing it off
+  at?: string          // ISO date (todayISO)
+}
+
 // The order shape the state machine reads/writes. Deliberately permissive: an
 // app order row carries many more fields, which pass through untouched.
 export interface Order {
   id: string
   status: Status | string
   assignedTo: Assignee | string
+  // The specific production user responsible for the order (F1's
+  // assigned_user_id). null = unassigned / pool / delivered. Complements
+  // assignedTo, which stays the role queue.
+  assignedUserId?: string | null
   progress?: number
   completed?: string | null
   completedDates?: Record<string, string>
@@ -77,5 +102,14 @@ export const orderProgress = (order?: Order | null): number => {
 
 export const isOrderComplete = (order?: Order | null): boolean =>
   !!order && (order.status === 'delivered' || !!order.completed)
+
+// A production user's LIVE workload: orders they currently own that are neither
+// delivered nor cancelled. Drives workload-based assignment (suggest the
+// lightest queue) and admin rebalancing. Pure — the caller passes the roster of
+// orders it already holds.
+export const activeCountForUser = (orders: Order[] | null | undefined, userId: string): number =>
+  !userId ? 0 : (orders || []).filter(o =>
+    o.assignedUserId === userId && !isOrderComplete(o) && o.status !== 'cancelled',
+  ).length
 
 export const todayISO = (): string => new Date().toISOString().slice(0, 10)

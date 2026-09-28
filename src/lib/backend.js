@@ -18,6 +18,7 @@ const toAppOrder = (r) => ({
   clarification: r.clarification,
   clientFileNo: r.client_file_no,
   assignedTo: r.assigned_to,
+  assignedUserId: r.assigned_user_id || null,   // F1: the specific production owner
   screener: r.screener, examiner: r.examiner, typer: r.typer, delivery: r.delivery,
   progress: r.progress,
   created: r.created, eta: r.eta, completed: r.completed,
@@ -34,6 +35,7 @@ const toOrderRow = (o) => ({
   status: o.status, priority: o.priority, payment: o.payment, clarification: o.clarification,
   client_file_no: o.clientFileNo || null,
   assigned_to: o.assignedTo,
+  assigned_user_id: o.assignedUserId ?? null,   // F1: the specific production owner
   screener: o.screener, examiner: o.examiner, typer: o.typer, delivery: o.delivery,
   progress: o.progress, eta: dateOrNull(o.eta), completed: dateOrNull(o.completed),
   completed_dates: o.completedDates, completed_by: o.completedBy,

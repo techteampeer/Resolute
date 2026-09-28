@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   ROLE_SEQUENCE, nextRoleFor, roleAfter, statusForRole, progressFor, orderProgress, isOrderComplete,
+  activeCountForUser,
 } from './pipeline'
 import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
@@ -118,5 +119,29 @@ describe('cancellation', () => {
     expect(applyResolveCancel(req, true).status).toBe('cancelled')
     expect(applyResolveCancel(req, false).workflow!.cancelRequested).toBeNull()
     expect(applyResolveCancel(req, false).status).toBe('examining')
+  })
+})
+
+describe('activeCountForUser (F2 — workload)', () => {
+  const roster = [
+    order({ id: 'A', assignedUserId: 'u1', status: 'screening' }),
+    order({ id: 'B', assignedUserId: 'u1', status: 'typing' }),
+    order({ id: 'C', assignedUserId: 'u1', status: 'delivered', completed: '2026-09-01' }), // done — excluded
+    order({ id: 'D', assignedUserId: 'u1', status: 'cancelled' }),                          // cancelled — excluded
+    order({ id: 'E', assignedUserId: 'u2', status: 'examining' }),
+    order({ id: 'F', assignedUserId: null, status: 'received' }),                           // unassigned
+  ]
+  it('counts only live orders owned by the user', () => {
+    expect(activeCountForUser(roster, 'u1')).toBe(2)
+    expect(activeCountForUser(roster, 'u2')).toBe(1)
+  })
+  it('excludes delivered and cancelled', () => {
+    expect(activeCountForUser([order({ assignedUserId: 'u1', status: 'delivered' })], 'u1')).toBe(0)
+    expect(activeCountForUser([order({ assignedUserId: 'u1', completed: '2026-09-01' })], 'u1')).toBe(0)
+  })
+  it('is safe with an empty/absent list or empty user id', () => {
+    expect(activeCountForUser([], 'u1')).toBe(0)
+    expect(activeCountForUser(null, 'u1')).toBe(0)
+    expect(activeCountForUser(roster, '')).toBe(0)
   })
 })
