@@ -504,7 +504,6 @@ function PlaceOrderPage() {
   const [busy, setBusy] = useState(false)
   // BUG_008: a registered client shouldn't retype contact details every order —
   // prefill from the signed-in profile (still editable per order).
-  const [first = '', ...rest] = (user?.name || '').split(' ')
   // A fresh blank form (contact prefilled from the profile). Used for the initial
   // state and to fully reset on "Place Another" — new party ids each time.
   const makeInitialForm = () => ({
@@ -517,7 +516,7 @@ function PlaceOrderPage() {
       { id: uid(), role:'Seller', name:'' },
     ],
     priority:'normal',
-    firstName: first, lastName: rest.join(' '),
+    contactName: user?.name || '',
     email: user?.email || '',
     company: clientName(user?.clientCode) || '',
     role:'', notes:''
@@ -538,7 +537,7 @@ function PlaceOrderPage() {
     if (s === 1) return !!(form.state.trim() && form.county.trim())
     // A product or a custom search must be chosen (the "Titled Products *" gate).
     if (s === 2) return !!(form.searchType.trim() || form.customSearch.trim())
-    if (s === 3) return !!(form.firstName.trim() && form.lastName.trim() && /\S+@\S+\.\S+/.test(form.email))
+    if (s === 3) return !!(form.company.trim() && form.contactName.trim() && /\S+@\S+\.\S+/.test(form.email))
     return true
   }
   const goNext = () => { if (!stepValid(step)) { setStepErr(true); return } setStepErr(false); setStep(s => s + 1) }
@@ -571,7 +570,7 @@ function PlaceOrderPage() {
           source: 'web', propertyAddress: [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', '),
           parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
           parties, propertyType: propertyType || null, customSearch: customSearch || null,
-          orderType: type, from: `${form.firstName} ${form.lastName} <${form.email}>`.trim(),
+          orderType: type, from: `${form.contactName} <${form.email}>`.trim(),
           company: form.company, role: form.role, specialInstructions: form.notes,
         },
       })
@@ -837,23 +836,17 @@ function PlaceOrderPage() {
             {step===3 && (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Contact Information</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>First Name *</label>
-                    <input value={form.firstName} onChange={e=>set('firstName',e.target.value)} placeholder="First name" className="input-field text-sm" required/>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Last Name *</label>
-                    <input value={form.lastName} onChange={e=>set('lastName',e.target.value)} placeholder="Last name" className="input-field text-sm" required/>
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Business Name *</label>
+                  <input value={form.company} onChange={e=>set('company',e.target.value)} placeholder="Business name" className="input-field text-sm" required/>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Contact Name *</label>
+                  <input value={form.contactName} onChange={e=>set('contactName',e.target.value)} placeholder="Full name" className="input-field text-sm" required/>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Work Email *</label>
                   <input type="email" value={form.email} onChange={e=>set('email',e.target.value)} placeholder="you@company.com" className="input-field text-sm" required/>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Company</label>
-                  <input value={form.company} onChange={e=>set('company',e.target.value)} placeholder="Company name" className="input-field text-sm"/>
                 </div>
               </div>
             )}
@@ -866,7 +859,8 @@ function PlaceOrderPage() {
                     ['Property Type',(form.propertyType==='Other' ? (form.propertyTypeOther.trim()||'Other') : form.propertyType) || '—'],
                     ['Parties', form.parties.filter(p=>p.name.trim()).length ? `${form.parties.filter(p=>p.name.trim()).length} listed` : '—'],
                     ['Your file #',form.clientFileNo||'—'],
-                    ['Priority',form.priority.toUpperCase()],['Contact',`${form.firstName} ${form.lastName}`.trim()||'—'],['Email',form.email||'—']].map(([k,v]) => (
+                    ['Priority',form.priority.toUpperCase()],['Business Name',form.company||'—'],
+                    ['Contact',form.contactName||'—'],['Email',form.email||'—']].map(([k,v]) => (
                     <div key={k} className="glass p-3 rounded-xl">
                       <div className="text-xs mb-0.5" style={{ color:'#5C6E8C' }}>{k}</div>
                       <div className="font-medium text-sm" style={{ color:'#12284C' }}>{v}</div>
@@ -897,7 +891,7 @@ function PlaceOrderPage() {
               <div className="mt-4 text-[12px] px-3 py-2 rounded-lg" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
                 {step===1 ? 'Property State and County are required.'
                   : step===2 ? 'Choose a product or describe a custom search.'
-                  : 'First name, last name, and a valid email are required.'}
+                  : 'Business name, contact name, and a valid email are required.'}
               </div>
             )}
             {submitErr && (
