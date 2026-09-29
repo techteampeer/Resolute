@@ -55,9 +55,15 @@ function OperatorOrderPage() {
     </div>
   )
 
+  // Same rule as the workspace queue (OperatorHome's `actionable`): only an order
+  // in the Production pool with a stage left to work can be acted on here.
+  // Anything else — delivered, or parked with Admin — is view-only.
+  const isActionable = order.status !== 'delivered' && !!role && order.assignedTo === 'user'
+
   // Every step hands back to Admin for approval. Delivery is the final stage —
   // completing it delivers the order outright.
   const advance = (workflowPatch) => {
+    if (!isActionable) return   // never write a view-only order, even if called directly
     if (role === 'delivery') {
       completeStep(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
     } else {
@@ -65,13 +71,17 @@ function OperatorOrderPage() {
     }
     navigate('/user')
   }
-  const canSubmit = role === 'screener' ? !!assignment
+  const canSubmit = isActionable && (role === 'screener' ? !!assignment
     : role === 'examiner' ? !!(doc && doc.status === 'done')
-    : true
+    : true)
   const msgCount = getOrderThread(order.id).length + getOrderNotes(order.id).length
 
   const TABS = [
-    { key:'stage', label: meta.label || 'Stage', icon:Layers, render: () => (
+    { key:'stage', label: meta.label || 'Stage', icon:Layers, render: () => !isActionable ? (
+      <Panel title="View only">
+        <p className="text-sm" style={{ color: '#3D5171' }}>This order is not currently assigned to the Production Desk for action.</p>
+      </Panel>
+    ) : (
       <div className="space-y-4">
         {role === 'screener' && (
           <>
