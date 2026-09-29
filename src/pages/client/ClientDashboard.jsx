@@ -8,7 +8,7 @@ import { clientStats } from '../../lib/deskStats'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox,
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign, Search,
-  UploadCloud, Paperclip, Trash2, AlertCircle, Eye
+  UploadCloud, Paperclip, Trash2, AlertCircle, Eye, Download
 } from 'lucide-react'
 import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, US_STATES, stateName } from '../../data/mockData'
 import { PRODUCTS } from '../../data/products'
@@ -21,8 +21,8 @@ import { DEMO_ORDERS } from '../../data/demoData'
 import ClientBilling from './ClientBilling'
 import BulkImport from './BulkImport'
 import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '../../lib/billing'
+import { ROLE_COLOR } from '../../lib/ui'
 
-const ROLE_COLOR = '#2441E5'
 const NAV = [
   { path: '/client',         label: 'Dashboard',   icon: LayoutDashboard },
   { path: '/client/order',   label: 'Place Order', icon: PlusCircle },
@@ -94,15 +94,16 @@ function clientStage(order) {
 }
 
 // BUG_007: clicking an order opens its detail view (see OrderDetailPage).
+// List cards stay compact — ID, client, type/state and the status pill only;
+// stage-by-stage progress belongs on the order's detail page.
 function TrackOrder({ order, onOpen }) {
   const stage = clientStage(order)
-  const idx = stage.idx
-  const sc  = stage.color
+  const sc = stage.color
   return (
-    <div className={`glass-card p-5 ${onOpen ? 'cursor-pointer transition-shadow hover:shadow-lg' : ''}`}
+    <div className={`glass-card p-4 ${onOpen ? 'cursor-pointer transition-shadow hover:shadow-lg' : ''}`}
       role={onOpen ? 'button' : undefined} tabIndex={onOpen ? 0 : undefined}
       onClick={onOpen} onKeyDown={e => onOpen && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between">
         <div>
           <div className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{order.id}</div>
           <div className="font-bold" style={{ color:'#12284C' }}>{order.client}</div>
@@ -110,48 +111,6 @@ function TrackOrder({ order, onOpen }) {
         </div>
         <span className="text-xs font-semibold px-3 py-1.5 rounded-full"
           style={{ background:`${sc}1e`, color:sc }}>{stage.label}</span>
-      </div>
-      {/* Step tracker */}
-      <div className="flex items-center gap-1 my-4">
-        {CLIENT_STEPS.map((step,i) => (
-          <React.Fragment key={step}>
-            <div className="flex flex-col items-center gap-1.5">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all"
-                style={i < idx
-                  ? { background:'#2441E5', color:'#FFFFFF' }
-                  : i === idx
-                  ? { background:'#2441E5', color:'#FFFFFF', boxShadow:`0 0 0 3px rgba(90,140,62,0.25)` }
-                  : { background:'rgba(18,40,76,0.08)', color:'#5C6E8C' }}>
-                {i < idx ? <CheckCircle className="w-3.5 h-3.5" /> : i + 1}
-              </div>
-              <span className="text-[9px] text-center leading-tight whitespace-nowrap hidden sm:block"
-                style={{ color: i <= idx ? '#3D5171' : '#5C6E8C' }}>
-                {step}
-              </span>
-            </div>
-            {i < CLIENT_STEPS.length - 1 && (
-              <div className="flex-1 h-0.5 rounded-full mb-5"
-                style={{ background: i < idx ? '#1B34C4' : 'rgba(18,40,76,0.10)' }} />
-            )}
-          </React.Fragment>
-        ))}
-      </div>
-      <div className="flex items-center justify-between text-xs mb-1.5" style={{ color:'#5C6E8C' }}>
-        {/* An order Admin has routed but not yet confirmed carries no committed
-            date, and this rendered a bare "ETA:" with nothing after it. Say that
-            it is coming rather than leaving the client to guess. */}
-        <span>{isOrderComplete(order)
-          ? <>Delivered: <span style={{ color:'#12284C' }}>{order.completed || order.eta || '—'}</span></>
-          : <>ETA: <span style={{ color: order.eta ? '#12284C' : '#9AA8BF' }}>{order.eta || 'to be confirmed'}</span></>}</span>
-        <span style={isOrderComplete(order) ? { color:'#15803d', fontWeight:600 } : undefined}>
-          {isOrderComplete(order) ? 'Completed' : `${orderProgress(order)}% complete`}
-        </span>
-      </div>
-      <div className="h-1.5 rounded-full overflow-hidden" style={{ background:'rgba(18,40,76,0.08)' }}>
-        <motion.div className="h-full rounded-full"
-          initial={{ width:0 }} animate={{ width:`${orderProgress(order)}%` }}
-          transition={{ duration:1.2, ease:'easeOut' }}
-          style={{ background:'linear-gradient(90deg,#2441E5,#00B8D9)' }} />
       </div>
     </div>
   )
@@ -321,6 +280,33 @@ function OrderDetailPage() {
             <div className="text-xs" style={{ color:'#5C6E8C' }}>{order.county}, {order.state} · placed {order.created}</div>
           </div>
           <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background:`${stage.color}1e`, color:stage.color }}>{stage.label}</span>
+        </div>
+        {/* Stage tracker — detail page only; list cards (TrackOrder) stay compact.
+            Steps follow clientStage().idx; overlays (On Hold, Clarification,
+            Cancelled) ride on the status pill above. */}
+        <div className="flex items-center gap-1 mt-4">
+          {CLIENT_STEPS.map((step, i) => (
+            <React.Fragment key={step}>
+              <div className="flex flex-col items-center gap-1.5">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all"
+                  style={i < stage.idx
+                    ? { background:ROLE_COLOR, color:'#FFFFFF' }
+                    : i === stage.idx
+                    ? { background:ROLE_COLOR, color:'#FFFFFF', boxShadow:`0 0 0 3px rgba(90,140,62,0.25)` }
+                    : { background:'rgba(18,40,76,0.08)', color:'#5C6E8C' }}>
+                  {i < stage.idx ? <CheckCircle className="w-3.5 h-3.5" /> : i + 1}
+                </div>
+                <span className="text-[9px] text-center leading-tight whitespace-nowrap hidden sm:block"
+                  style={{ color: i <= stage.idx ? '#3D5171' : '#5C6E8C' }}>
+                  {step}
+                </span>
+              </div>
+              {i < CLIENT_STEPS.length - 1 && (
+                <div className="flex-1 h-0.5 rounded-full sm:mb-5"
+                  style={{ background: i < stage.idx ? '#1B34C4' : 'rgba(18,40,76,0.10)' }} />
+              )}
+            </React.Fragment>
+          ))}
         </div>
       </div>
 
@@ -504,7 +490,6 @@ function PlaceOrderPage() {
   const [busy, setBusy] = useState(false)
   // BUG_008: a registered client shouldn't retype contact details every order —
   // prefill from the signed-in profile (still editable per order).
-  const [first = '', ...rest] = (user?.name || '').split(' ')
   // A fresh blank form (contact prefilled from the profile). Used for the initial
   // state and to fully reset on "Place Another" — new party ids each time.
   const makeInitialForm = () => ({
@@ -517,7 +502,7 @@ function PlaceOrderPage() {
       { id: uid(), role:'Seller', name:'' },
     ],
     priority:'normal',
-    firstName: first, lastName: rest.join(' '),
+    contactName: user?.name || '',
     email: user?.email || '',
     company: clientName(user?.clientCode) || '',
     role:'', notes:''
@@ -538,7 +523,7 @@ function PlaceOrderPage() {
     if (s === 1) return !!(form.state.trim() && form.county.trim())
     // A product or a custom search must be chosen (the "Titled Products *" gate).
     if (s === 2) return !!(form.searchType.trim() || form.customSearch.trim())
-    if (s === 3) return !!(form.firstName.trim() && form.lastName.trim() && /\S+@\S+\.\S+/.test(form.email))
+    if (s === 3) return !!(form.company.trim() && form.contactName.trim() && /\S+@\S+\.\S+/.test(form.email))
     return true
   }
   const goNext = () => { if (!stepValid(step)) { setStepErr(true); return } setStepErr(false); setStep(s => s + 1) }
@@ -571,7 +556,7 @@ function PlaceOrderPage() {
           source: 'web', propertyAddress: [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', '),
           parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
           parties, propertyType: propertyType || null, customSearch: customSearch || null,
-          orderType: type, from: `${form.firstName} ${form.lastName} <${form.email}>`.trim(),
+          orderType: type, from: `${form.contactName} <${form.email}>`.trim(),
           company: form.company, role: form.role, specialInstructions: form.notes,
         },
       })
@@ -837,23 +822,17 @@ function PlaceOrderPage() {
             {step===3 && (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Contact Information</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>First Name *</label>
-                    <input value={form.firstName} onChange={e=>set('firstName',e.target.value)} placeholder="First name" className="input-field text-sm" required/>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Last Name *</label>
-                    <input value={form.lastName} onChange={e=>set('lastName',e.target.value)} placeholder="Last name" className="input-field text-sm" required/>
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Business Name *</label>
+                  <input value={form.company} onChange={e=>set('company',e.target.value)} placeholder="Business name" className="input-field text-sm" required/>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Contact Name *</label>
+                  <input value={form.contactName} onChange={e=>set('contactName',e.target.value)} placeholder="Full name" className="input-field text-sm" required/>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Work Email *</label>
                   <input type="email" value={form.email} onChange={e=>set('email',e.target.value)} placeholder="you@company.com" className="input-field text-sm" required/>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Company</label>
-                  <input value={form.company} onChange={e=>set('company',e.target.value)} placeholder="Company name" className="input-field text-sm"/>
                 </div>
               </div>
             )}
@@ -866,7 +845,8 @@ function PlaceOrderPage() {
                     ['Property Type',(form.propertyType==='Other' ? (form.propertyTypeOther.trim()||'Other') : form.propertyType) || '—'],
                     ['Parties', form.parties.filter(p=>p.name.trim()).length ? `${form.parties.filter(p=>p.name.trim()).length} listed` : '—'],
                     ['Your file #',form.clientFileNo||'—'],
-                    ['Priority',form.priority.toUpperCase()],['Contact',`${form.firstName} ${form.lastName}`.trim()||'—'],['Email',form.email||'—']].map(([k,v]) => (
+                    ['Priority',form.priority.toUpperCase()],['Business Name',form.company||'—'],
+                    ['Contact',form.contactName||'—'],['Email',form.email||'—']].map(([k,v]) => (
                     <div key={k} className="glass p-3 rounded-xl">
                       <div className="text-xs mb-0.5" style={{ color:'#5C6E8C' }}>{k}</div>
                       <div className="font-medium text-sm" style={{ color:'#12284C' }}>{v}</div>
@@ -897,7 +877,7 @@ function PlaceOrderPage() {
               <div className="mt-4 text-[12px] px-3 py-2 rounded-lg" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
                 {step===1 ? 'Property State and County are required.'
                   : step===2 ? 'Choose a product or describe a custom search.'
-                  : 'First name, last name, and a valid email are required.'}
+                  : 'Business name, contact name, and a valid email are required.'}
               </div>
             )}
             {submitErr && (
@@ -1102,6 +1082,7 @@ function MyOrdersPage() {
   const myOrders = useMyOrders()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
+  const [exporting, setExporting] = useState(false)
   // BUG_006: search across order #, type, status/stage, and property details —
   // works for both active and completed orders so users don't page-hunt.
   const query = q.trim().toLowerCase()
@@ -1112,15 +1093,53 @@ function MyOrdersPage() {
     ].filter(Boolean).join(' ').toLowerCase()
     return hay.includes(query)
   })
+  // S8: export the currently shown orders to Excel. xlsx is lazily imported so
+  // the bundle only pulls it when a client actually exports (mirrors BulkImport).
+  const exportXlsx = async () => {
+    if (!shown.length || exporting) return
+    setExporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const rows = shown.map(o => {
+        const intake = o.workflow?.intake || {}
+        return {
+          'Order #': o.id,
+          Type: o.type || '',
+          Status: clientStage(o).label,
+          State: o.state || '',
+          County: o.county || '',
+          'Property Address': intake.propertyAddress || '',
+          'Parcel / APN': intake.parcelNumberAPN || '',
+          Created: o.created || '',
+          ETA: o.eta || '',
+        }
+      })
+      const ws = XLSX.utils.json_to_sheet(rows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'My Orders')
+      XLSX.writeFile(wb, `my-orders-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } finally {
+      setExporting(false)
+    }
+  }
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>My Orders</h1>
-        <div className="relative" style={{ minWidth: 260 }}>
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#9AA8BF' }} />
-          <input value={q} onChange={e => setQ(e.target.value)}
-            placeholder="Search order #, property, status…"
-            className="input-field text-sm pl-9 w-full" />
+        <div className="flex items-center gap-3 flex-wrap">
+          <button type="button" onClick={exportXlsx} disabled={!shown.length || exporting}
+            className="btn-secondary text-sm flex items-center gap-2"
+            style={{ opacity: (!shown.length || exporting) ? 0.5 : 1 }}
+            title="Export the orders shown below to an Excel file">
+            <Download className="w-4 h-4" />
+            {exporting ? 'Exporting…' : 'Export to Excel'}
+          </button>
+          <div className="relative" style={{ minWidth: 260 }}>
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#9AA8BF' }} />
+            <input value={q} onChange={e => setQ(e.target.value)}
+              placeholder="Search order #, property, status…"
+              className="input-field text-sm pl-9 w-full" />
+          </div>
         </div>
       </div>
       <div className="space-y-4">

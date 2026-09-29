@@ -13,8 +13,8 @@ import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
 import NotificationSettings from '../../components/NotificationSettings'
+import { ROLE_COLOR } from '../../lib/ui'
 
-const ROLE_COLOR = '#2441E5'
 const NAV = [
   { path: '/user',          label: 'Dashboard', icon: LayoutDashboard },
   { path: '/user/completed',label: 'Completed', icon: CheckCircle },
@@ -55,12 +55,16 @@ function OperatorOrderPage() {
     </div>
   )
 
+  // Actionable only when the order is on the Production Desk with a stage left to
+  // work; delivered or parked-with-Admin is view-only (Sagar's guard).
+  const isActionable = order.status !== 'delivered' && !!role && order.assignedTo === 'user'
   // Single-seating (the standard): the owner works the order end to end with no
   // Admin gate between stages — advanceInSeat keeps it on their desk until
   // delivery completes it. A non-single-seated order keeps the every-stage gate
   // (returnToAdmin), delivery completing it outright.
   const single = order.workflow?.singleSeating
   const advance = (workflowPatch) => {
+    if (!isActionable) return   // never write a view-only order, even if called directly
     if (single) {
       advanceInSeat(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
     } else if (role === 'delivery') {
@@ -73,16 +77,21 @@ function OperatorOrderPage() {
   // Can't finish this order — hand it back to Admin with an internal note; Admin
   // reassigns it to someone else (single-seating partial handoff).
   const handoff = () => {
+    if (!isActionable) return
     partialHandoff(order.id, notes.trim(), user?.name)
     navigate('/user')
   }
-  const canSubmit = role === 'screener' ? !!assignment
+  const canSubmit = isActionable && (role === 'screener' ? !!assignment
     : role === 'examiner' ? !!(doc && doc.status === 'done')
-    : true
+    : true)
   const msgCount = getOrderThread(order.id).length + getOrderNotes(order.id).length
 
   const TABS = [
-    { key:'stage', label: meta.label || 'Stage', icon:Layers, render: () => (
+    { key:'stage', label: meta.label || 'Stage', icon:Layers, render: () => !isActionable ? (
+      <Panel title="View only">
+        <p className="text-sm" style={{ color: '#3D5171' }}>This order is not currently assigned to the Production Desk for action.</p>
+      </Panel>
+    ) : (
       <div className="space-y-4">
         {role === 'screener' && (
           <>
