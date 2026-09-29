@@ -1396,6 +1396,27 @@ function AdminHome() {
   const toAssignCount  = orders.filter(o => !isClosed(o) && (o.assignedTo === 'admin' || o.assignedTo == null)).length
   // A client counts as active while it has at least one order in flight.
   const activeClients  = new Set(orders.filter(o => !isClosed(o)).map(o => o.clientCode || clientCode(o.client)).filter(Boolean)).size
+  const navigate = useNavigate()
+  const orderIds = new Set(orders.map(o => o.id))
+  // Recent Activity: only the referenced order number links to the order. The
+  // entry's orderId wins; seed entries carry the id only in their text. No
+  // known order in the text → the line stays plain.
+  const activityText = (a) => {
+    const parts  = String(a.action || '').split(/(RTS-\d+)/)   // odd indexes are whole RTS tokens
+    const tokens = parts.filter((_, i) => i % 2)
+    const id = [a.orderId, tokens[0]].find(x => x && tokens.includes(x) && orderIds.has(x))
+    if (!id) return a.action
+    const at = parts.indexOf(id)
+    return <>
+      {parts.slice(0, at).join('')}
+      <button type="button" onClick={() => navigate(`/admin/orders/${id}`)} title={`Open ${id}`}
+        style={{ background:'none', border:'none', padding:0, font:'inherit', color:'inherit', cursor:'pointer',
+          textDecoration:'underline', textDecorationColor:Q.faint, textUnderlineOffset:2 }}
+        onMouseOver={e => e.currentTarget.style.color = ROLE_COLOR}
+        onMouseOut={e => e.currentTarget.style.color = 'inherit'}>{id}</button>
+      {parts.slice(at + 1).join('')}
+    </>
+  }
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -1455,7 +1476,7 @@ function AdminHome() {
                     : a.type==='progress' ? '#d97706' : '#00B8D9',
                 }} />
                 <div>
-                  <p style={{ fontSize:12, lineHeight:'1.5', color:Q.muted }}>{a.action}</p>
+                  <p style={{ fontSize:12, lineHeight:'1.5', color:Q.muted }}>{activityText(a)}</p>
                   <p style={{ fontSize:11, marginTop:2, color:Q.faint }}>{a.time}</p>
                 </div>
               </div>
