@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useOrders } from '../context/OrderContext'
 import { clientCode as codeByName } from '../data/mockData'
+import { ROLE_COLOR } from '../lib/ui'
 import { MapPin, LogOut, Bell, ChevronDown, Menu } from 'lucide-react'
 
 // BUG_001: notifications derive from the live activity feed. A stable per-item
@@ -17,7 +18,7 @@ const readSeen = (user) => {
 }
 const NOTIF_DOT = { new: '#2441E5', delivered: '#16a34a', progress: '#d97706', status: '#00B8D9', user: '#2441E5' }
 
-export default function Layout({ children, navItems, role, roleColor = '#2441E5', lightTheme = true }) {
+export default function Layout({ children, navItems, role, roleColor = ROLE_COLOR, lightTheme = true }) {
   const { user, logout } = useAuth()
   const { activityLog = [], orders = [], writeError, clearWriteError } = useOrders() || {}
   const navigate    = useNavigate()
@@ -73,7 +74,7 @@ export default function Layout({ children, navItems, role, roleColor = '#2441E5'
     subtext:     'rgba(255,255,255,0.55)',
     navText:     'rgba(255,255,255,0.72)',
     navActive:   '#FFFFFF',
-    navActiveBg: '#2441E5',
+    navActiveBg: ROLE_COLOR,
     navHoverBg:  'rgba(255,255,255,0.08)',
     navBadgeBg:  'rgba(0,184,217,0.22)',
     badgeText:   '#7FDCEC',
@@ -99,7 +100,7 @@ export default function Layout({ children, navItems, role, roleColor = '#2441E5'
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b" style={{ borderColor: T.sidebarBdr }}>
         <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: '#2441E5' }}>
+          style={{ background: ROLE_COLOR }}>
           <MapPin className="w-4 h-4" style={{ color: '#FFFFFF' }} />
         </div>
         {(!collapsed || mobile) && (

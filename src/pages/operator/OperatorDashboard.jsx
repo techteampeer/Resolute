@@ -13,8 +13,8 @@ import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
 import NotificationSettings from '../../components/NotificationSettings'
+import { ROLE_COLOR } from '../../lib/ui'
 
-const ROLE_COLOR = '#2441E5'
 const NAV = [
   { path: '/user',          label: 'Dashboard', icon: LayoutDashboard },
   { path: '/user/completed',label: 'Completed', icon: CheckCircle },

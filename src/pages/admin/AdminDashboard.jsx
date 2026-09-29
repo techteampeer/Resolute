@@ -19,6 +19,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import { useProfiles, namesForRole } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
 import { money } from '../../lib/billing'
+import { ROLE_COLOR } from '../../lib/ui'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
 import { orderSubtitle } from '../../components/OrderDetailLayout'
@@ -46,7 +47,6 @@ const teamFrom = (profiles) => {
   return { screener: pool, examiner: pool, typer: pool, delivery: pool }
 }
 
-const ROLE_COLOR  = '#2441E5'
 const ROLE_HOVER  = '#1B34C4'
 
 const NAV = [

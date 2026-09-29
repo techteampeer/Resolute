@@ -21,8 +21,8 @@ import { DEMO_ORDERS } from '../../data/demoData'
 import ClientBilling from './ClientBilling'
 import BulkImport from './BulkImport'
 import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '../../lib/billing'
+import { ROLE_COLOR } from '../../lib/ui'
 
-const ROLE_COLOR = '#2441E5'
 const NAV = [
   { path: '/client',         label: 'Dashboard',   icon: LayoutDashboard },
   { path: '/client/order',   label: 'Place Order', icon: PlusCircle },
