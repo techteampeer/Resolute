@@ -19,7 +19,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import { useProfiles, namesForRole } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
 import { money } from '../../lib/billing'
-import { ROLE_COLOR } from '../../lib/ui'
+import { ROLE_COLOR, density } from '../../lib/ui'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
 import { orderSubtitle } from '../../components/OrderDetailLayout'
@@ -1030,6 +1030,8 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const [rushOnly, setRushOnly] = useState(false)
   const [page, setPage]         = useState(1)
   const PAGE_SIZE = pageSize
+  // Compact, Qualia-style rows: one padding for every header and body cell.
+  const CELL_PAD = `${density.rowPadY}px ${density.rowPadX}px`
 
   // Cascading geographic options: state list narrows by region, county by state.
   const inRegion = (o) => region === 'all' || regionOf(o.state) === region
@@ -1200,15 +1202,17 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
 
       {/* Orders table */}
       <div style={{ background:Q.card, border:`1px solid ${Q.border}`, borderRadius:10, boxShadow:Q.shadow, overflow:'hidden' }}>
-        {/* scrollable=true (Orders page): the body scrolls within a fixed height
-            with a sticky header, so all rows are reachable without paging away. */}
-        <div style={{ overflowX:'auto', ...(scrollable ? { maxHeight:560, overflowY:'auto' } : {}) }}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:920 }}>
+        {/* scrollable=true (Orders page): the body scrolls within a capped height
+            with a sticky header, so all rows are reachable without paging away.
+            The cap never drops below 560px but grows on tall screens so a
+            20-row page fits without an inner scroll. */}
+        <div style={{ overflowX:'auto', ...(scrollable ? { maxHeight:'max(560px, calc(100vh - 410px))', overflowY:'auto' } : {}) }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:density.bodySize, lineHeight:density.lineHeight, minWidth:920 }}>
           <thead>
             <tr style={{ background:'#F9FBFD', borderBottom:`1px solid ${Q.border}` }}>
               {['Order','Client File #','Client','Location','Type','Status','Payment','Assignee','Completed','ETA / Done',''].map(h => (
                 <th key={h} style={{
-                  padding:'10px 16px', textAlign:'left', fontSize:11,
+                  padding:CELL_PAD, textAlign:'left', fontSize:density.headSize,
                   fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em',
                   color:Q.faint, whiteSpace:'nowrap',
                   ...(scrollable ? { position:'sticky', top:0, background:'#F9FBFD', zIndex:1 } : {}),
@@ -1229,7 +1233,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                   onMouseOver={e => e.currentTarget.style.background = Q.rowHover}
                   onMouseOut={e => e.currentTarget.style.background = 'transparent'}
                   onClick={() => navigate(`/admin/orders/${o.id}`)}>
-                  <td style={{ padding:'10px 16px', whiteSpace:'nowrap' }}>
+                  <td style={{ padding:CELL_PAD, whiteSpace:'nowrap' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                       <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:12, color:ROLE_COLOR }}>{o.id}</span>
                       {o.priority === 'rush' && (
@@ -1238,11 +1242,11 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       )}
                     </div>
                   </td>
-                  <td style={{ padding:'10px 16px', fontFamily:'monospace', fontSize:11.5, color:Q.muted, whiteSpace:'nowrap' }}>{o.clientFileNo || '—'}</td>
-                  <td style={{ padding:'10px 16px', fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o, user)}</td>
-                  <td style={{ padding:'10px 16px', color:Q.muted, whiteSpace:'nowrap' }}>{o.county}, {o.state}</td>
-                  <td style={{ padding:'10px 16px', color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{o.type}</td>
-                  <td style={{ padding:'10px 16px', whiteSpace:'nowrap' }}>
+                  <td style={{ padding:CELL_PAD, fontFamily:'monospace', fontSize:11.5, color:Q.muted, whiteSpace:'nowrap' }}>{o.clientFileNo || '—'}</td>
+                  <td style={{ padding:CELL_PAD, fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o, user)}</td>
+                  <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap' }}>{o.county}, {o.state}</td>
+                  <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{o.type}</td>
+                  <td style={{ padding:CELL_PAD, whiteSpace:'nowrap' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                       <span style={{
                         padding:'3px 10px', borderRadius:99, fontSize:12, fontWeight:600,
@@ -1276,22 +1280,22 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       )}
                     </div>
                   </td>
-                  <td style={{ padding:'10px 16px', color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{o.payment}</td>
-                  <td style={{ padding:'10px 16px', fontSize:12, whiteSpace:'nowrap',
+                  <td style={{ padding:CELL_PAD, color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{o.payment}</td>
+                  <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',
                     color: o.assignedTo ? Q.text : Q.faint, textTransform:'capitalize' }}>
                     {o.assignedTo
                       ? `${o.assignedTo === 'user' ? 'production' : o.assignedTo}${o[o.assignedTo] ? ` · ${o[o.assignedTo]}` : ''}`
                       : '—'}
                   </td>
-                  <td style={{ padding:'10px 16px', fontSize:12, whiteSpace:'nowrap',
+                  <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',
                     color: lastCompleted(o) ? '#16a34a' : Q.faint }}>
                     {lastCompleted(o) || '—'}
                   </td>
-                  <td style={{ padding:'10px 16px', fontSize:12, whiteSpace:'nowrap',
+                  <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',
                     color: o.completed ? '#16a34a' : Q.faint }}>
                     {o.completed ? `Done ${o.completed}` : o.eta}
                   </td>
-                  <td style={{ padding:'10px 16px' }}>
+                  <td style={{ padding:CELL_PAD }}>
                     <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                       {r.kind !== 'delivered' && (
                         <button onClick={e => { e.stopPropagation(); setAssigning(o) }}
@@ -1483,7 +1487,7 @@ function AdminOrders() {
           <Download style={{ width: 14, height: 14 }} /> Export Orders CSV
         </button>
       </div>
-      <OrdersPipeline pageSize={15} scrollable />
+      <OrdersPipeline pageSize={20} scrollable />
     </div>
   )
 }

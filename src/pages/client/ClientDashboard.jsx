@@ -79,7 +79,6 @@ function InvoiceCard({ order }) {
 // Client-facing stages: Placed (awaiting admin confirmation) → Received
 // (confirmed by admin) → In Progress (any internal stage) → Delivered. On-Hold
 // and Clarification are overlays that ride on top of the current step.
-const CLIENT_STEPS = ['Placed','Received','In Progress','Delivered']
 function clientStage(order) {
   const confirmed = !!order.workflow?.confirmed
   const working = ['screening','searching','examining','typing','delivery'].includes(order.status)
@@ -94,15 +93,16 @@ function clientStage(order) {
 }
 
 // BUG_007: clicking an order opens its detail view (see OrderDetailPage).
+// List cards stay compact — ID, client, type/state and the status pill only;
+// stage-by-stage progress belongs on the order's detail page.
 function TrackOrder({ order, onOpen }) {
   const stage = clientStage(order)
-  const idx = stage.idx
-  const sc  = stage.color
+  const sc = stage.color
   return (
-    <div className={`glass-card p-5 ${onOpen ? 'cursor-pointer transition-shadow hover:shadow-lg' : ''}`}
+    <div className={`glass-card p-4 ${onOpen ? 'cursor-pointer transition-shadow hover:shadow-lg' : ''}`}
       role={onOpen ? 'button' : undefined} tabIndex={onOpen ? 0 : undefined}
       onClick={onOpen} onKeyDown={e => onOpen && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between">
         <div>
           <div className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{order.id}</div>
           <div className="font-bold" style={{ color:'#12284C' }}>{order.client}</div>
@@ -110,48 +110,6 @@ function TrackOrder({ order, onOpen }) {
         </div>
         <span className="text-xs font-semibold px-3 py-1.5 rounded-full"
           style={{ background:`${sc}1e`, color:sc }}>{stage.label}</span>
-      </div>
-      {/* Step tracker */}
-      <div className="flex items-center gap-1 my-4">
-        {CLIENT_STEPS.map((step,i) => (
-          <React.Fragment key={step}>
-            <div className="flex flex-col items-center gap-1.5">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all"
-                style={i < idx
-                  ? { background:'#2441E5', color:'#FFFFFF' }
-                  : i === idx
-                  ? { background:'#2441E5', color:'#FFFFFF', boxShadow:`0 0 0 3px rgba(90,140,62,0.25)` }
-                  : { background:'rgba(18,40,76,0.08)', color:'#5C6E8C' }}>
-                {i < idx ? <CheckCircle className="w-3.5 h-3.5" /> : i + 1}
-              </div>
-              <span className="text-[9px] text-center leading-tight whitespace-nowrap hidden sm:block"
-                style={{ color: i <= idx ? '#3D5171' : '#5C6E8C' }}>
-                {step}
-              </span>
-            </div>
-            {i < CLIENT_STEPS.length - 1 && (
-              <div className="flex-1 h-0.5 rounded-full mb-5"
-                style={{ background: i < idx ? '#1B34C4' : 'rgba(18,40,76,0.10)' }} />
-            )}
-          </React.Fragment>
-        ))}
-      </div>
-      <div className="flex items-center justify-between text-xs mb-1.5" style={{ color:'#5C6E8C' }}>
-        {/* An order Admin has routed but not yet confirmed carries no committed
-            date, and this rendered a bare "ETA:" with nothing after it. Say that
-            it is coming rather than leaving the client to guess. */}
-        <span>{isOrderComplete(order)
-          ? <>Delivered: <span style={{ color:'#12284C' }}>{order.completed || order.eta || '—'}</span></>
-          : <>ETA: <span style={{ color: order.eta ? '#12284C' : '#9AA8BF' }}>{order.eta || 'to be confirmed'}</span></>}</span>
-        <span style={isOrderComplete(order) ? { color:'#15803d', fontWeight:600 } : undefined}>
-          {isOrderComplete(order) ? 'Completed' : `${orderProgress(order)}% complete`}
-        </span>
-      </div>
-      <div className="h-1.5 rounded-full overflow-hidden" style={{ background:'rgba(18,40,76,0.08)' }}>
-        <motion.div className="h-full rounded-full"
-          initial={{ width:0 }} animate={{ width:`${orderProgress(order)}%` }}
-          transition={{ duration:1.2, ease:'easeOut' }}
-          style={{ background:'linear-gradient(90deg,#2441E5,#00B8D9)' }} />
       </div>
     </div>
   )
