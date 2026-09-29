@@ -25,6 +25,7 @@ const toAppOrder = (r) => ({
   completedDates: r.completed_dates || {},
   completedBy: r.completed_by || {},
   workflow: r.workflow || {},
+  updatedAt: r.updated_at || null,   // A8: optimistic-lock baseline
 })
 
 // Date columns (eta/completed/created) reject '' — an empty string is not valid
@@ -121,18 +122,34 @@ const refusalText = (msg, subject) =>
     : (msg || 'not saved')
 
 export async function saveOrder(order) {
-  const { data, error } = await supabase.from('orders')
-    .update(toOrderRow(order)).eq('id', order.id).select('id')
+  // A8 — light optimistic lock: only overwrite the row we last saw. If someone
+  // else changed it since (orders_touch bumped updated_at), the guarded update
+  // matches 0 rows and we report `stale` so the caller reloads instead of
+  // clobbering the newer write. Skipped when we have no baseline (an order loaded
+  // before this field was mapped) so existing flows keep working unchanged.
+  let q = supabase.from('orders').update(toOrderRow(order)).eq('id', order.id)
+  if (order.updatedAt) q = q.eq('updated_at', order.updatedAt)
+  const { data, error } = await q.select('id, updated_at')
   if (error) {
     console.error('[saveOrder]', error.message)
     return { ok: false, error: refusalText(error.message, 'you may no longer own this order') }
   }
   if (!data || data.length === 0) {
+    // 0 rows updated: either the optimistic lock missed (the row moved on) or RLS
+    // refused the write. Distinguish so the UI reloads on a conflict but shows an
+    // ownership error otherwise.
+    if (order.updatedAt) {
+      const { data: cur } = await supabase.from('orders')
+        .select('updated_at').eq('id', order.id).maybeSingle()
+      if (cur && cur.updated_at !== order.updatedAt) {
+        return { ok: false, stale: true, error: 'this order changed elsewhere — reloading the latest version' }
+      }
+    }
     const msg = 'the database refused the change (you may no longer own this order)'
     console.error('[saveOrder]', msg)
     return { ok: false, error: msg }
   }
-  return { ok: true }
+  return { ok: true, updatedAt: data[0]?.updated_at || null }
 }
 
 // Insert a new order (client-placed or staff). RLS: orders_insert_client lets a
