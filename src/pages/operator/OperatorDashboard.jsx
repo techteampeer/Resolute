@@ -37,7 +37,7 @@ function OperatorOrderPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { orders, completeStep, returnToAdmin, activityLog = [] } = useOrders()
+  const { orders, completeStep, returnToAdmin, advanceInSeat, partialHandoff, activityLog = [] } = useOrders()
   const { getOrderThread, getOrderNotes } = useSupport()
   const order = orders.find(o => o.id === id)
   const role = order ? nextRoleFor(order) : null
@@ -55,20 +55,30 @@ function OperatorOrderPage() {
     </div>
   )
 
-  // Same rule as the workspace queue (OperatorHome's `actionable`): only an order
-  // in the Production pool with a stage left to work can be acted on here.
-  // Anything else — delivered, or parked with Admin — is view-only.
+  // Actionable only when the order is on the Production Desk with a stage left to
+  // work; delivered or parked-with-Admin is view-only (Sagar's guard).
   const isActionable = order.status !== 'delivered' && !!role && order.assignedTo === 'user'
-
-  // Every step hands back to Admin for approval. Delivery is the final stage —
-  // completing it delivers the order outright.
+  // Single-seating (the standard): the owner works the order end to end with no
+  // Admin gate between stages — advanceInSeat keeps it on their desk until
+  // delivery completes it. A non-single-seated order keeps the every-stage gate
+  // (returnToAdmin), delivery completing it outright.
+  const single = order.workflow?.singleSeating
   const advance = (workflowPatch) => {
     if (!isActionable) return   // never write a view-only order, even if called directly
-    if (role === 'delivery') {
+    if (single) {
+      advanceInSeat(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
+    } else if (role === 'delivery') {
       completeStep(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
     } else {
       returnToAdmin(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
     }
+    navigate('/user')
+  }
+  // Can't finish this order — hand it back to Admin with an internal note; Admin
+  // reassigns it to someone else (single-seating partial handoff).
+  const handoff = () => {
+    if (!isActionable) return
+    partialHandoff(order.id, notes.trim(), user?.name)
     navigate('/user')
   }
   const canSubmit = isActionable && (role === 'screener' ? !!assignment
@@ -141,7 +151,7 @@ function OperatorOrderPage() {
           <>
             <Panel title="Notes">
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
-                placeholder="Notes (optional)…" className="input-field text-sm resize-none" />
+                placeholder={single ? 'Notes, or a reason if you hand this off…' : 'Notes (optional)…'} className="input-field text-sm resize-none" />
             </Panel>
             <button disabled={!canSubmit}
               onClick={() => advance(
@@ -151,8 +161,19 @@ function OperatorOrderPage() {
                 : null)}
               className="btn-primary w-full text-sm py-2.5 flex items-center justify-center gap-2"
               style={{ opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
-              <Send className="w-4 h-4" /> {role === 'delivery' ? `${meta.verb} & Complete` : `${meta.verb} & Send to Admin`}
+              <Send className="w-4 h-4" /> {role === 'delivery' ? `${meta.verb} & Complete` : single ? `${meta.verb} & Continue` : `${meta.verb} & Send to Admin`}
             </button>
+            {/* Single-seating: can't finish this order right now? Hand it back to
+                Admin with a note (requires a note) and Admin reassigns it. */}
+            {single && role !== 'delivery' && (
+              <button onClick={handoff} disabled={!notes.trim()} type="button"
+                className="w-full text-sm py-2 mt-1 rounded-lg font-medium flex items-center justify-center gap-2"
+                title="Pass this order back to Admin with your note; Admin reassigns it"
+                style={{ background:'transparent', border:'1px solid rgba(18,40,76,0.15)',
+                  color: notes.trim() ? '#a16207' : '#9AA8BF', cursor: notes.trim() ? 'pointer' : 'not-allowed' }}>
+                Hand off to Admin{notes.trim() ? '' : ' (add a note first)'}
+              </button>
+            )}
           </>
         )}
       </div>
@@ -202,7 +223,10 @@ function OperatorHome() {
   const { orders } = useOrders()
   const navigate = useNavigate()
   const active = orders.filter(o => o.status !== 'delivered' && nextRoleFor(o))
-  const actionable = active.filter(o => o.assignedTo === 'user')
+  // "My Work" — orders in the pool assigned to me (A2 owner scoping). Unowned
+  // pool orders (no assignee yet) are shown too so nothing is stranded before an
+  // Admin assigns an owner; RLS still blocks writing anyone else's order.
+  const actionable = active.filter(o => o.assignedTo === 'user' && (o.assignedUserId == null || o.assignedUserId === user?.id))
   const awaiting   = active.filter(o => o.workflow?.singleSeating && o.assignedTo !== 'user')
   const byStage = (r) => actionable.filter(o => nextRoleFor(o) === r).length
 
@@ -210,7 +234,7 @@ function OperatorHome() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>Production Workspace</h1>
-        <p className="text-sm" style={{ color: '#3D5171' }}>Orders assigned to your desk — worked start to finish through every stage, with Admin approval at every phase</p>
+        <p className="text-sm" style={{ color: '#3D5171' }}>Orders assigned to you — work each one end to end through every stage. Can't finish one? Hand it back to Admin with a note and they'll reassign it.</p>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {Object.entries(STAGE).map(([r, s]) => (

@@ -49,7 +49,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Pinned, not `latest`: resolving "latest" hits GitHub's release API,
+          # which is rate-limited on shared runners and intermittently failed the
+          # job at setup ("Failed to resolve latest Supabase CLI release: rate
+          # limit exceeded"). A fixed version fetches one known tag and is stable.
+          # Bump deliberately when a newer CLI is needed.
+          version: 2.117.0
       # `supabase start` applies every migration in supabase/migrations in order
       # plus supabase/seed.sql. A migration that fails to apply from scratch — the
       # exact drift that hit 20260909120000 — fails the job here, before deploy.
