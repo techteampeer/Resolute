@@ -8,7 +8,7 @@ import { clientStats } from '../../lib/deskStats'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox,
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign, Search,
-  UploadCloud, Paperclip, Trash2, AlertCircle, Eye
+  UploadCloud, Paperclip, Trash2, AlertCircle, Eye, Download
 } from 'lucide-react'
 import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, US_STATES, stateName } from '../../data/mockData'
 import { PRODUCTS } from '../../data/products'
@@ -1078,10 +1078,65 @@ function SupportPage() {
   )
 }
 
+// My Orders → Excel: one flat row per order. Property/contact details live on
+// workflow.intake, read defensively for older, partial and combined bulk
+// orders; missing values export as ''. A combined bulk order stays one row —
+// its property columns are the first property, which the import keeps at the
+// intake root. The intake stores the address as one line (propertyAddress),
+// so it exports whole rather than as separate City/ZIP columns.
+const cell = (v) => (v == null || typeof v === 'object' ? '' : typeof v === 'number' ? v : String(v))
+const text = (v) => String(cell(v)).trim()
+// Explicit intake field first (e.g. intake.buyer), else that role's names in intake.parties.
+const partyNames = (intake, field, role) => text(intake[field])
+  || (Array.isArray(intake.parties) ? intake.parties : [])
+    .filter(p => p && p.role === role).map(p => text(p.name)).filter(Boolean).join(', ')
+const EXPORT_COLUMNS = [
+  ['Order ID',         (o) => o.id],
+  ['Business Name',    (o, i) => cell(i.company) || o.client],
+  ['Your File #',      (o) => o.clientFileNo],
+  ['Search Type',      (o, i) => cell(o.type) || i.orderType],
+  ['Property Type',    (o, i) => i.propertyType],
+  ['State',            (o) => o.state],
+  ['County',           (o) => o.county],
+  ['Property Address', (o, i) => i.propertyAddress],
+  ['Parcel / APN',     (o, i) => i.parcelNumberAPN],
+  ['Properties',       (o, i) => (Array.isArray(i.properties) && i.properties.length) || 1],
+  ['Buyer',            (o, i) => partyNames(i, 'buyer', 'Buyer')],
+  ['Seller',           (o, i) => partyNames(i, 'seller', 'Seller')],
+  ['Borrower',         (o, i) => partyNames(i, 'borrowerName', 'Borrower')],
+  ['Priority',         (o) => (o.priority === 'rush' ? 'Rush' : o.priority === 'normal' ? 'Normal' : o.priority)],
+  ['Status',           (o) => clientStage(o).label],
+  ['Placed',           (o) => o.created],
+]
+const exportRow = (o) => {
+  const intake = (o.workflow?.intake && typeof o.workflow.intake === 'object') ? o.workflow.intake : {}
+  return Object.fromEntries(EXPORT_COLUMNS.map(([label, get]) => [label, cell(get(o, intake))]))
+}
+
 function MyOrdersPage() {
   const myOrders = useMyOrders()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [exportErr, setExportErr] = useState('')
+  // Exports exactly this client's orders (useMyOrders) — not the search subset,
+  // and never anything outside the client's own scope.
+  const exportOrders = async () => {
+    if (exporting || !myOrders.length) return
+    setExporting(true); setExportErr('')
+    try {
+      const XLSX = await import('xlsx')     // lazy, as in BulkImport
+      const ws = XLSX.utils.json_to_sheet(myOrders.map(exportRow), { header: EXPORT_COLUMNS.map(([label]) => label) })
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Orders')
+      XLSX.writeFile(wb, 'resolute-my-orders.xlsx')
+    } catch (e) {
+      console.error('[exportOrders]', e?.message || e)
+      setExportErr('We couldn’t create the export just now. Please try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
   // BUG_006: search across order #, type, status/stage, and property details —
   // works for both active and completed orders so users don't page-hunt.
   const query = q.trim().toLowerCase()
@@ -1096,13 +1151,22 @@ function MyOrdersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>My Orders</h1>
-        <div className="relative" style={{ minWidth: 260 }}>
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#9AA8BF' }} />
-          <input value={q} onChange={e => setQ(e.target.value)}
-            placeholder="Search order #, property, status…"
-            className="input-field text-sm pl-9 w-full" />
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative" style={{ minWidth: 260 }}>
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#9AA8BF' }} />
+            <input value={q} onChange={e => setQ(e.target.value)}
+              placeholder="Search order #, property, status…"
+              className="input-field text-sm pl-9 w-full" />
+          </div>
+          <button type="button" onClick={exportOrders} disabled={exporting || !myOrders.length}
+            title={myOrders.length ? 'Download all your orders as an Excel file' : 'No orders to export yet'}
+            className="btn-secondary text-sm px-4 py-2.5 flex items-center gap-2"
+            style={exporting || !myOrders.length ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}>
+            <Download className="w-4 h-4" /> {exporting ? 'Exporting…' : 'Export my orders'}
+          </button>
         </div>
       </div>
+      {exportErr && <div className="text-xs" style={{ color: '#dc2626' }}>{exportErr}</div>}
       <div className="space-y-4">
         {shown.map(o => (
           <React.Fragment key={o.id}>
