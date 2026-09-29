@@ -124,7 +124,19 @@ export function OrderProvider({ children }) {
   const persist = (order) => {
     if (!isSupabaseConfigured) return
     saveOrder(order)
-      .then(r => setWriteError(r && r.ok === false ? (r.error || 'not saved') : null))
+      .then(r => {
+        if (r && r.ok === false) {
+          // A8: on a stale conflict the realtime subscription is already
+          // delivering the newer row, so we just surface the notice; otherwise
+          // it's an ownership/RLS refusal.
+          setWriteError(r.error || 'not saved')
+        } else {
+          setWriteError(null)
+          // Advance our optimistic-lock baseline to the row's new updated_at so a
+          // rapid second save by the same user isn't misread as a conflict.
+          if (r?.updatedAt) setOrders(os => os.map(o => (o.id === order.id ? { ...o, updatedAt: r.updatedAt } : o)))
+        }
+      })
       .catch(e => setWriteError(e.message))
   }
   const clearWriteError = () => setWriteError(null)
