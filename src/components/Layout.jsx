@@ -17,6 +17,12 @@ const readSeen = (user) => {
   catch { return new Set() }
 }
 const NOTIF_DOT = { new: '#2441E5', delivered: '#16a34a', progress: '#d97706', status: '#00B8D9', user: '#2441E5' }
+// The order a notification is about: the entry's orderId, else the RTS id in
+// its text (seed entries carry the id only there).
+const notifOrderId = (n) => n.orderId || String(n.action || '').match(/RTS-\d+/)?.[0] || null
+// Order detail route per portal. The Production Desk passes role "production"
+// but is mounted under /user.
+const ORDER_ROUTE = { admin: '/admin/orders', client: '/client/orders', production: '/user/orders' }
 
 export default function Layout({ children, navItems, role, roleColor = ROLE_COLOR, lightTheme = true }) {
   const { user, logout } = useAuth()
@@ -39,11 +45,19 @@ export default function Layout({ children, navItems, role, roleColor = ROLE_COLO
     const codeOf = (o) => o.clientCode || codeByName(o.client)
     const myIds = new Set(orders.filter(o => codeOf(o) === myCode).map(o => o.id))
     return activityLog.filter(n => {
-      if (n.orderId) return myIds.has(n.orderId)
-      const m = String(n.action || '').match(/RTS-\d+/)   // seed entries carry the id only in text
-      return m ? myIds.has(m[0]) : false
+      const id = notifOrderId(n)
+      return id ? myIds.has(id) : false
     })
   }, [activityLog, orders, role, user?.clientCode])
+
+  // Detail route for the order a notification is about — only when that order
+  // exists in `orders` and this portal has an order route; anything else stays
+  // a plain, non-navigating row.
+  const orderIds = useMemo(() => new Set(orders.map(o => o.id)), [orders])
+  const notifRoute = (n) => {
+    const id = notifOrderId(n)
+    return id && ORDER_ROUTE[role] && orderIds.has(id) ? `${ORDER_ROUTE[role]}/${id}` : null
+  }
 
   const unreadCount = notifications.reduce((c, n, i) => c + (seen.has(notifKey(n, i)) ? 0 : 1), 0)
 
@@ -57,6 +71,20 @@ export default function Layout({ children, navItems, role, roleColor = ROLE_COLO
       setSeen(merged)
       try { localStorage.setItem(seenStoreKey(user), JSON.stringify([...merged])) } catch { /* ignore */ }
     }
+  }
+
+  // Opening a notification's order. Opening the dropdown already marked it read;
+  // this also covers one that arrived while the dropdown was open, using the
+  // same seen-set and storage, before closing the dropdown and navigating.
+  const openNotifOrder = (n, to) => {
+    const key = notifKey(n)
+    if (!seen.has(key)) {
+      const merged = new Set(seen).add(key)
+      setSeen(merged)
+      try { localStorage.setItem(seenStoreKey(user), JSON.stringify([...merged])) } catch { /* ignore */ }
+    }
+    setShowNotif(false)
+    navigate(to)
   }
 
   const handleLogout = () => { logout(); navigate('/login') }
@@ -266,9 +294,18 @@ export default function Layout({ children, navItems, role, roleColor = ROLE_COLO
                           <Bell className="w-6 h-6" style={{ color: T.userSub, opacity: 0.6 }} />
                           <span className="text-sm" style={{ color: T.userSub }}>You're all caught up</span>
                         </div>
-                      ) : notifications.slice(0, 30).map((n, i) => (
+                      ) : notifications.slice(0, 30).map((n, i) => {
+                        const to = notifRoute(n)
+                        return (
                         <div key={notifKey(n, i)} className="flex gap-2.5 px-4 py-3 border-b last:border-b-0"
-                          style={{ borderColor: T.menuBdr }}>
+                          style={{ borderColor: T.menuBdr, ...(to && { cursor: 'pointer' }) }}
+                          {...(to ? {
+                            role: 'button', tabIndex: 0,
+                            onClick: () => openNotifOrder(n, to),
+                            onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openNotifOrder(n, to) } },
+                            onMouseOver: e => { e.currentTarget.style.background = T.menuHover },
+                            onMouseOut: e => { e.currentTarget.style.background = 'transparent' },
+                          } : {})}>
                           <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"
                             style={{ background: NOTIF_DOT[n.type] || T.userSub }} />
                           <div className="min-w-0">
@@ -276,7 +313,8 @@ export default function Layout({ children, navItems, role, roleColor = ROLE_COLO
                             {n.time && <p className="text-[11px] mt-0.5" style={{ color: T.userSub }}>{n.time}</p>}
                           </div>
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </motion.div>
                 </>
