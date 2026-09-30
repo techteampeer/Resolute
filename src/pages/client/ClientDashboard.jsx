@@ -359,6 +359,24 @@ function OrderDetailPage() {
             <Row k="Special instructions" v={intake?.specialInstructions} />
             {!intake && <div className="text-xs" style={{ color:'#5C6E8C' }}>Submitted before detailed intake was captured.</div>}
           </div>
+          {Array.isArray(intake?.properties) && intake.properties.length > 1 && (
+            <div className="glass-card p-4 space-y-2 text-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#5C6E8C' }}>
+                Properties in this order ({intake.properties.length})
+              </div>
+              {intake.properties.map((p, i) => {
+                const addr = [p.address, p.city, stateName(p.state) || p.state, p.zip].filter(Boolean).join(', ')
+                return (
+                  <div key={i} className="px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(18,40,76,0.08)' }}>
+                    <div className="font-medium" style={{ color:'#12284C' }}>{i + 1}. {addr || '—'}</div>
+                    <div className="text-xs" style={{ color:'#5C6E8C' }}>
+                      {[p.county && `${p.county} County`, p.parcelId && `APN ${p.parcelId}`].filter(Boolean).join(' · ') || '—'}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
           <div className="glass-card p-4 text-sm space-y-1.5">
             <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Timeline</div>
             <Row k="Placed" v={order.created} />
@@ -551,7 +569,9 @@ function PlaceOrderPage() {
         // Attribute to the signed-in client so the order is trackable in My
         // Orders and readable back under RLS (client_code = my_client_code()).
         clientCode: user?.clientCode || null,
-        client: clientName(user?.clientCode) || user?.name || 'Web Order',
+        // Business Name (required in step 3) identifies the order, matching
+        // BulkImport. Falls back to the account's client name / user name.
+        client: form.company.trim() || clientName(user?.clientCode) || user?.name || 'Web Order',
         intake: {
           source: 'web', propertyAddress: [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', '),
           parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
