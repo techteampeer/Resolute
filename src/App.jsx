@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { OrderProvider } from './context/OrderContext'
 import { FulfillmentProvider } from './context/FulfillmentContext'
 import { SupportProvider } from './context/SupportContext'
+import { isSupabaseConfigured } from './lib/supabase'
 import LoginPage from './pages/LoginPage'
 // Dashboards are route-split: a signed-in user downloads only their own portal,
 // not all seven. This also stops a client's bundle from carrying the admin,
@@ -20,6 +21,25 @@ const OperatorDashboard  = lazy(() => import('./pages/operator/OperatorDashboard
 // (what used to happen) threw the user out of their own session.
 function SessionGate() {
   return <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center', color: '#5C6E8C', fontSize: 13 }}>Loading…</div>
+}
+
+// A PRODUCTION build that lacks VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY runs
+// entirely on mock data — sign-in only accepts demo accounts and nothing touches
+// the real database. That used to fail silently (the console hint fires only in
+// dev), so a misconfigured deploy looked live while being a demo. This banner
+// makes that state impossible to miss. In dev, mock mode is intentional, so it
+// stays quiet there.
+function MockDataBanner() {
+  if (import.meta.env.DEV || isSupabaseConfigured) return null
+  return (
+    <div role="alert" style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+      background: '#b45309', color: '#fff', textAlign: 'center',
+      fontSize: 12, fontWeight: 600, padding: '6px 12px', letterSpacing: '0.02em',
+    }}>
+      Demo data — backend not connected. This build is missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY, so sign-in and all data are mock only.
+    </div>
+  )
 }
 
 function ProtectedRoute({ children, allowedRole }) {
@@ -49,6 +69,8 @@ function RoleRedirect() {
 
 export default function App() {
   return (
+    <>
+    <MockDataBanner />
     <AuthProvider>
       <OrderProvider>
       <FulfillmentProvider>
@@ -76,5 +98,6 @@ export default function App() {
       </FulfillmentProvider>
       </OrderProvider>
     </AuthProvider>
+    </>
   )
 }
