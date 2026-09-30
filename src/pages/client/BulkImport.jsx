@@ -156,7 +156,9 @@ export default function BulkImport() {
     return {
       state: stateCode(r.state), county: r.county,
       type: r.searchType,
-      priority: priorityOf(r),
+      // A combined order is one order, so it takes a single priority — escalate
+      // to Rush if ANY grouped row is Rush rather than silently dropping it.
+      priority: unitRows.some(({ r: p }) => priorityOf(p) === 'rush') ? 'rush' : 'normal',
       clientFileNo: r.clientFileNo || null,
       clientCode: user?.clientCode || null,
       client: business,

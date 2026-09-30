@@ -617,6 +617,27 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                     <div style={{ fontSize:13, color:Q.text, whiteSpace:'pre-wrap' }}>{intake.specialInstructions}</div>
                   </div>
                 )}
+                {Array.isArray(intake.properties) && intake.properties.length > 1 && (
+                  <div style={{ marginTop:10 }}>
+                    <div style={{ fontSize:11, color:Q.faint, marginBottom:4 }}>
+                      Properties in this order ({intake.properties.length})
+                    </div>
+                    <div style={{ display:'grid', gap:6 }}>
+                      {intake.properties.map((p, i) => (
+                        <div key={i} style={{ fontSize:12.5, color:Q.text, padding:'6px 10px',
+                          background:'#fff', border:`1px solid ${Q.border}`, borderRadius:8 }}>
+                          <span style={{ fontWeight:600 }}>{i + 1}. </span>
+                          {[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ') || '—'}
+                          {(p.county || p.parcelId) && (
+                            <span style={{ color:Q.faint }}>
+                              {' — '}{[p.county && `${p.county} County`, p.parcelId && `APN ${p.parcelId}`].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1397,25 +1418,32 @@ function AdminHome() {
   // A client counts as active while it has at least one order in flight.
   const activeClients  = new Set(orders.filter(o => !isClosed(o)).map(o => o.clientCode || clientCode(o.client)).filter(Boolean)).size
   const navigate = useNavigate()
-  const orderIds = new Set(orders.map(o => o.id))
-  // Recent Activity: only the referenced order number links to the order. The
-  // entry's orderId wins; seed entries carry the id only in their text. No
-  // known order in the text → the line stays plain.
+  const orderIds = useMemo(() => new Set(orders.map(o => o.id)), [orders])
+  // Recent Activity: the referenced order links to its detail page. The entry's
+  // own orderId wins; otherwise an RTS-#### mentioned in the text is used. When
+  // that id appears verbatim in the text we underline just that token; when the
+  // order is known but its id isn't in the text, the whole line opens it. No
+  // known order at all → the line stays plain.
+  const linkStyle = { background:'none', border:'none', padding:0, font:'inherit', color:'inherit',
+    cursor:'pointer', textAlign:'left' }
   const activityText = (a) => {
     const parts  = String(a.action || '').split(/(RTS-\d+)/)   // odd indexes are whole RTS tokens
-    const tokens = parts.filter((_, i) => i % 2)
-    const id = [a.orderId, tokens[0]].find(x => x && tokens.includes(x) && orderIds.has(x))
+    const id = [a.orderId, ...parts.filter((_, i) => i % 2)].find(x => x && orderIds.has(x))
     if (!id) return a.action
+    const open = () => navigate(`/admin/orders/${id}`)
+    const hover = { onMouseOver: e => e.currentTarget.style.color = ROLE_COLOR,
+      onMouseOut: e => e.currentTarget.style.color = 'inherit' }
     const at = parts.indexOf(id)
-    return <>
-      {parts.slice(0, at).join('')}
-      <button type="button" onClick={() => navigate(`/admin/orders/${id}`)} title={`Open ${id}`}
-        style={{ background:'none', border:'none', padding:0, font:'inherit', color:'inherit', cursor:'pointer',
-          textDecoration:'underline', textDecorationColor:Q.faint, textUnderlineOffset:2 }}
-        onMouseOver={e => e.currentTarget.style.color = ROLE_COLOR}
-        onMouseOut={e => e.currentTarget.style.color = 'inherit'}>{id}</button>
-      {parts.slice(at + 1).join('')}
-    </>
+    if (at > 0 && at % 2 === 1) {   // id is a token in the text → underline it inline
+      return <>
+        {parts.slice(0, at).join('')}
+        <button type="button" onClick={open} title={`Open ${id}`} {...hover}
+          style={{ ...linkStyle, textDecoration:'underline', textDecorationColor:Q.faint, textUnderlineOffset:2 }}>{id}</button>
+        {parts.slice(at + 1).join('')}
+      </>
+    }
+    // Known order, but its id isn't written in the text → make the line clickable.
+    return <button type="button" onClick={open} title={`Open ${id}`} {...hover} style={linkStyle}>{a.action}</button>
   }
   return (
     <div className="space-y-5">

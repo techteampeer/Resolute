@@ -178,13 +178,37 @@ function OperatorOrderPage() {
         )}
       </div>
     )},
-    { key:'overview', label:'Overview', icon:FileText, render: () => (
-      <DetailGrid items={[
-        ['Client file #', order.clientFileNo || '—'],
-        ['Search Type', order.type], ['County', order.county], ['State', order.state],
-        ['Priority', order.priority?.toUpperCase()], ['ETA', order.eta], ['Current stage', meta.label],
-      ]} />
-    )},
+    { key:'overview', label:'Overview', icon:FileText, render: () => {
+      const props = order.workflow?.intake?.properties
+      return (
+        <div className="space-y-4">
+          <DetailGrid items={[
+            ['Client file #', order.clientFileNo || '—'],
+            ['Property', order.workflow?.intake?.propertyAddress || '—'],
+            ['Search Type', order.type], ['County', order.county], ['State', order.state],
+            ['Priority', order.priority?.toUpperCase()], ['ETA', order.eta], ['Current stage', meta.label],
+          ]} />
+          {Array.isArray(props) && props.length > 1 && (
+            <Panel title={`Properties in this order (${props.length})`}>
+              <div className="space-y-2">
+                {props.map((p, i) => (
+                  <div key={i} className="text-sm px-3 py-2 rounded-lg"
+                    style={{ background:'#fff', border:'1px solid rgba(18,40,76,0.08)' }}>
+                    <span className="font-semibold" style={{ color:'#12284C' }}>{i + 1}. </span>
+                    {[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ') || '—'}
+                    {(p.county || p.parcelId) && (
+                      <span style={{ color:'#5C6E8C' }}>
+                        {' — '}{[p.county && `${p.county} County`, p.parcelId && `APN ${p.parcelId}`].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          )}
+        </div>
+      )
+    }},
     { key:'files', label:'Files', icon:Files, render: () => (
       <Panel title="Attached documents"><AttachedDocs workflow={order.workflow} /></Panel>
     )},
