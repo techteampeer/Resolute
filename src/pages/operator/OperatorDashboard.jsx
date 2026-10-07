@@ -6,7 +6,8 @@ import DocUpload from '../../components/DocUpload'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
-import { displayClient, nextRoleFor, lineItemsOf, lineSubId } from '../../data/mockData'
+import { displayClient, nextRoleFor, lineItemsOf } from '../../data/mockData'
+import SubOrders from '../../components/SubOrders'
 import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files, Bell } from 'lucide-react'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
@@ -184,29 +185,11 @@ function OperatorOrderPage() {
         <div className="space-y-4">
           <DetailGrid items={[
             ['Client file #', order.clientFileNo || '—'],
-            ['Property', order.workflow?.intake?.propertyAddress || '—'],
+            ['Property', items.length > 1 ? `${items.length} properties — see sub-orders` : (order.workflow?.intake?.propertyAddress || '—')],
             ['Search Type', order.type], ['County', order.county], ['State', order.state],
             ['Priority', order.priority?.toUpperCase()], ['ETA', order.eta], ['Current stage', meta.label],
           ]} />
-          {items.length > 1 && (
-            <Panel title={`Sub-orders in this order (${items.length}) · worked as one unit`}>
-              <div className="space-y-2">
-                {items.map((p, i) => (
-                  <div key={i} className="text-sm px-3 py-2 rounded-lg"
-                    style={{ background:'#fff', border:'1px solid rgba(18,40,76,0.08)' }}>
-                    <span className="font-mono text-xs font-semibold" style={{ color:ROLE_COLOR }}>{lineSubId(order.id, p.n || i + 1)}</span>
-                    {p.searchType && <span style={{ color:'#5C6E8C' }}> · {p.searchType}</span>}
-                    {'  '}{[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ') || '—'}
-                    {(p.county || p.parcelId) && (
-                      <span style={{ color:'#5C6E8C' }}>
-                        {' — '}{[p.county && `${p.county} County`, p.parcelId && `APN ${p.parcelId}`].filter(Boolean).join(' · ')}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </Panel>
-          )}
+          <SubOrders order={order} />
         </div>
       )
     }},
