@@ -1,24 +1,29 @@
 # Resolute Portal — Architect Constraints
 
-Role: act as Senior Lead Architect. Focus: high-quality, modular, AWS-native code.
+Role: act as Senior Lead Architect. Focus: high-quality, modular, GCP-native code.
 Verify every new feature against these constraints before implementing.
 
 ## Architecture transition
 
-- **Current:** Vercel (static Vite SPA + serverless functions in `api/`).
-- **Target:** AWS (full server). Abstract Vercel-specific code (request/response
-  handlers, `waitUntil`, rewrites) away from core logic so handlers are thin
-  adapters over portable modules (`api/_lib/`, `services/`).
+- **Current:** Vercel (static Vite SPA + serverless functions in `api/`) on top
+  of Supabase (Postgres + Auth + RLS + Realtime + Storage).
+- **Target:** GCP (full server, e.g. Cloud Run) with the database on Cloud SQL
+  for PostgreSQL — the relational schema, RLS policies and the
+  `guard_order_handoff` trigger move as-is, so do NOT adopt a non-relational
+  store (e.g. Firestore) that would force the security model to be rewritten.
+  Abstract Vercel/Supabase-specific code (request/response handlers, `waitUntil`,
+  rewrites, the `auth.uid()` / JWT-claims coupling) away from core logic so
+  handlers are thin adapters over portable modules (`api/_lib/`, `services/`).
 
-## AI & automation — BLOCKED until post-AWS migration
+## AI & automation — BLOCKED until post-GCP migration
 
 - Do NOT add or extend AI/LLM logic that runs on Vercel. No new AI libraries in
   `package.json` for the Vercel deployment.
 - The email→order ingest that carried the old extraction seam has been removed
   (see "Email" below), so there is no dormant AI path left in the app.
 - Post-migration goal (unchanged): email stream → parse attachments (invoices /
-  search packages) with AWS-native AI (Textract / Comprehend / Bedrock) →
-  auto-draft order in the portal. Rebuild the extraction behind one
+  search packages) with GCP-native AI (Document AI / Cloud Natural Language /
+  Vertex AI) → auto-draft order in the portal. Rebuild the extraction behind one
   provider-agnostic seam so the provider stays swappable.
 
 ## Billing & payment logic
@@ -82,11 +87,11 @@ Verify every new feature against these constraints before implementing.
 - **The provider is one file.** `providers/ses.js` (SigV4 over `node:crypto`,
   no SDK) and `providers/preview.js`. `NOTIFY_PROVIDER` defaults to `preview`,
   which writes files and mails nobody — an unconfigured deploy cannot mail real
-  colleagues. Nothing in `services/notify/` knows where it runs, so the AWS move
+  colleagues. Nothing in `services/notify/` knows where it runs, so the GCP move
   replaces the caller, not the code.
 - **Inbound email→order ingest stays removed** (`api/webhooks/inbound-email.js`,
   `services/email_ingest/`). Do not reintroduce it piecemeal; it is the half
-  that carried the AI extraction seam and is blocked until post-AWS.
+  that carried the AI extraction seam and is blocked until post-GCP.
 - Supabase Database Webhooks must not point at this app — there is still no
   endpoint to receive them.
 
