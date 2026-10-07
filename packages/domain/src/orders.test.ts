@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   ROLE_SEQUENCE, nextRoleFor, roleAfter, statusForRole, progressFor, orderProgress, isOrderComplete,
-  activeCountForUser,
+  activeCountForUser, workloadWeight, lineItemsOf, lineSubId,
 } from './pipeline'
 import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
@@ -198,5 +198,27 @@ describe('activeCountForUser (F2 — workload)', () => {
     expect(activeCountForUser([], 'u1')).toBe(0)
     expect(activeCountForUser(null, 'u1')).toBe(0)
     expect(activeCountForUser(roster, '')).toBe(0)
+  })
+  it('weights a grouped order by its sub-order count (true load)', () => {
+    const grouped = order({ id: 'G', assignedUserId: 'u3', status: 'screening',
+      workflow: { intake: { lineItems: [{ n: 1 }, { n: 2 }, { n: 3 }] } } })
+    const plain = order({ id: 'H', assignedUserId: 'u3', status: 'typing' })
+    expect(activeCountForUser([grouped, plain], 'u3')).toBe(4) // 3 sub-searches + 1 plain
+  })
+})
+
+describe('grouped bulk orders (line items + weight)', () => {
+  it('lineSubId builds parent-n display ids', () => {
+    expect(lineSubId('RTS-10110', 1)).toBe('RTS-10110-1')
+    expect(lineSubId('RTS-10110', 3)).toBe('RTS-10110-3')
+  })
+  it('workloadWeight is N for a grouped order, 1 for a plain one', () => {
+    expect(workloadWeight(order({ workflow: { intake: { lineItems: [{ n: 1 }, { n: 2 }] } } }))).toBe(2)
+    expect(workloadWeight(order())).toBe(1)
+    expect(workloadWeight(order({ workflow: { intake: { lineItems: [{ n: 1 }] } } }))).toBe(1)
+  })
+  it('lineItemsOf falls back to the older properties array', () => {
+    expect(lineItemsOf(order({ workflow: { intake: { properties: [{ address: 'a' }, { address: 'b' }] } } })).length).toBe(2)
+    expect(lineItemsOf(order()).length).toBe(0)
   })
 })

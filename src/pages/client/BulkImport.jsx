@@ -68,11 +68,14 @@ const rowErrors = (r) => {
 const priorityOf = (r) => (norm(r.priority) === 'rush' ? 'rush' : 'normal')
 
 // Creation units — one per order to create — from the valid rows ({ r, srcRow }).
-// Separate: one unit per row. Combine: rows with the same non-empty trimmed
-// Group ID share one unit (placed where the group first appears); a blank
-// Group ID is always its own unit.
+// Separate: one unit per row. Combine (the default): the whole upload becomes
+// ONE order whose rows are its sub-orders — UNLESS a Group ID column is used,
+// in which case each Group ID is its own order (a blank Group ID row stays on
+// its own). So a plain file = one grouped order; Group IDs split it into several.
 const unitsFor = (validRows, mode) => {
   if (mode !== 'combine') return validRows.map(x => ({ group: null, rows: [x] }))
+  const anyGroup = validRows.some(x => String(x.r.groupId || '').trim())
+  if (!anyGroup) return validRows.length ? [{ group: null, rows: validRows }] : []
   const units = [], byGroup = new Map()
   for (const x of validRows) {
     const g = String(x.r.groupId || '').trim()
@@ -93,7 +96,7 @@ export default function BulkImport() {
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState(null)  // { created:[ids], failed:[{group,rows,error}], skipped }
   const [drag, setDrag] = useState(false)
-  const [mode, setMode] = useState('separate')   // 'separate' | 'combine'
+  const [mode, setMode] = useState('combine')   // 'combine' (default, one grouped order) | 'separate'
 
   const parse = async (file) => {
     setParseErr(''); setResult(null); setRows(null); setFileName(file?.name || '')
@@ -143,7 +146,10 @@ export default function BulkImport() {
 
   // One createOrder payload per unit. The unit's first valid row carries every
   // order-level field (so existing order views read as before); a multi-row
-  // unit also lists each grouped row's property on intake.properties.
+  // unit also lists each row as a sub-order (line item) on intake.lineItems —
+  // the parent order moves through the pipeline as one unit, but each line is an
+  // individually identified search (display id `${orderId}-${n}`), and the
+  // order's workload weight is the number of lines (see domain workloadWeight).
   const orderPayload = ({ rows: unitRows }) => {
     const { r } = unitRows[0]
     // Display/intake only — identity stays the signed-in client's clientCode.
@@ -171,11 +177,17 @@ export default function BulkImport() {
         from: `${user?.name || ''} <${user?.email || ''}>`.trim(),
         company: business,
         specialInstructions: r.notes || '',
-        // PropertyItem (packages/domain pipeline.ts) per grouped row.
+        // LineItem[] (packages/domain pipeline.ts) — one sub-order per grouped
+        // row. Only written when the order spans more than one search.
         ...(unitRows.length > 1 && {
-          properties: unitRows.map(({ r: p }) => ({
+          lineItems: unitRows.map(({ r: p }, i) => ({
+            n: i + 1,
+            searchType: p.searchType || r.searchType,
+            propertyType: p.propertyType || null,
             address: p.address || '', city: p.city || '', state: stateCode(p.state),
             county: p.county || '', zip: p.zip || '', parcelId: p.parcel || '',
+            buyer: p.buyer || '', seller: p.seller || '', borrower: p.borrower || '',
+            clientFileNo: p.clientFileNo || null, notes: p.notes || '',
           })),
         }),
       },
@@ -233,7 +245,7 @@ export default function BulkImport() {
       {/* Import mode — how valid rows become orders */}
       <div className="space-y-1.5">
         <div className="inline-flex p-1 rounded-xl" style={{ background: 'rgba(18,40,76,0.05)' }}>
-          {[['separate', 'Separate orders'], ['combine', 'Combine into one order']].map(([k, l]) => (
+          {[['combine', 'One grouped order'], ['separate', 'Separate orders']].map(([k, l]) => (
             <button key={k} type="button" onClick={() => setMode(k)} disabled={busy} aria-pressed={mode === k}
               className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
               style={mode === k ? { background: '#fff', color: '#12284C', boxShadow: '0 1px 2px rgba(18,40,76,0.10)' } : { color: '#5C6E8C' }}>
@@ -243,8 +255,8 @@ export default function BulkImport() {
         </div>
         <p className="text-[11px]" style={{ color: '#5C6E8C' }}>
           {mode === 'combine'
-            ? 'Rows that share a Group ID become one order covering all of their properties. Rows with no Group ID stay separate orders.'
-            : 'Each valid row becomes its own order.'}
+            ? 'All rows become ONE order with a numbered sub-order per property (RTS-####-1, -2 …), assigned to one person and worked as a single unit. Add a Group ID column to split the file into several grouped orders.'
+            : 'Each valid row becomes its own separate order.'}
         </p>
       </div>
 
