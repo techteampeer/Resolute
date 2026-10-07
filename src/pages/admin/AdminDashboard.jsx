@@ -27,7 +27,7 @@ import OrderThread from '../../components/OrderThread'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS,
   STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode, stateCode,
-  REGIONS, regionOf, nextRoleFor, statusForRole,
+  REGIONS, regionOf, nextRoleFor, statusForRole, lineItemsOf, lineSubId, workloadWeight,
 } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
@@ -617,17 +617,18 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                     <div style={{ fontSize:13, color:Q.text, whiteSpace:'pre-wrap' }}>{intake.specialInstructions}</div>
                   </div>
                 )}
-                {Array.isArray(intake.properties) && intake.properties.length > 1 && (
+                {lineItemsOf(order).length > 1 && (
                   <div style={{ marginTop:10 }}>
                     <div style={{ fontSize:11, color:Q.faint, marginBottom:4 }}>
-                      Properties in this order ({intake.properties.length})
+                      Sub-orders in this order ({lineItemsOf(order).length}) · worked as one unit
                     </div>
                     <div style={{ display:'grid', gap:6 }}>
-                      {intake.properties.map((p, i) => (
+                      {lineItemsOf(order).map((p, i) => (
                         <div key={i} style={{ fontSize:12.5, color:Q.text, padding:'6px 10px',
                           background:'#fff', border:`1px solid ${Q.border}`, borderRadius:8 }}>
-                          <span style={{ fontWeight:600 }}>{i + 1}. </span>
-                          {[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ') || '—'}
+                          <span style={{ fontFamily:'monospace', fontWeight:700, color:ROLE_COLOR }}>{lineSubId(order.id, p.n || i + 1)}</span>
+                          {p.searchType && <span style={{ color:Q.faint }}> · {p.searchType}</span>}
+                          {'  '}{[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ') || '—'}
                           {(p.county || p.parcelId) && (
                             <span style={{ color:Q.faint }}>
                               {' — '}{[p.county && `${p.county} County`, p.parcelId && `APN ${p.parcelId}`].filter(Boolean).join(' · ')}
@@ -963,12 +964,17 @@ function TeamWorkload() {
   const [openId, setOpenId] = useState(null)
 
   const isClosed = (o) => o.status === 'delivered' || o.status === 'cancelled'
+  // Load is WEIGHTED by sub-orders: a grouped order of N searches counts as N,
+  // so the bars show real work, not order count (matches the assign picker).
   const team = profiles
     .filter(p => p.role === 'user' && (p.status || 'active') === 'active')
-    .map(p => ({ ...p, active: orders.filter(o => o.assignedUserId === p.id && !isClosed(o)) }))
-    .sort((a, b) => b.active.length - a.active.length)   // busiest first
-  const maxLoad = Math.max(1, ...team.map(t => t.active.length))
-  const busiest = team.length ? team[0].active.length : 0
+    .map(p => {
+      const active = orders.filter(o => o.assignedUserId === p.id && !isClosed(o))
+      return { ...p, active, load: active.reduce((s, o) => s + workloadWeight(o), 0) }
+    })
+    .sort((a, b) => b.load - a.load)   // busiest first
+  const maxLoad = Math.max(1, ...team.map(t => t.load))
+  const busiest = team.length ? team[0].load : 0
 
   return (
     <QCard className="p-5">
@@ -979,7 +985,7 @@ function TeamWorkload() {
       <div className="mt-3" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {team.length === 0 && <p style={{ fontSize: 13, color: Q.muted }}>Loading the team…</p>}
         {team.map(p => {
-          const load = p.active.length
+          const load = p.load
           const overloaded = load > 1 && load === busiest
           const idle = load === 0
           return (
@@ -1009,6 +1015,10 @@ function TeamWorkload() {
                   {p.active.map(o => (
                     <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: Q.muted }}>
                       <span style={{ fontFamily: 'monospace', fontWeight: 600, color: Q.text }}>{o.id}</span>
+                      {workloadWeight(o) > 1 && (
+                        <span style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: ROLE_COLOR,
+                          background: `${ROLE_COLOR}14`, borderRadius: 5, padding: '1px 6px' }}>×{workloadWeight(o)}</span>
+                      )}
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {o.type} · {STATUS_MAP[o.status]?.label || o.status}
                       </span>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { X, UserCheck, AlertTriangle } from 'lucide-react'
-import { displayClient, nextRoleFor, activeCountForUser } from '../data/mockData'
+import { displayClient, nextRoleFor, activeCountForUser, workloadWeight } from '../data/mockData'
 import { useOrders } from '../context/OrderContext'
 import { useProfiles } from '../lib/useProfiles'
 
@@ -79,7 +79,10 @@ export default function AssignModal({ order, user, onClose }) {
           <div>
             <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:ROLE_COLOR }}>{order.id}</div>
             <div style={{ fontSize:18, fontWeight:700, color:Q.text }}>{displayClient(order, user)}</div>
-            <div style={{ fontSize:12, color:Q.muted }}>{order.type} · {order.county}, {order.state}</div>
+            <div style={{ fontSize:12, color:Q.muted }}>
+              {order.type} · {order.county}, {order.state}
+              {workloadWeight(order) > 1 && <span style={{ color:ROLE_COLOR, fontWeight:600 }}> · {workloadWeight(order)} searches (weighs {workloadWeight(order)})</span>}
+            </div>
           </div>
           <button onClick={onClose} style={{ background:'transparent', border:'none', cursor:'pointer', color:Q.faint }}>
             <X style={{ width:18, height:18 }} />
@@ -136,7 +139,7 @@ export default function AssignModal({ order, user, onClose }) {
                       )}
                     </span>
                     <span style={{ fontSize:12, color: active ? ROLE_COLOR : Q.muted }}>
-                      {p.load} active order{p.load === 1 ? '' : 's'}
+                      {p.load} active search{p.load === 1 ? '' : 'es'}
                     </span>
                   </span>
                   {active && <UserCheck style={{ width:16, height:16, color:ROLE_COLOR, flexShrink:0 }} />}

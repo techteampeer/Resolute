@@ -10,7 +10,7 @@ import {
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign, Search,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye, Download
 } from 'lucide-react'
-import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, US_STATES, stateName } from '../../data/mockData'
+import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, US_STATES, stateName, lineItemsOf, lineSubId } from '../../data/mockData'
 import { PRODUCTS } from '../../data/products'
 import { isSupabaseConfigured, openDocument, uploadDocument } from '../../lib/backend'
 import { fileKind, uid } from '../../data/fulfillment'
@@ -359,16 +359,20 @@ function OrderDetailPage() {
             <Row k="Special instructions" v={intake?.specialInstructions} />
             {!intake && <div className="text-xs" style={{ color:'#5C6E8C' }}>Submitted before detailed intake was captured.</div>}
           </div>
-          {Array.isArray(intake?.properties) && intake.properties.length > 1 && (
+          {lineItemsOf(order).length > 1 && (
             <div className="glass-card p-4 space-y-2 text-sm">
               <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#5C6E8C' }}>
-                Properties in this order ({intake.properties.length})
+                Sub-orders in this order ({lineItemsOf(order).length})
               </div>
-              {intake.properties.map((p, i) => {
+              {lineItemsOf(order).map((p, i) => {
                 const addr = [p.address, p.city, stateName(p.state) || p.state, p.zip].filter(Boolean).join(', ')
                 return (
                   <div key={i} className="px-3 py-2 rounded-lg" style={{ background:'#fff', border:'1px solid rgba(18,40,76,0.08)' }}>
-                    <div className="font-medium" style={{ color:'#12284C' }}>{i + 1}. {addr || '—'}</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-mono text-xs font-semibold" style={{ color: ROLE_COLOR }}>{lineSubId(order.id, p.n || i + 1)}</div>
+                      {p.searchType && <div className="text-xs" style={{ color:'#5C6E8C' }}>{p.searchType}</div>}
+                    </div>
+                    <div className="font-medium" style={{ color:'#12284C' }}>{addr || '—'}</div>
                     <div className="text-xs" style={{ color:'#5C6E8C' }}>
                       {[p.county && `${p.county} County`, p.parcelId && `APN ${p.parcelId}`].filter(Boolean).join(' · ') || '—'}
                     </div>
