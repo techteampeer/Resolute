@@ -24,10 +24,11 @@ import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
 import { orderSubtitle } from '../../components/OrderDetailLayout'
 import OrderThread from '../../components/OrderThread'
+import SubOrders from '../../components/SubOrders'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS,
   STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode, stateCode,
-  REGIONS, regionOf, nextRoleFor, statusForRole, lineItemsOf, lineSubId, workloadWeight,
+  REGIONS, regionOf, nextRoleFor, statusForRole, lineItemsOf, workloadWeight,
 } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
@@ -599,7 +600,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em',
                   color:Q.faint, marginBottom:8 }}>Order details (from client)</div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 16px', fontSize:13 }}>
-                  <Detail label="Property" value={intake.propertyAddress} wide />
+                  <Detail label="Property" value={lineItemsOf(order).length > 1 ? `${lineItemsOf(order).length} properties — see sub-orders` : intake.propertyAddress} wide />
                   <Detail label="County / State" value={[order.county, order.state].filter(Boolean).join(', ')} />
                   <Detail label="Property type" value={intake.propertyType} />
                   <Detail label="Parcel / APN" value={intake.parcelNumberAPN} />
@@ -617,28 +618,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                     <div style={{ fontSize:13, color:Q.text, whiteSpace:'pre-wrap' }}>{intake.specialInstructions}</div>
                   </div>
                 )}
-                {lineItemsOf(order).length > 1 && (
-                  <div style={{ marginTop:10 }}>
-                    <div style={{ fontSize:11, color:Q.faint, marginBottom:4 }}>
-                      Sub-orders in this order ({lineItemsOf(order).length}) · worked as one unit
-                    </div>
-                    <div style={{ display:'grid', gap:6 }}>
-                      {lineItemsOf(order).map((p, i) => (
-                        <div key={i} style={{ fontSize:12.5, color:Q.text, padding:'6px 10px',
-                          background:'#fff', border:`1px solid ${Q.border}`, borderRadius:8 }}>
-                          <span style={{ fontFamily:'monospace', fontWeight:700, color:ROLE_COLOR }}>{lineSubId(order.id, p.n || i + 1)}</span>
-                          {p.searchType && <span style={{ color:Q.faint }}> · {p.searchType}</span>}
-                          {'  '}{[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ') || '—'}
-                          {(p.county || p.parcelId) && (
-                            <span style={{ color:Q.faint }}>
-                              {' — '}{[p.county && `${p.county} County`, p.parcelId && `APN ${p.parcelId}`].filter(Boolean).join(' · ')}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <div style={{ marginTop:10 }}><SubOrders order={order} /></div>
               </div>
             </div>
           )}
