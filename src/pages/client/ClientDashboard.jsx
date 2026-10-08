@@ -356,9 +356,12 @@ function OrderDetailPage() {
           <div className="glass-card p-4 space-y-1.5 text-sm">
             <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Order details</div>
             <Row k="Property" v={lineItemsOf(order).length > 1 ? `${lineItemsOf(order).length} properties — see sub-orders below` : intake?.propertyAddress} />
+            <Row k="County / State" v={[order.county, order.state].filter(Boolean).join(', ')} />
+            <Row k="Search type" v={intake?.orderType || order.type} />
             <Row k="Property type" v={intake?.propertyType} />
             <Row k="Parcel / APN" v={intake?.parcelNumberAPN} />
             <Row k="Your file #" v={order.clientFileNo} />
+            <Row k="Business" v={intake?.company} />
             <Row k="Buyer" v={intake?.buyer} />
             <Row k="Borrower" v={intake?.borrowerName} />
             <Row k="Seller" v={intake?.seller} />
@@ -849,17 +852,39 @@ function PlaceOrderPage() {
             {step===4 && (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Review & Submit</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[['State',stateName(form.state)||'—'],['County',form.county||'—'],
-                    ['Search Type',form.searchType || form.customSearch || '—'],
-                    ['Property Type',(form.propertyType==='Other' ? (form.propertyTypeOther.trim()||'Other') : form.propertyType) || '—'],
-                    ['Parties', form.parties.filter(p=>p.name.trim()).length ? `${form.parties.filter(p=>p.name.trim()).length} listed` : '—'],
-                    ['Your file #',form.clientFileNo||'—'],
-                    ['Priority',form.priority.toUpperCase()],['Business Name',form.company||'—'],
-                    ['Contact',form.contactName||'—'],['Email',form.email||'—']].map(([k,v]) => (
-                    <div key={k} className="glass p-3 rounded-xl">
-                      <div className="text-xs mb-0.5" style={{ color:'#5C6E8C' }}>{k}</div>
-                      <div className="font-medium text-sm" style={{ color:'#12284C' }}>{v}</div>
+                <div className="space-y-3">
+                  {[
+                    ['Property', [
+                      ['State', stateName(form.state)],
+                      ['County', form.county],
+                      ['Address', [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', ')],
+                      ['Property type', form.propertyType === 'Other' ? (form.propertyTypeOther.trim() || 'Other') : form.propertyType],
+                      ['Parcel / APN #', form.parcelId],
+                      ['Your file #', form.clientFileNo],
+                    ]],
+                    ['Search', [
+                      ['Product', form.searchType],
+                      ...(form.customSearch.trim() ? [['Custom search', form.customSearch]] : []),
+                      ['Turnaround', (() => { const t = TURNAROUND.find(x => x.key === form.priority); return t ? `${t.label}${t.fee ? ` (+$${t.fee})` : ''}` : form.priority })()],
+                      ['Special instructions', form.notes],
+                    ]],
+                    ['Parties', form.parties.filter(p => p.name.trim()).map(p => [p.role, p.name])],
+                    ['Contact', [
+                      ['Business name', form.company],
+                      ['Contact name', form.contactName],
+                      ['Work email', form.email],
+                    ]],
+                  ].map(([title, pairs]) => (
+                    <div key={title} className="glass p-4 rounded-xl">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color:'#5C6E8C' }}>
+                        {title}{title === 'Parties' ? ` (${pairs.length})` : ''}
+                      </div>
+                      {pairs.length ? pairs.map(([k, v], idx) => (
+                        <div key={idx} className="flex gap-3 py-0.5 text-sm">
+                          <span style={{ color:'#5C6E8C', minWidth:150, flexShrink:0 }}>{k}</span>
+                          <span className="font-medium" style={{ color:'#12284C', wordBreak:'break-word' }}>{v || '—'}</span>
+                        </div>
+                      )) : <div className="text-sm" style={{ color:'#9AA8BF' }}>None added</div>}
                     </div>
                   ))}
                 </div>

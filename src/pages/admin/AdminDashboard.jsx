@@ -4,7 +4,6 @@ import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
 import AssignModal from '../../components/AssignModal'
-import { useClients, clientNameOf } from '../../lib/useClients'
 import NotificationSettings from '../../components/NotificationSettings'
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
@@ -829,101 +828,6 @@ const awaitingApproval = (o) =>
 // Admin-side intake. Orders placed here land in Admin's own queue
 // (createOrder parks with assignedTo 'admin'), exactly like a client-placed
 // order, so the approval path is identical.
-function NewOrderModal({ onClose }) {
-  const { createOrder } = useOrders()
-  // Every client in the registry, not the seven in the fixture — Admin could not
-  // place an order for a newly onboarded client, including the pilot.
-  const clients = useClients()
-  // Keyed on the client CODE, not the name. The name is PII a plain admin may
-  // not read (20260909120000), so an option labelled by name would be blank for
-  // them — and the old code derived client_code by looking the NAME up in
-  // mockData, which returned nothing for any client added since, saving the
-  // order with no client link at all.
-  const [f, setF] = useState({ clientCode: '', state: '', county: '', type: 'Full Search', priority: 'normal', eta: '' })
-  const [busy, setBusy] = useState(false)
-  const set = (k, v) => setF(p => ({ ...p, [k]: v }))
-  const ready = f.clientCode && f.state && f.county
-  const submit = async () => {
-    if (!ready || busy) return
-    setBusy(true)
-    try {
-      await createOrder({
-        client: clientNameOf(clients, f.clientCode) || f.clientCode,
-        clientCode: f.clientCode,
-        state: f.state.toUpperCase(), county: f.county, type: f.type,
-        priority: f.priority, eta: f.eta || '',
-        intake: { source: 'admin', propertyAddress: '', orderType: f.type },
-      })
-      onClose()
-    } finally { setBusy(false) }
-  }
-  const field = { width:'100%', padding:'8px 11px', borderRadius:8, border:`1px solid ${Q.border}`,
-    background:Q.card, color:Q.text, fontSize:13, outline:'none' }
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background:'rgba(12,29,56,0.45)' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()}
-        style={{ background:Q.card, borderRadius:12, width:'100%', maxWidth:460, padding:'20px 22px' }}>
-        <div style={{ fontSize:17, fontWeight:700, color:Q.text, marginBottom:4 }}>New Order</div>
-        <div style={{ fontSize:12.5, color:Q.muted, marginBottom:16 }}>
-          Placed on behalf of a client. It parks in your queue for routing.
-        </div>
-        <div style={{ display:'grid', gap:10 }}>
-          <div>
-            <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>CLIENT</div>
-            <select value={f.clientCode} onChange={e => set('clientCode', e.target.value)} style={field}>
-              <option value="">{clients.length ? 'Select a client…' : 'Loading clients…'}</option>
-              {clients.map(c => (
-                <option key={c.code} value={c.code}>{c.name ? `${c.code} · ${c.name}` : c.code}</option>
-              ))}
-            </select>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <div>
-              <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>STATE</div>
-              <input value={f.state} onChange={e => set('state', e.target.value)} placeholder="FL" maxLength={2} style={field} />
-            </div>
-            <div>
-              <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>COUNTY</div>
-              <input value={f.county} onChange={e => set('county', e.target.value)} placeholder="Miami-Dade" style={field} />
-            </div>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <div>
-              <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>SEARCH TYPE</div>
-              <select value={f.type} onChange={e => set('type', e.target.value)} style={field}>
-                {['Full Search','Current Owner','Two-Owner','Lien Search','Tax Certificate','HOA Estoppel']
-                  .map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>PRIORITY</div>
-              <select value={f.priority} onChange={e => set('priority', e.target.value)} style={field}>
-                <option value="normal">Normal</option><option value="rush">Rush</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>ETA <span style={{ fontWeight:400 }}>(optional)</span></div>
-            <input type="date" value={f.eta} onChange={e => set('eta', e.target.value)} style={field} />
-          </div>
-        </div>
-        <div style={{ display:'flex', gap:8, marginTop:18 }}>
-          <button onClick={submit} disabled={!ready || busy}
-            style={{ flex:1, padding:'9px 14px', borderRadius:8, border:'none', fontSize:13, fontWeight:600,
-              background: ready && !busy ? ROLE_COLOR : Q.border, color: ready && !busy ? '#fff' : Q.faint,
-              cursor: ready && !busy ? 'pointer' : 'not-allowed' }}>
-            {busy ? 'Creating…' : 'Create Order'}
-          </button>
-          <button onClick={onClose}
-            style={{ padding:'9px 16px', borderRadius:8, border:`1px solid ${Q.border}`, background:Q.bg,
-              color:Q.muted, fontSize:13, fontWeight:600, cursor:'pointer' }}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // A small pill for a workload status (busiest / available).
 const wlChip = (fg, bg) => ({
   fontSize: 9.5, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
@@ -1028,7 +932,6 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const [assigning, setAssigning] = useState(null)  // focused assign modal
   const [search, setSearch]     = useState('')
   const [activeTab, setActiveTab] = useState('all')   // lifecycle tab
-  const [newOrder, setNewOrder]   = useState(false)
   const [showMap, setShowMap]   = useState(false)
   // Real orders per state for the inline coverage map — same source as the
   // Coverage Map page, so the two cannot disagree.
@@ -1118,7 +1021,6 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   return (
     <div className="space-y-4">
       {assigning && <AssignModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
-      {newOrder && <NewOrderModal onClose={() => setNewOrder(false)} />}
       {/* Toolbar — row 1: search · date range · new order */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative" style={{ flex:'1 1 260px', minWidth: 240 }}>
@@ -1141,12 +1043,6 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
             {DATE_RANGES.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
           </select>
         </div>
-        <button onClick={() => setNewOrder(true)}
-          style={{ ...ctlBtn, background:ROLE_COLOR, border:'none', color:'#fff' }}
-          onMouseOver={e => e.currentTarget.style.background = ROLE_HOVER}
-          onMouseOut={e => e.currentTarget.style.background = ROLE_COLOR}>
-          <Plus style={{ width:15, height:15 }} /> New Order
-        </button>
       </div>
 
       {/* Toolbar — row 2: filter chips */}

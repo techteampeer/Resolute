@@ -108,6 +108,11 @@ export default function Layout({ children, navItems, role, roleColor = ROLE_COLO
     badgeText:   '#7FDCEC',
     userText:    '#FFFFFF',
     userSub:     'rgba(255,255,255,0.55)',
+    // Dark text for the WHITE topbar + dropdown menus (userText/userSub above are
+    // white, for the navy sidebar only — using them on white made the account
+    // name, the "Notifications" header and notification times invisible).
+    topbarText:  '#12284C',
+    topbarSub:   '#5C6E8C',
     logoutClr:   'rgba(255,255,255,0.65)',
     logoutHover: '#FFFFFF',
     iconBg:      '#EDF0F5',
@@ -285,14 +290,14 @@ export default function Layout({ children, navItems, role, roleColor = ROLE_COLO
                     className="absolute right-0 top-full mt-2 z-50 rounded-xl border shadow-lg overflow-hidden"
                     style={{ width: 340, maxWidth: '90vw', background: T.menuBg, borderColor: T.menuBdr }}>
                     <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: T.menuBdr }}>
-                      <span className="text-sm font-semibold" style={{ color: T.userText }}>Notifications</span>
-                      <span className="text-[11px]" style={{ color: T.userSub }}>{notifications.length} recent</span>
+                      <span className="text-sm font-semibold" style={{ color: T.topbarText }}>Notifications</span>
+                      <span className="text-[11px]" style={{ color: T.topbarSub }}>{notifications.length} recent</span>
                     </div>
                     <div className="max-h-80 overflow-y-auto">
                       {notifications.length === 0 ? (
                         <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
-                          <Bell className="w-6 h-6" style={{ color: T.userSub, opacity: 0.6 }} />
-                          <span className="text-sm" style={{ color: T.userSub }}>You're all caught up</span>
+                          <Bell className="w-6 h-6" style={{ color: T.topbarSub, opacity: 0.6 }} />
+                          <span className="text-sm" style={{ color: T.topbarSub }}>You're all caught up</span>
                         </div>
                       ) : notifications.slice(0, 30).map((n, i) => {
                         const to = notifRoute(n)
@@ -307,10 +312,10 @@ export default function Layout({ children, navItems, role, roleColor = ROLE_COLO
                             onMouseOut: e => { e.currentTarget.style.background = 'transparent' },
                           } : {})}>
                           <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"
-                            style={{ background: NOTIF_DOT[n.type] || T.userSub }} />
+                            style={{ background: NOTIF_DOT[n.type] || T.topbarSub }} />
                           <div className="min-w-0">
                             <p className="text-[13px] leading-snug" style={{ color: T.menuText }}>{n.action}</p>
-                            {n.time && <p className="text-[11px] mt-0.5" style={{ color: T.userSub }}>{n.time}</p>}
+                            {n.time && <p className="text-[11px] mt-0.5" style={{ color: T.topbarSub }}>{n.time}</p>}
                           </div>
                         </div>
                         )
@@ -331,7 +336,7 @@ export default function Layout({ children, navItems, role, roleColor = ROLE_COLO
                 style={{ background: `${roleColor}35`, color: roleColor }}>
                 {user?.avatar}
               </div>
-              <span className="hidden sm:block text-sm font-medium" style={{ color: T.userText }}>{user?.name}</span>
+              <span className="hidden sm:block text-sm font-medium" style={{ color: T.topbarText }}>{user?.name}</span>
               <ChevronDown className="w-3 h-3" style={{ color: T.iconClr }} />
             </button>
             <AnimatePresence>
