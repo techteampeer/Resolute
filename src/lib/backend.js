@@ -463,6 +463,31 @@ export async function removeDocument(path) {
 // and re-sign it on demand here; the stored `url` is only a fallback (e.g.
 // mock-mode blob URLs). The tab is opened synchronously first so the async
 // re-sign doesn't trip the browser's popup blocker.
+// One reusable pop-out window for documents, so once a user drags it onto a
+// second monitor every later document opens there (the browser reuses a window
+// by name and keeps its position).
+const DOC_WINDOW = 'resolute-doc-viewer'
+
+// Option B (progressive enhancement): on a browser with the Window Management
+// API and an extended desktop, auto-place the pop-out on the EXTERNAL screen.
+// Called while the window is still same-origin (about:blank) and before any
+// other await, so the click's user activation is still fresh for the one-time
+// permission prompt. A no-op on single-screen setups or browsers without the
+// API (Safari/Firefox) — there the user just drags the window across (option A).
+async function moveDocWindowToExternalScreen(win) {
+  try {
+    if (!win || win.closed) return
+    if (!window.screen?.isExtended || typeof window.getScreenDetails !== 'function') return
+    const details = await window.getScreenDetails()     // prompts once, then remembered
+    const ext = details.screens.find(s => s.isInternal === false)
+      || details.screens.find(s => s !== details.currentScreen)
+    if (!ext) return
+    win.moveTo(ext.availLeft, ext.availTop)
+    win.resizeTo(Math.min(ext.availWidth, 1100), Math.min(ext.availHeight, 850))
+    win.focus()
+  } catch { /* permission denied / unsupported / cross-origin — user drags it */ }
+}
+
 export async function openDocument(ref) {
   if (!ref) return null
   const canResign = isSupabaseConfigured && supabase && !!ref.path
@@ -470,7 +495,12 @@ export async function openDocument(ref) {
     alert('This document isn’t available to open — it may still be uploading, or was attached in a local session that wasn’t persisted.')
     return null
   }
-  const win = window.open('about:blank', '_blank')
+  // Option A: a dedicated pop-out WINDOW (the `popup` feature makes it a separate,
+  // movable window rather than a tab) under a stable name, opened synchronously so
+  // the later async re-sign doesn't trip the popup blocker. Opening it to
+  // about:blank first keeps it same-origin and movable even on reuse.
+  const win = window.open('about:blank', DOC_WINDOW, 'popup,width=1000,height=800')
+  if (win) await moveDocWindowToExternalScreen(win)
   let url = ref.url || null
   if (canResign) {
     try {
