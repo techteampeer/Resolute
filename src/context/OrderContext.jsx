@@ -5,7 +5,7 @@ import { ORDERS, ACTIVITY } from '../data/mockData'
 // delegates every state transition to these pure functions.
 import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
-  applySingleSeatStep, applyReassign, applyPartialHandoff,
+  applySingleSeatStep, applyReassign, applyPartialHandoff, applyStagePlan, applyRoutedStep,
   STAGE_BY_ROLE, todayISO,
 } from '@domain'
 import { isSupabaseConfigured, fetchOrders, fetchOrderById, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
@@ -149,6 +149,44 @@ export function OrderProvider({ children }) {
       return next
     }))
     log({ id: Date.now(), orderId, action: `Admin assigned ${orderId} to ${personName || queue}`, time: 'Just now', type: 'status', audience: 'staff' })
+  }
+
+  // Admin sets the order's COURSE OF FLOW once (E2): which production user owns
+  // each stage (workflow.stagePlan). Routes the order to the owner of the stage
+  // currently due; from then on, completing a stage auto-routes to the next
+  // planned owner with no Admin gate — the production team never picks who gets
+  // an order next. Admin writes bypass the guard, so the owner is set directly.
+  const setStagePlan = (orderId, { singleSeating, plan }, adminName = 'Admin') => {
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const next = applyStagePlan(o, { singleSeating, plan })
+      persist(next)
+      return next
+    }))
+    log({ id: Date.now(), orderId, action: `${adminName} set the stage plan for ${orderId}${singleSeating ? ' (single seating)' : ''}`, time: 'Just now', type: 'status', audience: 'staff' })
+  }
+
+  // A production owner completes a stage on a PLANNED order and the order routes
+  // itself to the pre-assigned next owner (E2) — in-pool, no Admin gate — or to
+  // Admin if that stage has no owner, or delivered on the final stage. The owner
+  // never chooses the recipient; the plan does.
+  const routeStep = (orderId, role, userName, notes, extra = {}) => {
+    let advancedTo = null, routedTo = null
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const r = applyRoutedStep(o, role, userName, extra)
+      advancedTo = r.advancedTo; routedTo = r.routedTo
+      persist(r.next)
+      return r.next
+    }))
+    log({
+      id: Date.now(), orderId, actor: userName,
+      action: `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId}`
+        + (advancedTo ? (routedTo === 'admin' ? ' → returned to Admin (no one assigned to the next stage)' : ` → routed to the ${STAGE_BY_ROLE[advancedTo] || advancedTo} owner`) : ' → delivered')
+        + (notes ? ` (${notes})` : ''),
+      time: 'Just now', type: advancedTo && routedTo !== 'admin' ? 'progress' : 'status',
+      audience: advancedTo ? 'staff' : 'all',
+    })
   }
 
   // Admin reassigns an order to a different production user (cover an absence,
@@ -349,7 +387,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, writeError, clearWriteError, assignOrder, reassign, advanceInSeat, partialHandoff, completeStep, returnToAdmin, updateOrder, logAction, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, writeError, clearWriteError, assignOrder, reassign, setStagePlan, routeStep, advanceInSeat, partialHandoff, completeStep, returnToAdmin, updateOrder, logAction, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )

@@ -6,7 +6,7 @@ import DocUpload from '../../components/DocUpload'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
-import { displayClient, nextRoleFor, lineItemsOf } from '../../data/mockData'
+import { displayClient, nextRoleFor, roleAfter, lineItemsOf, hasStagePlan, ownerForStage } from '../../data/mockData'
 import SubOrders from '../../components/SubOrders'
 import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files, Bell } from 'lucide-react'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
@@ -38,7 +38,7 @@ function OperatorOrderPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { orders, completeStep, returnToAdmin, advanceInSeat, partialHandoff, activityLog = [] } = useOrders()
+  const { orders, completeStep, returnToAdmin, advanceInSeat, partialHandoff, routeStep, activityLog = [] } = useOrders()
   const { getOrderThread, getOrderNotes } = useSupport()
   const order = orders.find(o => o.id === id)
   const role = order ? nextRoleFor(order) : null
@@ -59,14 +59,21 @@ function OperatorOrderPage() {
   // Actionable only when the order is on the Production Desk with a stage left to
   // work; delivered or parked-with-Admin is view-only (Sagar's guard).
   const isActionable = order.status !== 'delivered' && !!role && order.assignedTo === 'user' && order.assignedUserId === user?.id
-  // Single-seating (the standard): the owner works the order end to end with no
-  // Admin gate between stages — advanceInSeat keeps it on their desk until
-  // delivery completes it. A non-single-seated order keeps the every-stage gate
-  // (returnToAdmin), delivery completing it outright.
+  // Routing model (E2): a PLANNED order moves to the next stage's pre-assigned
+  // owner on completion — no Admin gate, and the worker never picks who gets it.
+  // `routeStep` builds the exact move the DB guard accepts. Orders placed before
+  // plans existed fall back to the legacy paths (single-seating in-seat, or the
+  // every-stage Admin gate), so nothing in flight breaks.
+  const planned = hasStagePlan(order)
   const single = order.workflow?.singleSeating
+  const nextRole = role ? roleAfter(role) : null
+  const nextOwnerId = planned ? ownerForStage(order, nextRole) : null
+  const routesToSelf = !!nextOwnerId && nextOwnerId === user?.id
   const advance = (workflowPatch) => {
     if (!isActionable) return   // never write a view-only order, even if called directly
-    if (single) {
+    if (planned) {
+      routeStep(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
+    } else if (single) {
       advanceInSeat(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
     } else if (role === 'delivery') {
       completeStep(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
@@ -152,7 +159,7 @@ function OperatorOrderPage() {
           <>
             <Panel title="Notes">
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
-                placeholder={single ? 'Notes, or a reason if you hand this off…' : 'Notes (optional)…'} className="input-field text-sm resize-none" />
+                placeholder={(single || planned) ? 'Notes, or a reason if you escalate to Admin…' : 'Notes (optional)…'} className="input-field text-sm resize-none" />
             </Panel>
             <button disabled={!canSubmit}
               onClick={() => advance(
@@ -162,17 +169,23 @@ function OperatorOrderPage() {
                 : null)}
               className="btn-primary w-full text-sm py-2.5 flex items-center justify-center gap-2"
               style={{ opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
-              <Send className="w-4 h-4" /> {role === 'delivery' ? `${meta.verb} & Complete` : single ? `${meta.verb} & Continue` : `${meta.verb} & Send to Admin`}
+              <Send className="w-4 h-4" /> {
+                role === 'delivery' ? `${meta.verb} & Complete`
+                : planned ? (!nextOwnerId ? `${meta.verb} & Send to Admin` : routesToSelf ? `${meta.verb} & Continue` : `${meta.verb} & Hand to next stage`)
+                : single ? `${meta.verb} & Continue`
+                : `${meta.verb} & Send to Admin`
+              }
             </button>
-            {/* Single-seating: can't finish this order right now? Hand it back to
-                Admin with a note (requires a note) and Admin reassigns it. */}
-            {single && role !== 'delivery' && (
+            {/* Stuck on a disruption or query? Escalate to Admin with a note — the
+                only way a production user reaches Admin mid-order (the order never
+                passes user→user). Shown whenever the order stays on this desk. */}
+            {(single || planned) && role !== 'delivery' && (
               <button onClick={handoff} disabled={!notes.trim()} type="button"
                 className="w-full text-sm py-2 mt-1 rounded-lg font-medium flex items-center justify-center gap-2"
-                title="Pass this order back to Admin with your note; Admin reassigns it"
+                title="Send this order to Admin with your note for a disruption or query"
                 style={{ background:'transparent', border:'1px solid rgba(18,40,76,0.15)',
                   color: notes.trim() ? '#a16207' : '#9AA8BF', cursor: notes.trim() ? 'pointer' : 'not-allowed' }}>
-                Hand off to Admin{notes.trim() ? '' : ' (add a note first)'}
+                Escalate to Admin{notes.trim() ? '' : ' (add a note first)'}
               </button>
             )}
           </>
@@ -247,7 +260,7 @@ function OperatorHome() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>Production Workspace</h1>
-        <p className="text-sm" style={{ color: '#3D5171' }}>Orders assigned to you — work each one end to end through every stage. Can't finish one? Hand it back to Admin with a note and they'll reassign it.</p>
+        <p className="text-sm" style={{ color: '#3D5171' }}>Orders assigned to you. Complete your stage and it moves to the next person automatically. Stuck on a disruption or query? Escalate to Admin with a note.</p>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {Object.entries(STAGE).map(([r, s]) => (

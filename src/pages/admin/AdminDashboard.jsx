@@ -3,19 +3,19 @@ import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
-import AssignModal from '../../components/AssignModal'
+import StagePlanModal from '../../components/StagePlanModal'
 import NotificationSettings from '../../components/NotificationSettings'
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
   Package, CheckCircle, Clock, Search, Plus, Filter, Eye, DollarSign,
   ChevronDown, ChevronUp, FileText, ArrowUpRight, X, Lock, ShieldCheck, UserPlus, Download,
-  MessageSquare, Send, StickyNote, Bell,
+  MessageSquare, Send, StickyNote, Bell, Workflow,
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument } from '../../lib/backend'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
-import { useProfiles, namesForRole } from '../../lib/useProfiles'
+import { useProfiles } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
 import { money } from '../../lib/billing'
 import { ROLE_COLOR, density } from '../../lib/ui'
@@ -26,28 +26,79 @@ import OrderThread from '../../components/OrderThread'
 import SubOrders from '../../components/SubOrders'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS,
-  STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode, stateCode,
-  REGIONS, regionOf, nextRoleFor, statusForRole, lineItemsOf, workloadWeight,
+  displayClient, clientByName, clientCode, stateCode,
+  REGIONS, regionOf, nextRoleFor, lineItemsOf, workloadWeight,
+  stagePlanOf, hasStagePlan, isSingleSeatingPlan,
 } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-// Staff names per pipeline role, from the real profiles table (see useProfiles).
-// This was built from mockData's USERS fixture, which offers six people who have
-// no profiles row and no login, so an order could be assigned to someone who does
-// not exist.
-// Post-D3 (ADR 0001) the stage login roles are retired: every production staffer
-// is a single `user`, so each pipeline stage draws its people from the one
-// production pool. The keys stay per-stage — they name who worked each stage on
-// the order (order.screener / .examiner / …) — but they all resolve to `user`s.
-const teamFrom = (profiles) => {
-  const pool = namesForRole(profiles, 'user')
-  return { screener: pool, examiner: pool, typer: pool, delivery: pool }
-}
-
 const ROLE_HOVER  = '#1B34C4'
+
+// The admin's view of an order's course of flow (E2). Shows who owns each stage,
+// which stage the order is with right now, and what's already done — and opens
+// the plan editor. Read-only awareness here; editing happens in StagePlanModal.
+const PLAN_STAGES = [
+  { key:'screener', label:'Screener' }, { key:'examiner', label:'Examiner' },
+  { key:'typer', label:'Typer' }, { key:'delivery', label:'Delivery' },
+]
+function StagePlanPanel({ order, profiles, onEdit }) {
+  const plan = stagePlanOf(order)
+  const isSet = hasStagePlan(order)
+  const due = nextRoleFor(order)
+  const nameOf = (id) => profiles.find(p => p.id === id)?.name || (id ? 'Unknown user' : null)
+  const mode = isSingleSeatingPlan(order) ? 'Single seating' : 'Stage by stage'
+  const dueLabel = (PLAN_STAGES.find(s => s.key === due) || {}).label || ''
+  return (
+    <div style={{ background:Q.bg, border:`1px solid ${Q.border}`, borderRadius:10, padding:'14px 16px' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: isSet ? 12 : 8 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:11, fontWeight:700,
+          textTransform:'uppercase', letterSpacing:'0.05em', color:Q.faint }}>
+          <Workflow style={{ width:13, height:13 }} /> Stage plan
+          {isSet && <span style={{ textTransform:'none', letterSpacing:0, fontSize:10.5, fontWeight:700,
+            color:ROLE_COLOR, background:`${ROLE_COLOR}14`, borderRadius:5, padding:'2px 7px' }}>{mode}</span>}
+        </div>
+        <button onClick={onEdit} style={{ fontSize:12, fontWeight:600, color:ROLE_COLOR,
+          background:'none', border:'none', cursor:'pointer', padding:0 }}>
+          {isSet ? 'Edit plan' : 'Set plan'}
+        </button>
+      </div>
+      {!isSet ? (
+        <div style={{ fontSize:13, color:Q.muted, lineHeight:1.5 }}>
+          No one is assigned yet. Set the plan to route this order to the production
+          team — it can’t start until you do.
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px 16px' }}>
+          {PLAN_STAGES.map(s => {
+            const owner = plan[s.key]
+            const isDue = due === s.key
+            const doneDate = order.completedDates?.[s.key]
+            return (
+              <div key={s.key} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12.5 }}>
+                <span style={{ width:7, height:7, borderRadius:'50%', flexShrink:0,
+                  background: doneDate ? '#16a34a' : isDue ? ROLE_COLOR : Q.border }} />
+                <span style={{ minWidth:0 }}>
+                  <span style={{ color:Q.faint }}>{s.label}: </span>
+                  <span style={{ color: owner ? Q.text : '#b45309', fontWeight:600 }}>{nameOf(owner) || 'unassigned'}</span>
+                  {isDue && !doneDate && <span style={{ color:ROLE_COLOR, fontWeight:600, fontSize:11 }}> · here now</span>}
+                  {doneDate && <span style={{ color:'#16a34a', fontSize:11 }}> · done</span>}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {isSet && due && !plan[due] && (
+        <div style={{ marginTop:10, fontSize:12, color:'#b45309' }}>
+          The {dueLabel} stage (due now) has no one assigned — the order is parked with Admin.
+        </div>
+      )}
+    </div>
+  )
+}
 
 const NAV = [
   { path: '/admin',          label: 'Dashboard',    icon: LayoutDashboard },
@@ -362,37 +413,15 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
   // decides. (Orders cancelled while still queued never reach here.)
   const cancelReq = order.status !== 'cancelled' ? order.workflow?.cancelRequested : null
   const [tab, setTab] = useState('overview')
-  const [form, setForm] = useState({
-    screener: order.screener, examiner: order.examiner, typer: order.typer,
-    delivery: order.delivery, payment: order.payment, status: order.status,
-    assignedTo: order.assignedTo || '',
-  })
-  // Status is derived from the owning role; changing the owner therefore moves
-  // the status with it, so the two can't silently drift. Status stays editable
-  // afterwards for a deliberate correction.
-  const STAGES = ['screener', 'examiner', 'typer', 'delivery']
-  const TEAM = teamFrom(useProfiles())
-  const set = (k, v) => setForm(f => {
-    if (k !== 'assignedTo') return { ...f, [k]: v }
-    const derived = statusForRole(STAGES.includes(v) ? v : nextRoleFor(order))
-    return { ...f, assignedTo: v, status: v ? derived : f.status }
-  })
+  const profiles = useProfiles()
+  // The order's owner, status and pipeline position are DERIVED and set through
+  // the stage plan (StagePlanModal) — not free-typed here. This editor keeps only
+  // the genuinely editable field, the mode of payment. The old owner/status/stage
+  // dropdowns routed nothing and let the two silently drift; they're gone.
+  const [form, setForm] = useState({ payment: order.payment })
+  const [planning, setPlanning] = useState(false)
   const save = () => {
-    const completed = form.status === 'delivered'
-      ? (order.completed || order.eta)
-      : null
-    const assignedTo = form.assignedTo || null
-    // Mirror assignOrder: routing to the production (`user`) desk claims the
-    // order end-to-end. Post-D3 that is the only production owner; Admin and
-    // Unassigned leave the workflow untouched.
-    const workflow = assignedTo === 'user'
-      ? { ...order.workflow, singleSeating: true }
-      : order.workflow
-    // Keep the per-person owner (A1/A2) consistent with the queue: an order that
-    // leaves the `user` pool has no owner. Assigning a specific person is done in
-    // the Assign modal (a picker); this editor only clears a stale owner.
-    const assignedUserId = assignedTo === 'user' ? (order.assignedUserId ?? null) : null
-    onSave({ ...order, ...form, assignedTo, assignedUserId, workflow, completed })
+    onSave({ ...order, payment: form.payment })
     onClose()
   }
 
@@ -485,6 +514,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
   return (
     <div style={{ maxWidth:900, margin:'0 auto' }}>
       {confirming && <ConfirmOrderModal order={order} started={started} onCancel={() => setConfirming(false)} onConfirm={applyConfirm} />}
+      {planning && <StagePlanModal order={order} user={user} onClose={() => setPlanning(false)} />}
       <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.18 }}
         style={{ background:Q.card, borderRadius:12, border:`1px solid ${Q.border}`, overflow:'hidden' }}>
         <div style={{ padding:'16px 22px 0' }}>
@@ -622,47 +652,16 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
             </div>
           )}
 
-          {/* Assignment — drives the Assigned/Unassigned state */}
+          {/* Stage plan — the admin-set course of flow (E2). Who works each stage,
+              where the order is now, and the editor. Replaces the old owner /
+              status / per-stage dropdowns that routed nothing. */}
           <div style={{ padding:'16px 22px 0' }}>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-              <Field label="Assigned To (current owner)">
-                <select style={selectStyle} value={form.assignedTo} onChange={e => set('assignedTo', e.target.value)}>
-                  <option value="">Unassigned</option>
-                  <option value="admin">Admin (awaiting approval)</option>
-                  <option value="user">Production Desk</option>
-                </select>
-              </Field>
-              <Field label="Status">
-                <select style={selectStyle} value={form.status} onChange={e => set('status', e.target.value)}>
-                  {STAGE_KEYS.map((k, i) => <option key={k} value={k}>{STAGE_LABELS[i]}</option>)}
-                </select>
-              </Field>
-            </div>
+            <StagePlanPanel order={order} profiles={profiles} onEdit={() => setPlanning(true)} />
           </div>
 
           <div style={{ padding:'14px 22px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <Field label="Screener">
-              <select style={selectStyle} value={form.screener} onChange={e => set('screener', e.target.value)}>
-                {TEAM.screener.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </Field>
-            <Field label="Examiner">
-              <select style={selectStyle} value={form.examiner} onChange={e => set('examiner', e.target.value)}>
-                {TEAM.examiner.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </Field>
-            <Field label="Typer">
-              <select style={selectStyle} value={form.typer} onChange={e => set('typer', e.target.value)}>
-                {TEAM.typer.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </Field>
-            <Field label="Delivery">
-              <select style={selectStyle} value={form.delivery} onChange={e => set('delivery', e.target.value)}>
-                {TEAM.delivery.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </Field>
             <Field label="Mode of Payment">
-              <select style={selectStyle} value={form.payment} onChange={e => set('payment', e.target.value)}>
+              <select style={selectStyle} value={form.payment} onChange={e => setForm(f => ({ ...f, payment: e.target.value }))}>
                 {PAYMENT_METHODS.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </Field>
@@ -838,8 +837,8 @@ const wlInitials = (n = '') =>
 
 // A5 — Team Workload. Visualizes each production user's live active-order count
 // so Admin can spot who's overloaded vs idle and rebalance: expand a person to
-// see their orders and Reassign one (reuses the AssignModal person picker, which
-// on an already-owned order routes through reassign()).
+// see their orders and open the stage plan to move one to someone else (the
+// plan editor is the single assignment surface — StagePlanModal).
 function TeamWorkload() {
   const { orders } = useOrders()
   const { user } = useAuth()
@@ -920,7 +919,7 @@ function TeamWorkload() {
           )
         })}
       </div>
-      {assigning && <AssignModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
+      {assigning && <StagePlanModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
     </QCard>
   )
 }
@@ -1020,7 +1019,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
 
   return (
     <div className="space-y-4">
-      {assigning && <AssignModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
+      {assigning && <StagePlanModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
       {/* Toolbar — row 1: search · date range · new order */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative" style={{ flex:'1 1 260px', minWidth: 240 }}>
