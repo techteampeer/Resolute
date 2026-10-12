@@ -8,7 +8,7 @@ import NotificationSettings from '../../components/NotificationSettings'
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
   Package, CheckCircle, Clock, Search, Plus, Filter, Eye, DollarSign,
-  ChevronDown, ChevronUp, FileText, ArrowUpRight, X, Lock, ShieldCheck, UserPlus, Download,
+  ChevronDown, ChevronUp, FileText, ArrowUpRight, X, Lock, ShieldCheck, Download,
   MessageSquare, Send, StickyNote, Bell, Workflow,
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
@@ -927,6 +927,8 @@ function TeamWorkload() {
 function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const { user } = useAuth()
   const { orders } = useOrders()
+  const profiles = useProfiles()
+  const ownerName = (o) => profiles.find(p => p.id === o.assignedUserId)?.name || null
   const navigate = useNavigate()
   const [assigning, setAssigning] = useState(null)  // focused assign modal
   const [search, setSearch]     = useState('')
@@ -1187,11 +1189,17 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                     </div>
                   </td>
                   <td style={{ padding:CELL_PAD, color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{o.payment}</td>
+                  {/* Assignee — the real current owner (assigned_user_id → name)
+                      and which stage they hold, not the empty o[assignedTo]. */}
                   <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',
-                    color: o.assignedTo ? Q.text : Q.faint, textTransform:'capitalize' }}>
-                    {o.assignedTo
-                      ? `${o.assignedTo === 'user' ? 'production' : o.assignedTo}${o[o.assignedTo] ? ` · ${o[o.assignedTo]}` : ''}`
-                      : '—'}
+                    color: (o.assignedTo && o.assignedTo !== 'admin') ? Q.text : Q.faint }}>
+                    {o.assignedTo === 'admin'
+                      ? 'Admin'
+                      : o.assignedTo === 'user'
+                        ? (ownerName(o)
+                            ? <>{ownerName(o)}{nextRoleFor(o) ? <span style={{ color:Q.faint }}> · {cap(nextRoleFor(o))}</span> : null}</>
+                            : 'Production (unassigned)')
+                        : '—'}
                   </td>
                   <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',
                     color: lastCompleted(o) ? '#16a34a' : Q.faint }}>
@@ -1210,10 +1218,8 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                             color:ROLE_COLOR, fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}
                           onMouseOver={e => e.currentTarget.style.background = `${ROLE_COLOR}22`}
                           onMouseOut={e => e.currentTarget.style.background = `${ROLE_COLOR}12`}>
-                          <UserPlus style={{ width:13, height:13 }} />
-                          {r.kind === 'inprogress' ? 'Reassign'
-                            : r.kind === 'ready' ? `Approve & Assign ${cap(r.next)}`
-                            : `Assign ${cap(r.next)}`}
+                          <Workflow style={{ width:13, height:13 }} />
+                          {hasStagePlan(o) ? 'Edit plan' : 'Set plan'}
                         </button>
                       )}
                       <button title="View details" onClick={e => { e.stopPropagation(); navigate(`/admin/orders/${o.id}`) }}
