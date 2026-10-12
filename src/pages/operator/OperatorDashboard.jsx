@@ -58,7 +58,7 @@ function OperatorOrderPage() {
 
   // Actionable only when the order is on the Production Desk with a stage left to
   // work; delivered or parked-with-Admin is view-only (Sagar's guard).
-  const isActionable = order.status !== 'delivered' && !!role && order.assignedTo === 'user'
+  const isActionable = order.status !== 'delivered' && !!role && order.assignedTo === 'user' && order.assignedUserId === user?.id
   // Single-seating (the standard): the owner works the order end to end with no
   // Admin gate between stages — advanceInSeat keeps it on their desk until
   // delivery completes it. A non-single-seated order keeps the every-stage gate
@@ -234,7 +234,12 @@ function OperatorHome() {
   // "My Work" — orders in the pool assigned to me (A2 owner scoping). Unowned
   // pool orders (no assignee yet) are shown too so nothing is stranded before an
   // Admin assigns an owner; RLS still blocks writing anyone else's order.
-  const actionable = active.filter(o => o.assignedTo === 'user' && (o.assignedUserId == null || o.assignedUserId === user?.id))
+  // Only orders this user actually OWNS. RLS (orders_update_assigned) allows a
+  // write only when assigned_user_id = auth.uid(), so showing unowned pool orders
+  // as actionable was a trap: any action on them was refused by the database
+  // ("Not saved — you no longer own this order") and lost on refresh. An order
+  // with no owner isn't workable until Admin assigns one.
+  const actionable = active.filter(o => o.assignedTo === 'user' && o.assignedUserId === user?.id)
   const awaiting   = active.filter(o => o.workflow?.singleSeating && o.assignedTo !== 'user')
   const byStage = (r) => actionable.filter(o => nextRoleFor(o) === r).length
 
