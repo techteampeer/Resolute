@@ -52,17 +52,33 @@ Verify every new feature against these constraints before implementing.
 - Pipeline roles in fixed order: screener → examiner → typer → delivery
   (`ROLE_SEQUENCE` in `src/data/mockData.js`). Status derives from the owning
   role (`statusForRole`).
-- Between stages, orders park with Admin for approval
-  (`returnToAdmin` in `src/context/OrderContext.jsx`, `assignedTo: 'admin'`).
+- **Stage routing (E2) — the admin sets the course of flow ONCE.** At intake the
+  admin writes `workflow.stagePlan` (`{screener, examiner, typer, delivery}` →
+  production-user ids; single seating = the same id in every slot; an empty slot
+  parks that stage with Admin). Completing a stage then routes the order straight
+  to the pre-assigned owner of the *next* stage — no return-to-Admin between
+  stages, and **a production user can never choose who gets the order next** (the
+  anti-bias rule). The only ways a production user moves an order are: complete
+  the current stage (→ the plan's next owner), or escalate to Admin with a note
+  for a disruption/query. All of this is enforced server-side by
+  `guard_order_handoff()` (migration `20261012000000_e2_stage_routing_guard.sql`);
+  the UI shares the read model (`stagePlanOf`/`nextOwnerFor`/… in
+  `packages/domain`) and the transitions `applyStagePlan`/`applyRoutedStep`
+  (`setStagePlan`/`routeStep` in `OrderContext`). The admin editor is
+  `components/StagePlanModal.jsx` (toggle: single seating ⟷ stage-by-stage).
+  **Backward-compatible:** an order with no `stagePlan` keeps the legacy
+  behaviour — legacy single-seating (`workflow.singleSeating`, `advanceInSeat`)
+  advances in-seat; otherwise it parks with Admin each stage (`returnToAdmin`,
+  `assignedTo: 'admin'`).
 - **Production Desk** (role key `user` — the single, consolidated production
   login; renamed from `operator`, generalized from "Single Seating", see
   docs/adr/0001): the standard production workspace at `/user`. A `user` works
-  an order end-to-end through whichever stage is next, on orders Admin routes
-  into the `user` pool (`workflow.singleSeating`), with Admin approval after
-  every phase. The four stage *login* roles (screener/examiner/typer/delivery)
-  are retired (D3) — the stage names survive only as pipeline identifiers
-  (`ROLE_SEQUENCE`/`statusForRole`). RLS: `orders_update_assigned` =
-  `can_work_production()` (`my_role() = 'user'`) `and assigned_to = 'user'`.
+  whichever stage the plan routes to them — one stage of an order, or all four
+  (single seating) — on orders they own in the `user` pool. The four stage
+  *login* roles (screener/examiner/typer/delivery) are retired (D3) — the stage
+  names survive only as pipeline identifiers (`ROLE_SEQUENCE`/`statusForRole`).
+  RLS: `orders_update_assigned` = `can_work_production()` (`my_role() = 'user'`)
+  `and assigned_to = 'user' and assigned_user_id = auth.uid()` (owner-scoped).
 - Client identities: non-super-admins see client codes, not names
   (`displayClient`).
 

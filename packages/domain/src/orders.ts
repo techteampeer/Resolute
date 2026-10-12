@@ -4,8 +4,8 @@
 // side effects. Extracted verbatim from OrderContext.jsx to keep behavior
 // identical; the only change is that the logic now lives in one portable place.
 import {
-  StageRole, Order,
-  roleAfter, nextRoleFor, statusForRole, progressFor, todayISO,
+  StageRole, Order, StagePlan,
+  roleAfter, nextRoleFor, statusForRole, progressFor, todayISO, stagePlanOf,
 } from './pipeline'
 
 const STAGES: string[] = ['screener', 'examiner', 'typer', 'delivery']
@@ -60,7 +60,62 @@ export function applyPartialHandoff(order: Order, note: string, fromName: string
   }
 }
 
+export interface StagePlanParams { singleSeating: boolean; plan: StagePlan }
+
+// Admin sets an order's COURSE OF FLOW once (E2): which production user owns each
+// stage. Writes the plan + the single-seating flag, routes the order to the owner
+// of the stage currently due (into the `user` pool), and derives the status. If
+// that stage has no owner the order parks with Admin. Admin writes bypass the
+// handoff guard, so this sets the owner directly — which is exactly why a plan,
+// set here, is the only way an order's owner ever moves forward.
+export function applyStagePlan(order: Order, { singleSeating, plan }: StagePlanParams): Order {
+  const due = nextRoleFor(order)
+  const owner = due ? (plan[due] ?? null) : null
+  const status = statusForRole(due)
+  return {
+    ...order,
+    assignedTo: owner ? 'user' : 'admin',
+    assignedUserId: owner,
+    status,
+    progress: Math.max(order.progress || 0, progressFor(status as string)),
+    workflow: { ...order.workflow, singleSeating: !!singleSeating, stagePlan: plan },
+  }
+}
+
 export interface StepResult { next: Order; advancedTo: StageRole | null }
+
+export interface RoutedResult extends StepResult { routedTo: 'user' | 'admin' | null; nextOwnerId: string | null }
+
+// A PLANNED order's stage completes and the order routes to the pre-assigned
+// owner of the next stage (E2): in-pool to that owner (no Admin gate), or to
+// Admin when the next stage has no owner to receive it, or delivered when this
+// was the final stage. The patch mirrors exactly what the DB guard accepts for a
+// planned order — the owner only ever advances to the plan's next-stage person.
+export function applyRoutedStep(
+  order: Order, role: StageRole, userName: string, extra: Record<string, any> = {},
+): RoutedResult {
+  const newDates = { ...order.completedDates, [role]: todayISO() }
+  const nextRole = roleAfter(role)
+  const allDone = nextRole === null
+  const nextStatus = statusForRole(nextRole)
+  const nextOwner = nextRole ? (stagePlanOf(order)[nextRole] || null) : null
+  let assignedTo: Order['assignedTo']; let assignedUserId: string | null; let routedTo: 'user' | 'admin' | null
+  if (allDone) { assignedTo = null; assignedUserId = null; routedTo = null }
+  else if (nextOwner) { assignedTo = 'user'; assignedUserId = nextOwner; routedTo = 'user' }
+  else { assignedTo = 'admin'; assignedUserId = order.assignedUserId ?? null; routedTo = 'admin' }
+  const next: Order = {
+    ...order,
+    status: nextStatus,
+    assignedTo,
+    assignedUserId,
+    progress: allDone ? 100 : Math.max(order.progress || 0, progressFor(nextStatus)),
+    completed: allDone ? (order.completed || todayISO()) : order.completed,
+    completedDates: newDates,
+    completedBy: { ...order.completedBy, [role]: userName },
+    workflow: { ...order.workflow, ...extra },
+  }
+  return { next, advancedTo: nextRole, routedTo, nextOwnerId: nextOwner }
+}
 
 // A stage completes and the order moves forward to the next stage's owner.
 // Terminal (delivery) marks the order delivered. Used for the final stage and

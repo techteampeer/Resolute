@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest'
 import {
   ROLE_SEQUENCE, nextRoleFor, roleAfter, statusForRole, progressFor, orderProgress, isOrderComplete,
   activeCountForUser, workloadWeight, lineItemsOf, lineSubId,
+  stagePlanOf, hasStagePlan, ownerForStage, nextOwnerFor, isSingleSeatingPlan,
 } from './pipeline'
 import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
-  applySingleSeatStep, applyReassign, applyPartialHandoff,
+  applySingleSeatStep, applyReassign, applyPartialHandoff, applyStagePlan, applyRoutedStep,
 } from './orders'
 
 const order = (o: Record<string, any> = {}) => ({
@@ -220,5 +221,92 @@ describe('grouped bulk orders (line items + weight)', () => {
   it('lineItemsOf falls back to the older properties array', () => {
     expect(lineItemsOf(order({ workflow: { intake: { properties: [{ address: 'a' }, { address: 'b' }] } } })).length).toBe(2)
     expect(lineItemsOf(order()).length).toBe(0)
+  })
+})
+
+// ── Stage plan (E2) ──────────────────────────────────────────────────────────
+const plan = { screener: 'A', examiner: 'B', typer: 'C', delivery: 'D' }
+const planned = (o: Record<string, any> = {}) =>
+  order({ workflow: { stagePlan: plan }, assignedTo: 'user', assignedUserId: 'A', status: 'screening', ...o })
+
+describe('stage-plan read model', () => {
+  it('stagePlanOf / hasStagePlan', () => {
+    expect(stagePlanOf(order())).toEqual({})
+    expect(hasStagePlan(order())).toBe(false)
+    expect(hasStagePlan(planned())).toBe(true)
+  })
+  it('ownerForStage / nextOwnerFor track the due stage', () => {
+    expect(ownerForStage(planned(), 'typer')).toBe('C')
+    expect(nextOwnerFor(planned())).toBe('A')                                   // screener due
+    expect(nextOwnerFor(planned({ completedDates: { screener: 'x' } }))).toBe('B') // examiner due
+  })
+  it('isSingleSeatingPlan only when one person owns all four', () => {
+    expect(isSingleSeatingPlan(planned())).toBe(false)
+    expect(isSingleSeatingPlan(order({ workflow: { stagePlan: { screener: 'Z', examiner: 'Z', typer: 'Z', delivery: 'Z' } } }))).toBe(true)
+  })
+})
+
+describe('applyStagePlan', () => {
+  it('routes a fresh order to the screener owner, status screening', () => {
+    const next = applyStagePlan(order(), { singleSeating: false, plan })
+    expect(next.assignedTo).toBe('user')
+    expect(next.assignedUserId).toBe('A')
+    expect(next.status).toBe('screening')
+    expect(next.workflow!.stagePlan).toEqual(plan)
+    expect(next.workflow!.singleSeating).toBe(false)
+  })
+  it('routes to the owner of the stage currently DUE, not always screener', () => {
+    const mid = order({ completedDates: { screener: 'x', examiner: 'x' } }) // typer due
+    expect(applyStagePlan(mid, { singleSeating: false, plan }).assignedUserId).toBe('C')
+  })
+  it('parks with Admin when the due stage has no owner', () => {
+    const next = applyStagePlan(order(), { singleSeating: false, plan: { examiner: 'B' } })
+    expect(next.assignedTo).toBe('admin')
+    expect(next.assignedUserId).toBeNull()
+  })
+  it('single seating stores the one person in every slot', () => {
+    const one = { screener: 'Z', examiner: 'Z', typer: 'Z', delivery: 'Z' }
+    const next = applyStagePlan(order(), { singleSeating: true, plan: one })
+    expect(next.assignedUserId).toBe('Z')
+    expect(isSingleSeatingPlan(next)).toBe(true)
+  })
+})
+
+describe('applyRoutedStep', () => {
+  it('routes a completed stage to the pre-assigned next owner, no Admin gate', () => {
+    const { next, advancedTo, routedTo, nextOwnerId } = applyRoutedStep(planned(), 'screener', 'Sam')
+    expect(advancedTo).toBe('examiner')
+    expect(routedTo).toBe('user')
+    expect(nextOwnerId).toBe('B')
+    expect(next.assignedTo).toBe('user')
+    expect(next.assignedUserId).toBe('B')        // the plan's examiner, not the screener
+    expect(next.status).toBe('examining')
+    expect(next.completedDates!.screener).toBeTruthy()
+    expect(next.completedBy!.screener).toBe('Sam')
+  })
+  it('a single-seating plan keeps the same owner across stages (in-seat)', () => {
+    const one = order({ workflow: { stagePlan: { screener: 'Z', examiner: 'Z', typer: 'Z', delivery: 'Z' } }, assignedTo: 'user', assignedUserId: 'Z', status: 'screening' })
+    const { next } = applyRoutedStep(one, 'screener', 'Zed')
+    expect(next.assignedTo).toBe('user')
+    expect(next.assignedUserId).toBe('Z')
+  })
+  it('parks with Admin when the next stage has no owner (plan gap)', () => {
+    const gap = order({ workflow: { stagePlan: { screener: 'A', typer: 'C', delivery: 'D' } }, assignedTo: 'user', assignedUserId: 'A', status: 'screening' })
+    const { next, routedTo } = applyRoutedStep(gap, 'screener', 'Sam')
+    expect(routedTo).toBe('admin')
+    expect(next.assignedTo).toBe('admin')
+    expect(next.assignedUserId).toBe('A')        // unchanged — guard forbids a user picking another
+    expect(next.status).toBe('examining')
+  })
+  it('final (delivery) stage completes the order and clears the desk', () => {
+    const atDelivery = planned({ completedDates: { screener: 'x', examiner: 'x', typer: 'x' }, status: 'delivery' })
+    const { next, advancedTo, routedTo } = applyRoutedStep(atDelivery, 'delivery', 'Dee')
+    expect(advancedTo).toBeNull()
+    expect(routedTo).toBeNull()
+    expect(next.assignedTo).toBeNull()
+    expect(next.assignedUserId).toBeNull()
+    expect(next.status).toBe('delivered')
+    expect(next.completed).toBeTruthy()
+    expect(next.progress).toBe(100)
   })
 })

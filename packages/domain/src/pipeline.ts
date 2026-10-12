@@ -109,6 +109,42 @@ export const roleAfter = (role: StageRole): StageRole | null => {
   return i === -1 || i === ROLE_SEQUENCE.length - 1 ? null : ROLE_SEQUENCE[i + 1]
 }
 
+// ── Stage plan (E2) ─────────────────────────────────────────────────────────
+// The admin's routing plan for an order: WHICH production user (by id) owns each
+// stage. The admin sets it ONCE at intake (workflow.stagePlan) and no production
+// user can change it. Single-seating = the same id in every slot. A missing /
+// empty slot parks that stage with Admin to fill. Completing a stage routes the
+// order straight to the next stage's owner — no Admin gate in between. The DB
+// guard (guard_order_handoff, migration 20261012000000) enforces every bit of
+// this server-side; these helpers are the read model the UI shares with it.
+export type StagePlan = Partial<Record<StageRole, string | null>>
+
+export const stagePlanOf = (order?: Order | null): StagePlan => {
+  const p = order?.workflow?.stagePlan
+  return p && typeof p === 'object' ? (p as StagePlan) : {}
+}
+
+// A plan is "set" once any stage names an owner.
+export const hasStagePlan = (order?: Order | null): boolean =>
+  ROLE_SEQUENCE.some(r => !!stagePlanOf(order)[r])
+
+// The production user the admin pre-assigned to a given stage (null if none).
+export const ownerForStage = (order: Order | null | undefined, role: StageRole | null): string | null =>
+  role ? (stagePlanOf(order)[role] || null) : null
+
+// The owner of the next stage still due — who a completion routes the order to.
+export const nextOwnerFor = (order?: Order | null): string | null =>
+  ownerForStage(order, nextRoleFor(order ?? ({ completedDates: {} } as Order)))
+
+// True when the plan sends the order to the same person for every remaining
+// stage (single seating, whether set by the toggle or by picking one person for
+// all four). Used only for labelling — routing is driven by the plan itself.
+export const isSingleSeatingPlan = (order?: Order | null): boolean => {
+  const plan = stagePlanOf(order)
+  const owners = ROLE_SEQUENCE.map(r => plan[r]).filter(Boolean)
+  return owners.length === ROLE_SEQUENCE.length && new Set(owners).size === 1
+}
+
 // The single source of truth for status: it follows the owning role.
 // null role (all stages done) -> 'delivered'.
 export const statusForRole = (role: StageRole | null): Status =>
