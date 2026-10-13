@@ -59,8 +59,11 @@ export default function StagePlanModal({ order, user, onClose }) {
 
   const nameFor = (id) => team.find(t => t.id === id)?.name || '—'
 
-  const noPrice = order.workflow?.invoiceAmount == null
-  const noDate  = !order.eta
+  // Portal orders are priced at placement, so the "no agreed price" nudge is only
+  // meaningful for the negotiated mail/website path.
+  const isPortal = order.workflow?.intake?.source === 'web'
+  const noPrice = !isPortal && order.workflow?.invoiceAmount == null
+  const noDate  = !isPortal && !order.eta
   const unpriced = [noPrice ? 'agreed price' : null, noDate ? 'committed date' : null].filter(Boolean)
 
   const save = () => {
