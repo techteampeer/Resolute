@@ -403,6 +403,35 @@ function AdminOrderPage() {
     )
 }
 
+// Portal (client-login) orders carry workflow.intake.source === 'web' and are
+// priced when the client places them, so they skip the admin price-confirmation
+// step entirely. Mail / website orders (negotiated price — built separately) are
+// the only ones that still need "Confirm & price" before work starts.
+const isPortalOrder = (o) => o?.workflow?.intake?.source === 'web'
+
+// A small styled prompt — replaces window.prompt for the hold reason and the
+// clarification question, so these actions feel part of the app and give the
+// admin a real text box (not a browser popup).
+function ActionPrompt({ title, hint, placeholder, confirmLabel, requireText = false, onConfirm, onCancel }) {
+  const [text, setText] = useState('')
+  const ok = !requireText || text.trim()
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(12,29,56,0.45)' }} onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()} style={{ background: Q.card, borderRadius: 12, width: '100%', maxWidth: 420, padding: 22 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: Q.text }}>{title}</div>
+        {hint && <div style={{ fontSize: 12.5, color: Q.muted, margin: '4px 0 10px' }}>{hint}</div>}
+        <textarea value={text} onChange={e => setText(e.target.value)} rows={3} placeholder={placeholder} autoFocus
+          style={{ width: '100%', padding: '9px 12px', border: `1px solid ${Q.border}`, borderRadius: 8, fontSize: 13, outline: 'none', resize: 'none', color: Q.text, background: '#fff' }} />
+        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+          <button disabled={!ok} onClick={() => onConfirm(text.trim())}
+            style={{ flex: 1, padding: '10px', background: ok ? ROLE_COLOR : Q.border, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 600, cursor: ok ? 'pointer' : 'not-allowed' }}>{confirmLabel}</button>
+          <button onClick={onCancel} style={{ padding: '10px 18px', background: Q.bg, border: `1px solid ${Q.border}`, borderRadius: 8, color: Q.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Hooks below must run unconditionally, so the not-found guard lives in the
 // wrapper above and this component always receives a real order.
 function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCancel, updateOrder }) {
@@ -414,6 +443,13 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
   // decides. (Orders cancelled while still queued never reach here.)
   const cancelReq = order.status !== 'cancelled' ? order.workflow?.cancelRequested : null
   const [tab, setTab] = useState('overview')
+  // Hold / clarification UX: a styled prompt + an auto-dismissing confirmation
+  // toast, both local to this still-mounted detail view (the actions no longer
+  // navigate away).
+  const [prompt, setPrompt] = useState(null)   // { kind: 'hold' | 'clarify' } | null
+  const [toast, setToast] = useState(null)
+  const flash = (m) => setToast(m)
+  useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t) }, [toast])
   const profiles = useProfiles()
   // The order's owner, status and pipeline position are DERIVED and set through
   // the stage plan (StagePlanModal) — not free-typed here. This editor keeps only
@@ -443,32 +479,31 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
   // clarification (client sees "Clarification Required" + a prompt to reply).
   const onHold = !!order.workflow?.onHold
   const notify = (text) => { if (orderClientCode) sendMessage({ clientCode: orderClientCode, clientName: order.client, from: 'support', text, author: user?.name || 'Admin', orderId: order.id }) }
-  const toggleHold = () => {
-    const on = !onHold
-    const reason = on ? (window.prompt('Reason for holding this order (optional):', '') ?? null) : null
-    updateOrder({ ...order, workflow: { ...order.workflow, onHold: on, holdReason: on ? (reason || null) : null } })
-    notify(on ? `Your order was placed on hold${reason ? `: ${reason}` : ''}.` : 'Your order has resumed.')
-    // Neither hold nor resume was recorded in the audit trail, so an order could
-    // sit paused for days with nothing in its history explaining why.
-    logAction({
-      orderId: order.id, actor: user?.name || 'Admin',
-      action: on
-        ? `${user?.name || 'Admin'} put ${order.id} on hold${reason ? ` — ${reason}` : ''}`
-        : `${user?.name || 'Admin'} resumed ${order.id}`,
-    })
-    onClose()
+  // Hold / clarification stay ON the order (no more jumping back to the list),
+  // use a styled prompt (no browser popup), and confirm with a toast + a
+  // persistent banner so it's obvious the change landed. The actions are recorded
+  // in the audit trail, as before.
+  const applyHold = (reason) => {
+    updateOrder({ ...order, workflow: { ...order.workflow, onHold: true, holdReason: reason || null, holdBy: user?.name || 'Admin', holdAt: new Date().toISOString().slice(0, 10) } })
+    notify(`Your order was placed on hold${reason ? `: ${reason}` : ''}.`)
+    logAction({ orderId: order.id, actor: user?.name || 'Admin', action: `${user?.name || 'Admin'} put ${order.id} on hold${reason ? ` — ${reason}` : ''}` })
+    setPrompt(null); flash('Order placed on hold — client notified.')
   }
-  const requestClarification = () => {
-    const note = window.prompt('What clarification do you need from the client?', '')
-    if (note == null) return
-    updateOrder({ ...order, clarification: 'pending' })
-    notify(`Clarification needed: ${note}`)
-    logAction({
-      orderId: order.id, actor: user?.name || 'Admin',
-      action: `${user?.name || 'Admin'} requested clarification from the client on ${order.id}${note ? ` — ${note}` : ''}`,
-    })
-    onClose()
+  const resumeHold = () => {
+    updateOrder({ ...order, workflow: { ...order.workflow, onHold: false, holdReason: null } })
+    notify('Your order has resumed.')
+    logAction({ orderId: order.id, actor: user?.name || 'Admin', action: `${user?.name || 'Admin'} resumed ${order.id}` })
+    flash('Order resumed — client notified.')
   }
+  const toggleHold = () => (onHold ? resumeHold() : setPrompt({ kind: 'hold' }))
+  const applyClarify = (noteText) => {
+    if (!noteText) return
+    updateOrder({ ...order, clarification: 'pending', workflow: { ...order.workflow, clarificationNote: noteText } })
+    notify(`Clarification needed: ${noteText}`)
+    logAction({ orderId: order.id, actor: user?.name || 'Admin', action: `${user?.name || 'Admin'} requested clarification from the client on ${order.id} — ${noteText}` })
+    setPrompt(null); flash('Clarification requested — client notified.')
+  }
+  const requestClarification = () => setPrompt({ kind: 'clarify' })
   // Confirm step: portal orders (source 'web') are a one-click acknowledgment;
   // website/email orders need a negotiated price entered before confirming.
   const confirmed = !!order.workflow?.confirmed
@@ -516,6 +551,20 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
     <div style={{ maxWidth:900, margin:'0 auto' }}>
       {confirming && <ConfirmOrderModal order={order} started={started} onCancel={() => setConfirming(false)} onConfirm={applyConfirm} />}
       {planning && <StagePlanModal order={order} user={user} onClose={() => setPlanning(false)} />}
+      {prompt?.kind === 'hold' && (
+        <ActionPrompt title={`Put ${order.id} on hold`} hint="The client sees “On Hold”. Add a reason (optional) — it’s recorded and shown here."
+          placeholder="Reason (optional)…" confirmLabel="Put on hold" onConfirm={applyHold} onCancel={() => setPrompt(null)} />
+      )}
+      {prompt?.kind === 'clarify' && (
+        <ActionPrompt title={`Request clarification on ${order.id}`} hint="Sent to the client in the portal; they’ll see a prompt to reply." requireText
+          placeholder="What do you need from the client?" confirmLabel="Send request" onConfirm={applyClarify} onCancel={() => setPrompt(null)} />
+      )}
+      {toast && (
+        <div style={{ position:'fixed', bottom:20, right:20, zIndex:80, background:'#12284C', color:'#fff', padding:'11px 16px',
+          borderRadius:10, fontSize:13, fontWeight:500, boxShadow:'0 10px 30px rgba(0,0,0,0.25)', display:'flex', alignItems:'center', gap:8 }}>
+          <CheckCircle style={{ width:15, height:15 }} /> {toast}
+        </div>
+      )}
       <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.18 }}
         style={{ background:Q.card, borderRadius:12, border:`1px solid ${Q.border}`, overflow:'hidden' }}>
         <div style={{ padding:'16px 22px 0' }}>
@@ -560,6 +609,24 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 Keep order active
               </button>
             </div>
+          </div>
+        )}
+        {/* On-hold banner — who/why/when, with Resume right here (no page jump). */}
+        {order.status !== 'cancelled' && onHold && (
+          <div style={{ margin:'0 22px 14px', padding:'12px 14px', borderRadius:10, display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12,
+            background:'rgba(220,140,40,0.10)', border:'1px solid rgba(220,140,40,0.28)' }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color:'#b45309' }}>On hold{order.workflow?.holdReason ? ` — ${order.workflow.holdReason}` : ''}</div>
+              <div style={{ fontSize:11.5, color:'#a16207', marginTop:2 }}>{[order.workflow?.holdBy, order.workflow?.holdAt].filter(Boolean).join(' · ') || 'Paused'}</div>
+            </div>
+            <button onClick={resumeHold} style={{ flexShrink:0, padding:'7px 14px', background:'#fff', border:'1px solid rgba(220,140,40,0.45)', borderRadius:8, color:'#b45309', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>Resume</button>
+          </div>
+        )}
+        {/* Clarification-requested banner — the question + awaiting-reply state. */}
+        {order.status !== 'cancelled' && order.clarification === 'pending' && (
+          <div style={{ margin:'0 22px 14px', padding:'12px 14px', borderRadius:10, background:'rgba(220,60,60,0.08)', border:'1px solid rgba(220,60,60,0.22)' }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'#dc2626' }}>Clarification requested — awaiting client reply</div>
+            {order.workflow?.clarificationNote && <div style={{ fontSize:12.5, color:'#b91c1c', marginTop:3, whiteSpace:'pre-wrap' }}>“{order.workflow.clarificationNote}”</div>}
           </div>
         )}
 
@@ -693,7 +760,9 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
           {/* Order actions — confirm + on-hold + clarification (live orders) */}
           {order.status !== 'delivered' && order.status !== 'cancelled' && (
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', padding:'0 22px 14px' }}>
-              {!confirmed && (
+              {/* Portal orders are priced at placement → no confirm-price step.
+                  Only mail/website orders (negotiated) still get it. */}
+              {!confirmed && !isPortalOrder(order) && (
                 <button onClick={confirmOrder} style={{ padding:'8px 14px', borderRadius:8, fontSize:12.5, fontWeight:700, cursor:'pointer',
                   background:ROLE_COLOR, border:'none', color:'#fff' }}>
                   {started ? 'Set price & date' : 'Confirm & price order'}
@@ -1175,7 +1244,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
                           background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0' }}>Assigned</span>
                       )}
-                      {!o.workflow?.confirmed && o.status === 'received' && (
+                      {!o.workflow?.confirmed && o.status === 'received' && !isPortalOrder(o) && (
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
                           background:'#EEF1FE', color:'#2441E5', border:'1px solid #C6CFFA' }}>Awaiting confirm</span>
                       )}
