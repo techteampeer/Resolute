@@ -5,3 +5,4 @@
 export * from './pipeline'
 export * from './orders'
 export * from './money'
+export * from './permissions'

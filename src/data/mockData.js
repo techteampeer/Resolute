@@ -159,6 +159,7 @@ export {
   ROLE_SEQUENCE, nextRoleFor, roleAfter, statusForRole, orderProgress, isOrderComplete,
   activeCountForUser, workloadWeight, lineItemsOf, lineSubId,
   stagePlanOf, hasStagePlan, ownerForStage, nextOwnerFor, isSingleSeatingPlan,
+  can, effectiveCapabilities, workableStages,
 } from '@domain'
 
 export const ACTIVITY = [
