@@ -6,6 +6,7 @@ import { FulfillmentProvider } from './context/FulfillmentContext'
 import { SupportProvider } from './context/SupportContext'
 import { isSupabaseConfigured } from './lib/supabase'
 import LoginPage from './pages/LoginPage'
+import SetPassword from './pages/SetPassword'
 // Dashboards are route-split: a signed-in user downloads only their own portal,
 // not all seven. This also stops a client's bundle from carrying the admin,
 // billing, payout and fulfillment code (defence-in-depth + smaller client app).
@@ -67,6 +68,15 @@ function RoleRedirect() {
   return <Navigate to={`/${user.role}`} replace />
 }
 
+// When an invite / password-reset link has been opened, take over the whole app
+// with the set-password screen until the person chooses a password — otherwise
+// the recovery session would silently drop them on a dashboard with a password
+// they never set.
+function RecoveryGate({ children }) {
+  const { recovery } = useAuth()
+  return recovery ? <SetPassword /> : children
+}
+
 export default function App() {
   return (
     <>
@@ -77,6 +87,7 @@ export default function App() {
       <SupportProvider>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Suspense fallback={<SessionGate />}>
+        <RecoveryGate>
         <Routes>
           <Route path="/login" element={<LoginPage variant="client" />} />
           <Route path="/staff" element={<LoginPage variant="staff" />} />
@@ -92,6 +103,7 @@ export default function App() {
           } />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
+        </RecoveryGate>
         </Suspense>
       </BrowserRouter>
       </SupportProvider>

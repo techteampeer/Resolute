@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { isSupabaseConfigured, getCurrentUser, signIn, signOut, onAuthChange } from '../lib/backend'
+import { isSupabaseConfigured, getCurrentUser, signIn, signOut, onAuthChange, onPasswordRecovery, updatePassword as backendUpdatePassword } from '../lib/backend'
 import { DEMO_USER } from '../data/demoData'
 
 const AuthContext = createContext(null)
@@ -46,6 +46,9 @@ export function AuthProvider({ children }) {
   // must wait for this, not for `user`.
   // Mock mode has nothing to restore, so it starts ready.
   const [ready, setReady] = useState(!isSupabaseConfigured)
+  // True after an invite / password-reset link is opened: the app must show a
+  // "set your password" screen before the account is usable.
+  const [recovery, setRecovery] = useState(false)
 
   // With Supabase: restore the session on load and track auth changes.
   useEffect(() => {
@@ -57,8 +60,17 @@ export function AuthProvider({ children }) {
       .catch(() => setUser(null))
       .finally(() => setReady(true))
     unsub = onAuthChange(u => { setUser(u && u.role ? u : null); setReady(true) })
-    return () => unsub()
+    const unsubRecovery = onPasswordRecovery(() => { setRecovery(true); setReady(true) })
+    return () => { unsub(); unsubRecovery() }
   }, [])
+
+  // Set the account's password from the recovery screen, then clear recovery so
+  // the app routes the (now signed-in) user to their dashboard.
+  const setPassword = async (pw) => {
+    const r = await backendUpdatePassword(pw)
+    if (r.success) { setRecovery(false); const u = await getCurrentUser(); setUser(u && u.role ? u : null) }
+    return r
+  }
 
   const login = async (email, password) => {
     if (isSupabaseConfigured) {
@@ -94,7 +106,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, ready, login, loginAsDemo, logout }}>
+    <AuthContext.Provider value={{ user, ready, recovery, setPassword, login, loginAsDemo, logout }}>
       {children}
     </AuthContext.Provider>
   )
