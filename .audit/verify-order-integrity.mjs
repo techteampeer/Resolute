@@ -36,6 +36,18 @@ for (const [who, email] of [['user', 'operator@resolute.com'], ['client', 'clien
   check(`${who} self-grant refused`, r.status >= 400, `HTTP ${r.status}`)
   check(`${who} flag still false in DB`, stillFalse)
 }
+// FA-2: the per-user capability store is just as unforgeable — a user cannot
+// grant themselves a capability by writing profiles.permissions over REST.
+for (const [who, email] of [['user', 'operator@resolute.com'], ['client', 'client@resolute.com']]) {
+  const id = idOf(email)
+  const r = await as(who, `/profiles?id=eq.${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ permissions: [{ capability: 'payments.confirm', effect: 'grant' }] }),
+  })
+  const stillEmpty = (sqlJson(`select permissions from profiles where id = '${id}'`)[0]?.permissions || []).length === 0
+  check(`${who} cannot self-grant via permissions`, r.status >= 400, `HTTP ${r.status}`)
+  check(`${who} permissions still empty in DB`, stillEmpty)
+}
 
 // ── F2: order handoff integrity ─────────────────────────────────────────────
 // The order is single-seated and OWNED BY the production user (assigned_user_id

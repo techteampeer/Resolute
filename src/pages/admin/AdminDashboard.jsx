@@ -29,6 +29,7 @@ import {
   displayClient, clientByName, clientCode, stateCode,
   REGIONS, regionOf, nextRoleFor, lineItemsOf, workloadWeight,
   stagePlanOf, hasStagePlan, isSingleSeatingPlan,
+  ROLE_SEQUENCE, can, workableStages,
 } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
@@ -1440,6 +1441,21 @@ function AdminOrders() {
 // still carries the stage labels for history, but Admin never mints them.
 const USER_ROLES = ['admin', 'user', 'client']
 
+// Stage-scope (trainee) helper: translate the four work stages a production user
+// may do, to/from the portable permissions grants. All four selected = unscoped
+// (empty grants); a subset = revoke the all-stages default, then re-grant scoped.
+const permissionsForStages = (stages) => {
+  if (stages.length >= ROLE_SEQUENCE.length) return []
+  return [
+    { capability: 'orders.work', effect: 'revoke' },
+    ...(stages.length ? [{ capability: 'orders.work', effect: 'grant', scope: { stages } }] : []),
+  ]
+}
+const stagesForUser = (role, permissions) => {
+  const w = workableStages({ role, permissions: permissions || [] })
+  return w === null ? ROLE_SEQUENCE.slice() : w   // null = every stage
+}
+
 async function usersApi(method, body) {
   const { data: { session } = {} } = await supabase.auth.getSession()
   const res = await fetch('/api/admin/users', {
@@ -1452,39 +1468,113 @@ async function usersApi(method, body) {
   return j
 }
 
-function UserFormModal({ initial, onClose, onSave, busy }) {
+// `canGrantSuper` — whether the signed-in admin is a super admin. Only then are
+// the super-admin / billing toggles editable (a plain admin manages basic users).
+function UserFormModal({ initial, onClose, onSave, busy, canGrantSuper }) {
   const isEdit = !!initial?.id
-  const [f, setF] = useState({ name: initial?.name || '', email: initial?.email || '', role: initial?.role || 'client', clientCode: initial?.clientCode || '' })
+  const [f, setF] = useState({
+    name: initial?.name || '', email: initial?.email || '', role: initial?.role || 'client',
+    clientCode: initial?.clientCode || '',
+    superAdmin: !!initial?.superAdmin,
+    canConfirmPayments: !!initial?.canConfirmPayments,
+    stages: stagesForUser(initial?.role || 'user', initial?.permissions),
+  })
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
+  const toggleStage = (s) => setF(st => ({ ...st, stages: st.stages.includes(s) ? st.stages.filter(x => x !== s) : [...st.stages, s] }))
   const inputStyle = { width: '100%', padding: '9px 12px', border: `1px solid ${Q.border}`, borderRadius: 8, fontSize: 13, outline: 'none', color: Q.text, background: '#fff' }
+  const lbl = { fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }
+
+  const submit = () => {
+    const payload = { id: initial?.id, name: f.name, email: f.email, role: f.role, clientCode: f.clientCode }
+    // Stage scope only applies to production users; everyone else clears grants.
+    payload.permissions = f.role === 'user' ? permissionsForStages(f.stages) : []
+    // Only send the elevated bits when the caller may set them AND the role is admin,
+    // so a plain admin's basic edits never trip the server's super-admin gate.
+    if (canGrantSuper && f.role === 'admin') {
+      payload.superAdmin = f.superAdmin
+      payload.canConfirmPayments = f.canConfirmPayments
+    }
+    onSave(payload)
+  }
+
+  const Toggle = ({ k, label, hint }) => (
+    <button type="button" disabled={!canGrantSuper} onClick={() => set(k, !f[k])}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 11px',
+        borderRadius: 8, cursor: canGrantSuper ? 'pointer' : 'not-allowed', background: f[k] ? `${ROLE_COLOR}10` : Q.bg,
+        border: `1px solid ${f[k] ? ROLE_COLOR : Q.border}`, opacity: canGrantSuper ? 1 : 0.55 }}>
+      <span style={{ width: 34, height: 20, borderRadius: 99, flexShrink: 0, position: 'relative', transition: 'all .15s',
+        background: f[k] ? ROLE_COLOR : Q.border }}>
+        <span style={{ position: 'absolute', top: 2, left: f[k] ? 16 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'all .15s' }} />
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: Q.text }}>{label}</span>
+        <span style={{ display: 'block', fontSize: 11, color: Q.muted }}>{hint}</span>
+      </span>
+    </button>
+  )
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(12,29,56,0.45)' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: Q.card, borderRadius: 12, width: '100%', maxWidth: 420, padding: 22 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: Q.card, borderRadius: 12, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto', padding: 22 }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: Q.text, marginBottom: 14 }}>{isEdit ? 'Edit user' : 'Invite / add user'}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Name</label>
+            <label style={lbl}>Name</label>
             <input value={f.name} onChange={e => set('name', e.target.value)} style={inputStyle} placeholder="Full name" />
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Email</label>
+            <label style={lbl}>Email</label>
             <input value={f.email} onChange={e => set('email', e.target.value)} disabled={isEdit} style={{ ...inputStyle, opacity: isEdit ? 0.6 : 1 }} placeholder="user@company.com" />
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Role</label>
+            <label style={lbl}>Role</label>
             <select value={f.role} onChange={e => set('role', e.target.value)} style={inputStyle}>
-              {USER_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              {USER_ROLES.map(r => <option key={r} value={r}>{r === 'user' ? 'production' : r}</option>)}
             </select>
           </div>
           {f.role === 'client' && (
             <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client code</label>
+              <label style={lbl}>Client code</label>
               <input value={f.clientCode} onChange={e => set('clientCode', e.target.value.toUpperCase())} style={inputStyle} placeholder="e.g. CL08" />
+            </div>
+          )}
+
+          {/* Admin access level — super admin (PII + payouts) and the money gate. */}
+          {f.role === 'admin' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={lbl}>Access</label>
+              <Toggle k="superAdmin" label="Super admin" hint="Sees client details + vendor payouts" />
+              <Toggle k="canConfirmPayments" label="Billing — confirm payments" hint="The only one who can mark funds received" />
+              {!canGrantSuper && <div style={{ fontSize: 11, color: '#b45309' }}>Only a super admin can change these.</div>}
+            </div>
+          )}
+
+          {/* Production stage scope — the trainee case ("screener only", etc.). */}
+          {f.role === 'user' && (
+            <div>
+              <label style={lbl}>Stages this person can work</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 6 }}>
+                {ROLE_SEQUENCE.map(s => {
+                  const on = f.stages.includes(s)
+                  return (
+                    <button key={s} type="button" onClick={() => toggleStage(s)}
+                      style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize',
+                        background: on ? `${ROLE_COLOR}12` : Q.bg, border: `1px solid ${on ? ROLE_COLOR : Q.border}`, color: on ? ROLE_COLOR : Q.muted }}>
+                      {on ? '✓ ' : ''}{s}
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: Q.muted, marginTop: 6 }}>
+                {f.stages.length >= ROLE_SEQUENCE.length ? 'All stages (full production access).'
+                  : f.stages.length ? `Limited to ${f.stages.join(', ')} — admin can only route these stages to them.`
+                  : 'No stages selected — they won’t be assignable to any stage.'}
+              </div>
             </div>
           )}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-          <button disabled={busy || !f.email || !f.role} onClick={() => onSave(f)}
+          <button disabled={busy || !f.email || !f.role} onClick={submit}
             style={{ flex: 1, padding: '10px', background: ROLE_COLOR, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 600, cursor: busy ? 'wait' : 'pointer', opacity: (!f.email || !f.role) ? 0.6 : 1 }}>
             {busy ? 'Saving…' : isEdit ? 'Save changes' : 'Create user'}
           </button>
@@ -1496,6 +1586,8 @@ function UserFormModal({ initial, onClose, onSave, busy }) {
 }
 
 function AdminUsers() {
+  const { user: me } = useAuth()
+  const canGrantSuper = can(me, 'users.grant_super')   // super admins elevate others
   const live = isSupabaseConfigured
   const [users, setUsers] = useState(() => live ? [] : USERS.map(u => ({ ...u, active: u.status !== 'inactive' })))
   const [loading, setLoading] = useState(live)
@@ -1516,8 +1608,13 @@ function AdminUsers() {
   const remove = (u) => { if (window.confirm(`Remove ${u.name || u.email}? This permanently deletes their account.`)) run(() => usersApi('POST', { action: 'remove', id: u.id })) }
   const reset = (u) => run(async () => { const j = await usersApi('POST', { action: 'resetPassword', email: u.email }); setNotice(`Password reset link for ${u.email}:\n\n${j.link || '(recovery email sent)'}`) })
   const save = (form) => run(async () => {
-    if (form.id) await usersApi('POST', { action: 'update', id: form.id, name: form.name, role: form.role, clientCode: form.clientCode })
-    else { const j = await usersApi('POST', { action: 'create', email: form.email, name: form.name, role: form.role, clientCode: form.clientCode }); setNotice(`User created. Temporary password for ${form.email}:\n\n${j.tempPassword}\n\nShare it securely; they can change it via a password reset.`) }
+    // Forward the elevated bits only when present (the form includes them solely
+    // for a super-admin caller editing an admin), plus the stage-scope grants.
+    const base = { name: form.name, role: form.role, clientCode: form.clientCode, permissions: form.permissions }
+    if ('superAdmin' in form) base.superAdmin = form.superAdmin
+    if ('canConfirmPayments' in form) base.canConfirmPayments = form.canConfirmPayments
+    if (form.id) await usersApi('POST', { action: 'update', id: form.id, ...base })
+    else { const j = await usersApi('POST', { action: 'create', email: form.email, ...base }); setNotice(`User created. Temporary password for ${form.email}:\n\n${j.tempPassword}\n\nShare it securely; they can change it via a password reset.`) }
     setEditing(null)
   })
 
@@ -1591,7 +1688,16 @@ function AdminUsers() {
                         <div style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, background: `${ROLE_COLOR}18`, color: ROLE_COLOR }}>
                           {(u.name || u.email || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                         </div>
-                        <span style={{ fontWeight: 500, color: Q.text }}>{u.name || '—'}{u.superAdmin && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#b45309' }}>SUPER</span>}</span>
+                        <span style={{ fontWeight: 500, color: Q.text }}>
+                          {u.name || '—'}
+                          {u.superAdmin && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#b45309' }}>SUPER</span>}
+                          {u.canConfirmPayments && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#16a34a' }}>BILLING</span>}
+                          {u.role === 'user' && workableStages({ role: 'user', permissions: u.permissions }) && (
+                            <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: ROLE_COLOR }}>
+                              {workableStages({ role: 'user', permissions: u.permissions }).map(s => s[0].toUpperCase()).join('')}-ONLY
+                            </span>
+                          )}
+                        </span>
                       </div>
                     </td>
                     <td style={{ padding: '10px 16px', color: Q.muted, fontSize: 12 }}>{u.email}</td>
@@ -1606,7 +1712,7 @@ function AdminUsers() {
                     {live ? (
                       <td style={{ padding: '10px 16px' }}>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {btn('Edit', () => setEditing({ id: u.id, name: u.name, email: u.email, role: u.role, clientCode: u.clientCode }), 'accent')}
+                          {btn('Edit', () => setEditing({ id: u.id, name: u.name, email: u.email, role: u.role, clientCode: u.clientCode, superAdmin: u.superAdmin, canConfirmPayments: u.canConfirmPayments, permissions: u.permissions }), 'accent')}
                           {btn(active ? 'Deactivate' : 'Activate', () => toggleActive(u))}
                           {btn('Reset', () => reset(u))}
                           {btn('Remove', () => remove(u), 'danger')}
@@ -1623,7 +1729,7 @@ function AdminUsers() {
         </div>
       </div>
 
-      {editing && <UserFormModal initial={editing} busy={busy} onClose={() => setEditing(null)} onSave={save} />}
+      {editing && <UserFormModal initial={editing} busy={busy} canGrantSuper={canGrantSuper} onClose={() => setEditing(null)} onSave={save} />}
     </div>
   )
 }
