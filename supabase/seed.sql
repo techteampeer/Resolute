@@ -106,6 +106,7 @@ from (values
   ('saravanan@resolute.com','admin123',    'Saravanan',     'admin'),
   ('vivek@resolute.com',    'vivek123',    'Vivek',         'admin'),
   ('admin@resolute.com',    'admin123',    'Alex Morrison', 'admin'),
+  ('superadmin@resolute.com','admin123',   'Super Admin',   'admin'),
   -- Post-D3: former stage staff are consolidated into the `user` production
   -- role (the migration re-roles the same accounts on a real database). The
   -- emails are kept so existing logins/bookmarks still resolve.
@@ -144,6 +145,7 @@ from (values
   ('saravanan@resolute.com','admin'),
   ('vivek@resolute.com',    'admin'),
   ('admin@resolute.com',    'admin'),
+  ('superadmin@resolute.com','admin'),
   ('screener@resolute.com', 'user'),
   ('examiner@resolute.com', 'user'),
   ('typer@resolute.com',    'user'),
@@ -154,7 +156,7 @@ from (values
 where p.email = d.email;
 
 update public.profiles set super_admin = true
-where email in ('rajni@resolute.com','saravanan@resolute.com','vivek@resolute.com');
+where email in ('rajni@resolute.com','saravanan@resolute.com','vivek@resolute.com','superadmin@resolute.com');
 
 -- Vivek alone reconciles money (CLAUDE.md). 20260908010000 seeds the same flag,
 -- but a `db reset` runs every migration before this file, so at that point

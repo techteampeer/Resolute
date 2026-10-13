@@ -24,6 +24,7 @@ const MOCK_USERS = {
   'saravanan@resolute.com': { password: 'admin123',     role: 'admin',    name: 'Saravanan',     avatar: 'SV', superAdmin: true },
   'vivek@resolute.com':     { password: 'vivek123',     role: 'admin',    name: 'Vivek',         avatar: 'VK', superAdmin: true },
   'admin@resolute.com':     { password: 'admin123',     role: 'admin',    name: 'Alex Morrison', avatar: 'AM', superAdmin: false },
+  'superadmin@resolute.com':{ password: 'admin123',     role: 'admin',    name: 'Super Admin',   avatar: 'SA', superAdmin: true },
   // Post-D3 (ADR 0001) the stage login roles are retired; these former stage
   // staff are now production `user`s (mirrors seed.sql + the D3 migration).
   // Emails are kept so existing mock-mode logins still resolve.
