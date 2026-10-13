@@ -13,8 +13,8 @@ import {
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
-import { openDocument } from '../../lib/backend'
-import { supabase, isSupabaseConfigured } from '../../lib/supabase'
+import { openDocument, getAccessToken } from '../../lib/backend'
+import { isSupabaseConfigured } from '../../lib/supabase'
 import { useProfiles } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
 import { money } from '../../lib/billing'
@@ -1457,10 +1457,10 @@ const stagesForUser = (role, permissions) => {
 }
 
 async function usersApi(method, body) {
-  const { data: { session } = {} } = await supabase.auth.getSession()
+  const token = await getAccessToken()
   const res = await fetch('/api/admin/users', {
     method,
-    headers: { 'content-type': 'application/json', ...(session ? { authorization: `Bearer ${session.access_token}` } : {}) },
+    headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
     body: method === 'POST' ? JSON.stringify(body) : undefined,
   })
   const j = await res.json().catch(() => ({}))
@@ -1614,7 +1614,12 @@ function AdminUsers() {
     if ('superAdmin' in form) base.superAdmin = form.superAdmin
     if ('canConfirmPayments' in form) base.canConfirmPayments = form.canConfirmPayments
     if (form.id) await usersApi('POST', { action: 'update', id: form.id, ...base })
-    else { const j = await usersApi('POST', { action: 'create', email: form.email, ...base }); setNotice(`User created. Temporary password for ${form.email}:\n\n${j.tempPassword}\n\nShare it securely; they can change it via a password reset.`) }
+    else {
+      const j = await usersApi('POST', { action: 'create', email: form.email, ...base })
+      setNotice(j.inviteLink
+        ? `Invitation ready for ${form.email}.\n\nSend them this secure link to set their own password (expires shortly):\n\n${j.inviteLink}`
+        : `User ${form.email} created. Use “Reset” on their row to send a set-password link.`)
+    }
     setEditing(null)
   })
 
