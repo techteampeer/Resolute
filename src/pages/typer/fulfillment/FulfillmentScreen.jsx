@@ -8,7 +8,7 @@ import {
 import { useOrders } from '../../../context/OrderContext'
 import { useAuth } from '../../../context/AuthContext'
 import { useFulfillmentStore } from '../../../context/FulfillmentContext'
-import { displayClient, clientByName } from '../../../data/mockData'
+import { displayClient, clientByName, hasStagePlan } from '../../../data/mockData'
 import {
   completeness, titleVestingAuto, fmtDateTime, uid, unfilledClauses,
 } from '../../../data/fulfillment'
@@ -270,7 +270,7 @@ function CompletenessBar({ comp, address, save, saveError }) {
                   <div className="text-[10px] font-semibold uppercase tracking-[0.12em] px-2 py-1" style={{ color: T.dim }}>{missing.length} incomplete</div>
                   {missing.map(m => (
                     <button key={m.key}
-                      onClick={() => { document.getElementById(m.key)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); setOpen(false) }}
+                      onClick={() => { flashSection(m.key); setOpen(false) }}
                       className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-[12.5px] transition-colors"
                       style={{ color: T.muted }}
                       onMouseOver={e => { e.currentTarget.style.background = T.rowHover; e.currentTarget.style.color = T.text }}
@@ -521,12 +521,27 @@ function Supplementary({ order, f, set }) {
 }
 
 // ── Section 12: Finalize ─────────────────────────────────────────────────────
+// Which form section a clause gap lives in (for the "jump to it" links below).
+const GAP_SECTION = { Requirement: 'requirements', Exception: 'exceptions' }
+// Scroll a section into view and give it a brief, light highlight so the eye
+// lands on exactly what's left to fill.
+function flashSection(key) {
+  const el = document.getElementById(key)
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  el.style.transition = 'box-shadow .5s ease'
+  el.style.borderRadius = '12px'
+  el.style.boxShadow = '0 0 0 3px rgba(196,164,78,0.55)'
+  window.setTimeout(() => { el.style.boxShadow = '0 0 0 0 rgba(196,164,78,0)' }, 1300)
+}
+
 function Finalize({ comp, order, f, user, navigate }) {
-  const { returnToAdmin } = useOrders()
+  const { returnToAdmin, routeStep, advanceInSeat } = useOrders()
   const [showDoc, setShowDoc] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const missing = comp.items.filter(i => !i.done)
   const ready = missing.length === 0
+  const planned = hasStagePlan(order)
   // Clauses that will reach the client with a ruled blank in them. The document
   // no longer prints ‹token› placeholders, but a blank in a legal instrument is
   // still the typer's to fill, so say so here rather than let it ship quietly.
@@ -572,7 +587,15 @@ function Finalize({ comp, order, f, user, navigate }) {
       // Doc attach is best-effort — the invoice total is still stamped below.
       console.error('[commitment]', e.message)
     }
-    returnToAdmin(order.id, 'typer', user?.name, 'Commitment typed, generated & verified', extra)
+    // E2: a PLANNED order routes the typer stage straight to the pre-assigned
+    // delivery owner — NOT back to Admin (the DB guard rejects an admin hand-off
+    // for a planned order, which is the "Not saved — routes to the delivery
+    // owner" error). Legacy orders keep the old behaviour. Mirrors the worker
+    // desk's advance().
+    const notes = 'Commitment typed, generated & verified'
+    if (planned) routeStep(order.id, 'typer', user?.name, notes, extra)
+    else if (order.workflow?.singleSeating) advanceInSeat(order.id, 'typer', user?.name, notes, extra)
+    else returnToAdmin(order.id, 'typer', user?.name, notes, extra)
     navigate(-1)
   }
   return (
@@ -584,7 +607,9 @@ function Finalize({ comp, order, f, user, navigate }) {
           complete either way and parks the order with Admin for the delivery
           assignment — for an admin that is their own Orders list. */}
       <p className="text-[12.5px] mb-3" style={{ color: T.faint }}>
-        {isAdmin
+        {planned
+          ? 'When you submit, typing is recorded and the order moves straight to the pre-assigned delivery owner.'
+          : isAdmin
           ? 'When you submit, typing is recorded as complete and the order returns to your Orders list, ready to assign to Delivery.'
           : 'When you submit, the order is sent to Admin for approval before delivery.'}
       </p>
@@ -592,7 +617,16 @@ function Finalize({ comp, order, f, user, navigate }) {
         <div className="rounded-lg px-3 py-2.5 mb-3 flex items-start gap-2" style={{ background: 'rgba(196,164,78,0.08)', border: '1px solid rgba(196,164,78,0.25)' }}>
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: T.warn }} />
           <div className="text-[12.5px]" style={{ color: T.muted }}>
-            Complete {missing.length} more section{missing.length > 1 ? 's' : ''} before submitting: <span style={{ color: T.warn }}>{missing.map(m => m.label).join(', ')}</span>.
+            Complete {missing.length} more section{missing.length > 1 ? 's' : ''} before submitting:{' '}
+            {missing.map((m, i) => (
+              <React.Fragment key={m.key}>
+                {i > 0 && ', '}
+                <button type="button" onClick={() => flashSection(m.key)} title="Jump to this section"
+                  style={{ color: T.warn, fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 2, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+                  {m.label}
+                </button>
+              </React.Fragment>
+            ))}.
           </div>
         </div>
       )}
@@ -601,7 +635,15 @@ function Finalize({ comp, order, f, user, navigate }) {
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: T.warn }} />
           <div className="text-[12.5px]" style={{ color: T.muted }}>
             {gaps.length} clause{gaps.length > 1 ? 's' : ''} will print with a blank in {gaps.length > 1 ? 'them' : 'it'}
-            {' '}(<span style={{ color: T.warn }}>{[...new Set(gaps.map(g => g.part))].join(' and ')}</span>).
+            {' '}({[...new Set(gaps.map(g => g.part))].map((part, i) => (
+              <React.Fragment key={part}>
+                {i > 0 && ' and '}
+                <button type="button" onClick={() => flashSection(GAP_SECTION[part] || 'requirements')} title="Jump to this section"
+                  style={{ color: T.warn, fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 2, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+                  {part}
+                </button>
+              </React.Fragment>
+            ))}).
             Fill them in, delete the clause, or override its text.
           </div>
         </div>
