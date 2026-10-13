@@ -111,7 +111,14 @@ export default async function handler(req, res) {
       can_confirm_payments: isAdmin ? !!canConfirmPayments : false,
       permissions: perms.value ?? [],
     }).eq('id', data.user.id)
-    return send(res, 200, { id: data.user.id, tempPassword: password })
+    // No plaintext password is ever handed back. The random one above is a
+    // throwaway the invitee immediately overrides via a secure set-password link.
+    let inviteLink = null
+    try {
+      const { data: link } = await supabaseAdmin.auth.admin.generateLink({ type: 'recovery', email })
+      inviteLink = link?.properties?.action_link || null
+    } catch { /* non-fatal: the admin can resend with "Reset" */ }
+    return send(res, 200, { id: data.user.id, inviteLink })
   }
 
   // ── Update (edit profile) ──────────────────────────────────────────────────

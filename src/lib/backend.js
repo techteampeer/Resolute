@@ -63,12 +63,24 @@ const mapUser = (authUser, prof) => ({
   permissions: Array.isArray(prof?.permissions) ? prof.permissions : [],
 })
 
-// ── Auth ─────────────────────────────────────────────────────────────────────
+// ── Auth (the portable seam) ──────────────────────────────────────────────────
+// Everything the app needs from the identity provider lives in these functions —
+// signIn / signOut / getCurrentUser / onAuthChange / getAccessToken. Nothing
+// outside this module calls `supabase.auth.*`. The GCP move (Supabase Auth →
+// Identity Platform) is therefore a swap of THIS block's bodies, not a hunt
+// across the app; mapUser() keeps the returned user shape identical either way.
 export async function getCurrentUser() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return null
   const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
   return mapUser(session.user, prof)
+}
+
+// The current session's bearer token, for authorizing our own serverless
+// endpoints (e.g. the admin user-management API). null when signed out.
+export async function getAccessToken() {
+  const { data: { session } = {} } = await supabase.auth.getSession()
+  return session?.access_token || null
 }
 
 export async function signIn(email, password) {
