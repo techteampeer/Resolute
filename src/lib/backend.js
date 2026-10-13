@@ -58,6 +58,9 @@ const mapUser = (authUser, prof) => ({
   // subscriptions). Held by the billing owner only, and enforced by database
   // triggers as well — this is just what the UI hides behind.
   canConfirmPayments: !!prof?.can_confirm_payments,
+  // Per-user capability grants/revokes (FA-2). Drives can()/workableStages in the
+  // domain authz model; empty = pure role+flags behaviour. Admin-set only.
+  permissions: Array.isArray(prof?.permissions) ? prof.permissions : [],
 })
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
