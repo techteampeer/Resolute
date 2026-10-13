@@ -1,14 +1,17 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Routes, Route, useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrderThread from '../../components/OrderThread'
+import NotificationSettings from '../../components/NotificationSettings'
+import { clientStats } from '../../lib/deskStats'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox,
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign, Search,
-  UploadCloud, Paperclip, Trash2, AlertCircle, Eye
+  UploadCloud, Paperclip, Trash2, AlertCircle, Eye, Download
 } from 'lucide-react'
-import { clientCode as codeByName, clientName, orderProgress, isOrderComplete } from '../../data/mockData'
+import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, US_STATES, stateName, lineItemsOf } from '../../data/mockData'
+import SubOrders from '../../components/SubOrders'
 import { PRODUCTS } from '../../data/products'
 import { isSupabaseConfigured, openDocument, uploadDocument } from '../../lib/backend'
 import { fileKind, uid } from '../../data/fulfillment'
@@ -17,9 +20,10 @@ import { useAuth } from '../../context/AuthContext'
 import { useSupport } from '../../context/SupportContext'
 import { DEMO_ORDERS } from '../../data/demoData'
 import ClientBilling from './ClientBilling'
+import BulkImport from './BulkImport'
 import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '../../lib/billing'
+import { ROLE_COLOR } from '../../lib/ui'
 
-const ROLE_COLOR = '#2441E5'
 const NAV = [
   { path: '/client',         label: 'Dashboard',   icon: LayoutDashboard },
   { path: '/client/order',   label: 'Place Order', icon: PlusCircle },
@@ -72,15 +76,6 @@ function InvoiceCard({ order }) {
   )
 }
 
-const US_STATES = [
-  'Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut','Delaware',
-  'Florida','Georgia','Hawaii','Idaho','Illinois','Indiana','Iowa','Kansas','Kentucky',
-  'Louisiana','Maine','Maryland','Massachusetts','Michigan','Minnesota','Mississippi','Missouri',
-  'Montana','Nebraska','Nevada','New Hampshire','New Jersey','New Mexico','New York',
-  'North Carolina','North Dakota','Ohio','Oklahoma','Oregon','Pennsylvania','Rhode Island',
-  'South Carolina','South Dakota','Tennessee','Texas','Utah','Vermont','Virginia',
-  'Washington','West Virginia','Wisconsin','Wyoming',
-]
 
 // Client-facing stages: Placed (awaiting admin confirmation) → Received
 // (confirmed by admin) → In Progress (any internal stage) → Delivered. On-Hold
@@ -100,61 +95,29 @@ function clientStage(order) {
 }
 
 // BUG_007: clicking an order opens its detail view (see OrderDetailPage).
+// List cards stay compact — ID, client, type/state and the status pill only;
+// stage-by-stage progress belongs on the order's detail page.
 function TrackOrder({ order, onOpen }) {
   const stage = clientStage(order)
-  const idx = stage.idx
-  const sc  = stage.color
+  const sc = stage.color
   return (
-    <div className={`glass-card p-5 ${onOpen ? 'cursor-pointer transition-shadow hover:shadow-lg' : ''}`}
+    <div className={`glass-card p-4 ${onOpen ? 'cursor-pointer transition-shadow hover:shadow-lg' : ''}`}
       role={onOpen ? 'button' : undefined} tabIndex={onOpen ? 0 : undefined}
       onClick={onOpen} onKeyDown={e => onOpen && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between">
         <div>
-          <div className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{order.id}</div>
+          <div className="flex items-center gap-2">
+            <div className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{order.id}</div>
+            {lineItemsOf(order).length > 1 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                style={{ background:`${ROLE_COLOR}14`, color:ROLE_COLOR }}>{lineItemsOf(order).length} sub-orders</span>
+            )}
+          </div>
           <div className="font-bold" style={{ color:'#12284C' }}>{order.client}</div>
           <div className="text-xs" style={{ color:'#5C6E8C' }}>{order.type} · {order.state}</div>
         </div>
         <span className="text-xs font-semibold px-3 py-1.5 rounded-full"
           style={{ background:`${sc}1e`, color:sc }}>{stage.label}</span>
-      </div>
-      {/* Step tracker */}
-      <div className="flex items-center gap-1 my-4">
-        {CLIENT_STEPS.map((step,i) => (
-          <React.Fragment key={step}>
-            <div className="flex flex-col items-center gap-1.5">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all"
-                style={i < idx
-                  ? { background:'#2441E5', color:'#FFFFFF' }
-                  : i === idx
-                  ? { background:'#2441E5', color:'#FFFFFF', boxShadow:`0 0 0 3px rgba(90,140,62,0.25)` }
-                  : { background:'rgba(18,40,76,0.08)', color:'#5C6E8C' }}>
-                {i < idx ? <CheckCircle className="w-3.5 h-3.5" /> : i + 1}
-              </div>
-              <span className="text-[9px] text-center leading-tight whitespace-nowrap hidden sm:block"
-                style={{ color: i <= idx ? '#3D5171' : '#5C6E8C' }}>
-                {step}
-              </span>
-            </div>
-            {i < CLIENT_STEPS.length - 1 && (
-              <div className="flex-1 h-0.5 rounded-full mb-5"
-                style={{ background: i < idx ? '#1B34C4' : 'rgba(18,40,76,0.10)' }} />
-            )}
-          </React.Fragment>
-        ))}
-      </div>
-      <div className="flex items-center justify-between text-xs mb-1.5" style={{ color:'#5C6E8C' }}>
-        <span>{isOrderComplete(order)
-          ? <>Delivered: <span style={{ color:'#12284C' }}>{order.completed || order.eta}</span></>
-          : <>ETA: <span style={{ color:'#12284C' }}>{order.eta}</span></>}</span>
-        <span style={isOrderComplete(order) ? { color:'#15803d', fontWeight:600 } : undefined}>
-          {isOrderComplete(order) ? 'Completed' : `${orderProgress(order)}% complete`}
-        </span>
-      </div>
-      <div className="h-1.5 rounded-full overflow-hidden" style={{ background:'rgba(18,40,76,0.08)' }}>
-        <motion.div className="h-full rounded-full"
-          initial={{ width:0 }} animate={{ width:`${orderProgress(order)}%` }}
-          transition={{ duration:1.2, ease:'easeOut' }}
-          style={{ background:'linear-gradient(90deg,#2441E5,#00B8D9)' }} />
       </div>
     </div>
   )
@@ -325,6 +288,33 @@ function OrderDetailPage() {
           </div>
           <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background:`${stage.color}1e`, color:stage.color }}>{stage.label}</span>
         </div>
+        {/* Stage tracker — detail page only; list cards (TrackOrder) stay compact.
+            Steps follow clientStage().idx; overlays (On Hold, Clarification,
+            Cancelled) ride on the status pill above. */}
+        <div className="flex items-center gap-1 mt-4">
+          {CLIENT_STEPS.map((step, i) => (
+            <React.Fragment key={step}>
+              <div className="flex flex-col items-center gap-1.5">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all"
+                  style={i < stage.idx
+                    ? { background:ROLE_COLOR, color:'#FFFFFF' }
+                    : i === stage.idx
+                    ? { background:ROLE_COLOR, color:'#FFFFFF', boxShadow:`0 0 0 3px rgba(90,140,62,0.25)` }
+                    : { background:'rgba(18,40,76,0.08)', color:'#5C6E8C' }}>
+                  {i < stage.idx ? <CheckCircle className="w-3.5 h-3.5" /> : i + 1}
+                </div>
+                <span className="text-[9px] text-center leading-tight whitespace-nowrap hidden sm:block"
+                  style={{ color: i <= stage.idx ? '#3D5171' : '#5C6E8C' }}>
+                  {step}
+                </span>
+              </div>
+              {i < CLIENT_STEPS.length - 1 && (
+                <div className="flex-1 h-0.5 rounded-full sm:mb-5"
+                  style={{ background: i < stage.idx ? '#1B34C4' : 'rgba(18,40,76,0.10)' }} />
+              )}
+            </React.Fragment>
+          ))}
+        </div>
       </div>
 
       {/* Tab strip */}
@@ -365,9 +355,13 @@ function OrderDetailPage() {
           )}
           <div className="glass-card p-4 space-y-1.5 text-sm">
             <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Order details</div>
-            <Row k="Property" v={intake?.propertyAddress} />
+            <Row k="Property" v={lineItemsOf(order).length > 1 ? `${lineItemsOf(order).length} properties — see sub-orders below` : intake?.propertyAddress} />
+            <Row k="County / State" v={[order.county, order.state].filter(Boolean).join(', ')} />
+            <Row k="Search type" v={intake?.orderType || order.type} />
+            <Row k="Property type" v={intake?.propertyType} />
             <Row k="Parcel / APN" v={intake?.parcelNumberAPN} />
             <Row k="Your file #" v={order.clientFileNo} />
+            <Row k="Business" v={intake?.company} />
             <Row k="Buyer" v={intake?.buyer} />
             <Row k="Borrower" v={intake?.borrowerName} />
             <Row k="Seller" v={intake?.seller} />
@@ -375,6 +369,7 @@ function OrderDetailPage() {
             <Row k="Special instructions" v={intake?.specialInstructions} />
             {!intake && <div className="text-xs" style={{ color:'#5C6E8C' }}>Submitted before detailed intake was captured.</div>}
           </div>
+          <SubOrders order={order} />
           <div className="glass-card p-4 text-sm space-y-1.5">
             <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Timeline</div>
             <Row k="Placed" v={order.created} />
@@ -482,36 +477,64 @@ const TURNAROUND = [
   { key:'rush',   label:'Rush — 24 hrs',     fee:50, desc:'Priority processing, next business day' },
 ]
 
+// County list per state, served from public/ (us-atlas, ~32 KB) and fetched once
+// on demand so it never weighs down the initial bundle. Module-level cache keeps
+// it across wizard remounts. Absent/failed load → the county field is a plain
+// text input (still works), so it degrades gracefully offline.
+let _countiesCache = null
 function PlaceOrderPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { createOrder, updateOrder } = useOrders()
   const [step, setStep] = useState(1)
+  const [mode, setMode] = useState('single')   // 'single' wizard | 'bulk' spreadsheet import
+  const [counties, setCounties] = useState(_countiesCache)
+  useEffect(() => {
+    if (_countiesCache) return
+    fetch(`${import.meta.env.BASE_URL}us-counties.json`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) { _countiesCache = d; setCounties(d) } })
+      .catch(() => {})
+  }, [])
   const [createdId, setCreatedId] = useState(null)
   const [attachments, setAttachments] = useState([])   // BUG_004: staged reference docs
   const [busy, setBusy] = useState(false)
   // BUG_008: a registered client shouldn't retype contact details every order —
   // prefill from the signed-in profile (still editable per order).
-  const [first = '', ...rest] = (user?.name || '').split(' ')
-  const [form, setForm] = useState({
-    searchType:'', state:'', county:'', address:'', city:'', zip:'', parcelId:'', clientFileNo:'',
-    buyerFirst:'', buyerLast:'', borrowerFirst:'', borrowerLast:'', sellerFirst:'', sellerLast:'',
+  // A fresh blank form (contact prefilled from the profile). Used for the initial
+  // state and to fully reset on "Place Another" — new party ids each time.
+  const makeInitialForm = () => ({
+    searchType:'', customSearch:'', state:'', county:'', address:'', city:'', zip:'', parcelId:'', clientFileNo:'',
+    propertyType:'', propertyTypeOther:'',
+    // Parties are a single-name list you can extend (add more buyers/sellers),
+    // rather than fixed first/last fields.
+    parties: [
+      { id: uid(), role:'Buyer',  name:'' },
+      { id: uid(), role:'Seller', name:'' },
+    ],
     priority:'normal',
-    firstName: first, lastName: rest.join(' '),
+    contactName: user?.name || '',
     email: user?.email || '',
     company: clientName(user?.clientCode) || '',
     role:'', notes:''
   })
+  const [form, setForm] = useState(makeInitialForm)
   const [submitted, setSubmitted] = useState(false)
   const [stepErr, setStepErr] = useState(false)
   const [submitErr, setSubmitErr] = useState('')
   const set = (k,v) => setForm(f => ({ ...f, [k]:v }))
+  // Party list helpers (single name field + role; add/remove rows).
+  const addParty = (role = 'Buyer') => setForm(f => ({ ...f, parties: [...f.parties, { id: uid(), role, name:'' }] }))
+  const setParty = (id, patch) => setForm(f => ({ ...f, parties: f.parties.map(p => p.id === id ? { ...p, ...patch } : p) }))
+  const removeParty = (id) => setForm(f => ({ ...f, parties: f.parties.filter(p => p.id !== id) }))
   // Required-field gate per step. The wizard unmounts prior steps, so relying on
   // HTML5 `required` at final submit let empty State/County slip through — guard
   // each step explicitly before advancing.
   const stepValid = (s) => {
     if (s === 1) return !!(form.state.trim() && form.county.trim())
-    if (s === 3) return !!(form.firstName.trim() && form.lastName.trim() && /\S+@\S+\.\S+/.test(form.email))
+    // A product or a custom search must be chosen (the "Titled Products *" gate).
+    if (s === 2) return !!(form.searchType.trim() || form.customSearch.trim())
+    if (s === 3) return !!(form.company.trim() && form.contactName.trim() && /\S+@\S+\.\S+/.test(form.email))
     return true
   }
   const goNext = () => { if (!stepValid(step)) { setStepErr(true); return } setStepErr(false); setStep(s => s + 1) }
@@ -520,22 +543,33 @@ function PlaceOrderPage() {
     setBusy(true)
     setSubmitErr('')
     try {
-      const fullName = (a, b) => `${a || ''} ${b || ''}`.trim()
-      const buyer = fullName(form.buyerFirst, form.buyerLast)
-      const borrower = fullName(form.borrowerFirst, form.borrowerLast)
-      const seller = fullName(form.sellerFirst, form.sellerLast)
+      // The party list is the source of truth; keep buyer/seller/borrower as the
+      // first named party of each role so existing order-detail views still read.
+      const parties = form.parties.map(p => ({ role: p.role, name: (p.name || '').trim() })).filter(p => p.name)
+      // Roll every name of a role into the buyer/seller/borrower fields the
+      // existing order views render, so added parties are visible to staff, not
+      // just the first one. The structured list stays on intake.parties.
+      const namesByRole = (role) => parties.filter(p => p.role === role).map(p => p.name).join(', ')
+      const buyer = namesByRole('Buyer'), seller = namesByRole('Seller'), borrower = namesByRole('Borrower')
+      const propertyType = form.propertyType === 'Other' ? (form.propertyTypeOther.trim() || 'Other') : form.propertyType
+      const customSearch = form.customSearch.trim()
+      // A custom (non-catalogue) search becomes the order type when no product is picked.
+      const type = form.searchType || customSearch || 'Full Search'
       const order = await createOrder({
-        state: form.state, county: form.county, type: form.searchType || 'Full Search',
+        state: form.state, county: form.county, type,
         priority: form.priority,
         clientFileNo: form.clientFileNo,
         // Attribute to the signed-in client so the order is trackable in My
         // Orders and readable back under RLS (client_code = my_client_code()).
         clientCode: user?.clientCode || null,
-        client: clientName(user?.clientCode) || user?.name || 'Web Order',
+        // Business Name (required in step 3) identifies the order, matching
+        // BulkImport. Falls back to the account's client name / user name.
+        client: form.company.trim() || clientName(user?.clientCode) || user?.name || 'Web Order',
         intake: {
-          source: 'web', propertyAddress: [form.address, form.city, form.state, form.zip].filter(Boolean).join(', '),
+          source: 'web', propertyAddress: [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', '),
           parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
-          orderType: form.searchType, from: `${form.firstName} ${form.lastName} <${form.email}>`.trim(),
+          parties, propertyType: propertyType || null, customSearch: customSearch || null,
+          orderType: type, from: `${form.contactName} <${form.email}>`.trim(),
           company: form.company, role: form.role, specialInstructions: form.notes,
         },
       })
@@ -592,13 +626,13 @@ function PlaceOrderPage() {
       </div>
       <h2 className="text-2xl font-bold mb-2" style={{ color:'#12284C' }}>Order Submitted!</h2>
       <p className="text-sm mb-1" style={{ color:'#3D5171' }}>
-        Assigned <span className="font-mono font-bold" style={{ color:ROLE_COLOR }}>{createdId || 'RTS-10049'}</span>
+        Resolute file # <span className="font-mono font-bold" style={{ color:ROLE_COLOR }}>{createdId || 'RTS-10049'}</span>
       </p>
       <p className="text-xs mb-8" style={{ color:'#5C6E8C' }}>
         We'll email a quote to {form.email || 'your email'} within 1 business hour.
       </p>
       <div className="flex gap-3">
-        <button onClick={() => { setSubmitted(false); setStep(1); setCreatedId(null) }} className="btn-primary">Place Another</button>
+        <button onClick={() => { setSubmitted(false); setStep(1); setCreatedId(null); setForm(makeInitialForm()); setAttachments([]) }} className="btn-primary">Place Another</button>
         <button onClick={() => navigate('/client/orders')} className="btn-secondary">Track Order</button>
       </div>
     </motion.div>
@@ -611,6 +645,17 @@ function PlaceOrderPage() {
         <h1 className="text-2xl font-bold mb-1" style={{ color:'#12284C' }}>Place a New Order</h1>
         <p className="text-sm" style={{ color:'#5C6E8C' }}>Title search across all 50 states · Confirmation within minutes</p>
       </div>
+      {/* Single order vs bulk import */}
+      <div className="inline-flex p-1 rounded-xl mb-6" style={{ background:'rgba(18,40,76,0.05)' }}>
+        {[['single','Single order'],['bulk','Bulk import']].map(([k,l]) => (
+          <button key={k} type="button" onClick={()=>setMode(k)}
+            className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={mode===k ? { background:'#fff', color:'#12284C', boxShadow:'0 1px 2px rgba(18,40,76,0.10)' } : { color:'#5C6E8C' }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {mode === 'bulk' ? <BulkImport /> : (<>
       {/* Steps indicator */}
       <div className="flex items-center gap-2 mb-8">
         {STEPS.map((s,i) => (
@@ -643,14 +688,23 @@ function PlaceOrderPage() {
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Property Information</h2>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Property State *</label>
-                  <select value={form.state} onChange={e=>set('state',e.target.value)} className="input-field text-sm" required>
+                  <select value={form.state} onChange={e=>{ set('state', e.target.value); set('county', '') }} className="input-field text-sm" required>
                     <option value="">Select state…</option>
-                    {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    {US_STATES.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>County *</label>
-                  <input value={form.county} onChange={e=>set('county',e.target.value)} placeholder="e.g. Miami-Dade" className="input-field text-sm" required/>
+                  <input value={form.county} onChange={e=>set('county',e.target.value)}
+                    list="county-options" disabled={!form.state}
+                    placeholder={form.state ? 'Start typing or pick a county…' : 'Select a state first'}
+                    className="input-field text-sm" required/>
+                  <datalist id="county-options">
+                    {(counties?.[form.state] || []).map(c => <option key={c} value={c} />)}
+                  </datalist>
+                  {form.state && counties?.[form.state] && (
+                    <div className="text-[11px] mt-1" style={{ color:'#9AA8BF' }}>{counties[form.state].length} counties · type to filter</div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Property Address</label>
@@ -678,19 +732,42 @@ function PlaceOrderPage() {
                   </div>
                 </div>
                 <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Property Type <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    {['Residential','Commercial','Vacant Land','Agriculture','Other'].map(pt => (
+                      <button key={pt} type="button" onClick={() => set('propertyType', pt)}
+                        className="py-2 px-2 rounded-lg text-xs font-medium border transition-all"
+                        style={form.propertyType === pt
+                          ? { border:`1px solid ${ROLE_COLOR}66`, background:`${ROLE_COLOR}14`, color:'#12284C' }
+                          : { border:'1px solid #DDE3EC', background:'#fff', color:'#5C6E8C' }}>
+                        {pt}
+                      </button>
+                    ))}
+                  </div>
+                  {form.propertyType === 'Other' && (
+                    <input value={form.propertyTypeOther} onChange={e=>set('propertyTypeOther', e.target.value)}
+                      placeholder="Describe the property type" className="input-field text-sm mt-2"/>
+                  )}
+                </div>
+                <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Parties <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
                   <div className="space-y-2">
-                    {[
-                      { label:'Buyer',    first:'buyerFirst',    last:'buyerLast' },
-                      { label:'Borrower', first:'borrowerFirst', last:'borrowerLast' },
-                      { label:'Seller',   first:'sellerFirst',   last:'sellerLast' },
-                    ].map(p => (
-                      <div key={p.label} className="grid grid-cols-1 sm:grid-cols-[80px,1fr,1fr] gap-2 sm:items-center">
-                        <span className="text-xs font-medium" style={{ color:'#3D5171' }}>{p.label}</span>
-                        <input value={form[p.first]} onChange={e=>set(p.first,e.target.value)} placeholder="First Name" className="input-field text-sm"/>
-                        <input value={form[p.last]}  onChange={e=>set(p.last,e.target.value)}  placeholder="Last Name"  className="input-field text-sm"/>
+                    {form.parties.map(p => (
+                      <div key={p.id} className="grid grid-cols-[104px,1fr,auto] gap-2 items-center">
+                        <select value={p.role} onChange={e=>setParty(p.id, { role: e.target.value })} className="input-field text-sm">
+                          {['Buyer','Seller','Borrower'].map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                        <input value={p.name} onChange={e=>setParty(p.id, { name: e.target.value })} placeholder="Full name" className="input-field text-sm"/>
+                        <button type="button" onClick={()=>removeParty(p.id)} disabled={form.parties.length <= 1}
+                          title="Remove" className="p-2" style={{ color: form.parties.length <= 1 ? '#C7CFDB' : '#dc2626' }}>
+                          <Trash2 className="w-4 h-4"/>
+                        </button>
                       </div>
                     ))}
+                  </div>
+                  <div className="flex gap-3 mt-2">
+                    <button type="button" onClick={()=>addParty('Buyer')} className="text-xs font-semibold flex items-center gap-1" style={{ color:ROLE_COLOR }}><PlusCircle className="w-3.5 h-3.5"/> Add buyer</button>
+                    <button type="button" onClick={()=>addParty('Seller')} className="text-xs font-semibold flex items-center gap-1" style={{ color:ROLE_COLOR }}><PlusCircle className="w-3.5 h-3.5"/> Add seller</button>
                   </div>
                 </div>
               </div>
@@ -719,6 +796,12 @@ function PlaceOrderPage() {
                       )
                     })}
                   </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Custom search <span style={{textTransform:'none',opacity:.6}}>(not in the list above?)</span></label>
+                  <input value={form.customSearch} onChange={e=>set('customSearch', e.target.value)}
+                    placeholder="e.g. Mineral rights search, Foreclosure guarantee…" className="input-field text-sm"/>
+                  <div className="text-[11px] mt-1" style={{ color:'#9AA8BF' }}>Describe a search outside our standard products and we’ll quote it.</div>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color:'#5C6E8C' }}>Turnaround</label>
@@ -752,36 +835,56 @@ function PlaceOrderPage() {
             {step===3 && (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Contact Information</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>First Name *</label>
-                    <input value={form.firstName} onChange={e=>set('firstName',e.target.value)} placeholder="First name" className="input-field text-sm" required/>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Last Name *</label>
-                    <input value={form.lastName} onChange={e=>set('lastName',e.target.value)} placeholder="Last name" className="input-field text-sm" required/>
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Business Name *</label>
+                  <input value={form.company} onChange={e=>set('company',e.target.value)} placeholder="Business name" className="input-field text-sm" required/>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Contact Name *</label>
+                  <input value={form.contactName} onChange={e=>set('contactName',e.target.value)} placeholder="Full name" className="input-field text-sm" required/>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Work Email *</label>
                   <input type="email" value={form.email} onChange={e=>set('email',e.target.value)} placeholder="you@company.com" className="input-field text-sm" required/>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Company</label>
-                  <input value={form.company} onChange={e=>set('company',e.target.value)} placeholder="Company name" className="input-field text-sm"/>
                 </div>
               </div>
             )}
             {step===4 && (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Review & Submit</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[['State',form.state||'—'],['County',form.county||'—'],['Search Type',form.searchType||'—'],
-                    ['Your file #',form.clientFileNo||'—'],
-                    ['Priority',form.priority.toUpperCase()],['Contact',`${form.firstName} ${form.lastName}`.trim()||'—'],['Email',form.email||'—']].map(([k,v]) => (
-                    <div key={k} className="glass p-3 rounded-xl">
-                      <div className="text-xs mb-0.5" style={{ color:'#5C6E8C' }}>{k}</div>
-                      <div className="font-medium text-sm" style={{ color:'#12284C' }}>{v}</div>
+                <div className="space-y-3">
+                  {[
+                    ['Property', [
+                      ['State', stateName(form.state)],
+                      ['County', form.county],
+                      ['Address', [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', ')],
+                      ['Property type', form.propertyType === 'Other' ? (form.propertyTypeOther.trim() || 'Other') : form.propertyType],
+                      ['Parcel / APN #', form.parcelId],
+                      ['Your file #', form.clientFileNo],
+                    ]],
+                    ['Search', [
+                      ['Product', form.searchType],
+                      ...(form.customSearch.trim() ? [['Custom search', form.customSearch]] : []),
+                      ['Turnaround', (() => { const t = TURNAROUND.find(x => x.key === form.priority); return t ? `${t.label}${t.fee ? ` (+$${t.fee})` : ''}` : form.priority })()],
+                      ['Special instructions', form.notes],
+                    ]],
+                    ['Parties', form.parties.filter(p => p.name.trim()).map(p => [p.role, p.name])],
+                    ['Contact', [
+                      ['Business name', form.company],
+                      ['Contact name', form.contactName],
+                      ['Work email', form.email],
+                    ]],
+                  ].map(([title, pairs]) => (
+                    <div key={title} className="glass p-4 rounded-xl">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color:'#5C6E8C' }}>
+                        {title}{title === 'Parties' ? ` (${pairs.length})` : ''}
+                      </div>
+                      {pairs.length ? pairs.map(([k, v], idx) => (
+                        <div key={idx} className="flex gap-3 py-0.5 text-sm">
+                          <span style={{ color:'#5C6E8C', minWidth:150, flexShrink:0 }}>{k}</span>
+                          <span className="font-medium" style={{ color:'#12284C', wordBreak:'break-word' }}>{v || '—'}</span>
+                        </div>
+                      )) : <div className="text-sm" style={{ color:'#9AA8BF' }}>None added</div>}
                     </div>
                   ))}
                 </div>
@@ -798,11 +901,18 @@ function PlaceOrderPage() {
                     Rush order selected — additional fees apply. Delivery within 24 hours.
                   </div>
                 )}
+                <div className="flex items-start gap-2 p-3 rounded-xl text-[12px] leading-snug"
+                  style={{ background:'rgba(18,40,76,0.04)', border:'1px solid rgba(18,40,76,0.10)', color:'#3D5171' }}>
+                  <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color:'#15803d' }} />
+                  <span><strong>Free cancellation.</strong> There is no charge to cancel an order any time before we begin the title search (screening). Once work has started, a cancellation becomes a request our team reviews.</span>
+                </div>
               </div>
             )}
             {stepErr && !stepValid(step) && (
               <div className="mt-4 text-[12px] px-3 py-2 rounded-lg" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
-                {step===1 ? 'Property State and County are required.' : 'First name, last name, and a valid email are required.'}
+                {step===1 ? 'Property State and County are required.'
+                  : step===2 ? 'Choose a product or describe a custom search.'
+                  : 'Business name, contact name, and a valid email are required.'}
               </div>
             )}
             {submitErr && (
@@ -822,19 +932,23 @@ function PlaceOrderPage() {
           </form>
         </motion.div>
       </AnimatePresence>
+      </>)}
     </div>
   )
 }
 
 function ClientHome() {
   const myOrders = useMyOrders()
+  const { user } = useAuth()
   const navigate = useNavigate()
+  const stats = clientStats(myOrders)
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold" style={{ color:'#12284C' }}>Client Portal</h1>
-          <p className="text-sm" style={{ color:'#3D5171' }}>Welcome back, Taylor Brooks</p>
+          {/* The signed-in person, not whoever happened to be in the fixture. */}
+          <p className="text-sm" style={{ color:'#3D5171' }}>Welcome back{user?.name ? `, ${user.name}` : ''}</p>
         </div>
         <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }} onClick={() => navigate('/client/order')}
           className="btn-primary flex items-center gap-2 text-sm">
@@ -843,10 +957,10 @@ function ClientHome() {
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon:Package,     label:'Active Orders',   value:'2',   color:ROLE_COLOR },
-          { icon:CheckCircle, label:'Completed (YTD)', value:'12',  color:'#15803d' },
-          { icon:Clock,       label:'Avg Turnaround',  value:'1.9d',color:'#a16207' },
-          { icon:Zap,         label:'Rush Orders',     value:'1',   color:'#b45309' },
+          { icon:Package,     label:'Active orders',    value:stats.active,       color:ROLE_COLOR },
+          { icon:CheckCircle, label:'Completed this year', value:stats.completedYtd, color:'#15803d' },
+          { icon:Clock,       label:'Avg turnaround',   value:stats.turnaround,   color:'#a16207' },
+          { icon:Zap,         label:'Rush in progress', value:stats.rush,         color:'#b45309' },
         ].map(s => (
           <motion.div key={s.label} initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} className="stat-card">
             <div className="w-9 h-9 rounded-xl mb-3 flex items-center justify-center" style={{ background:`${s.color}22` }}>
@@ -1003,6 +1117,7 @@ function MyOrdersPage() {
   const myOrders = useMyOrders()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
+  const [exporting, setExporting] = useState(false)
   // BUG_006: search across order #, type, status/stage, and property details —
   // works for both active and completed orders so users don't page-hunt.
   const query = q.trim().toLowerCase()
@@ -1013,15 +1128,53 @@ function MyOrdersPage() {
     ].filter(Boolean).join(' ').toLowerCase()
     return hay.includes(query)
   })
+  // S8: export the currently shown orders to Excel. xlsx is lazily imported so
+  // the bundle only pulls it when a client actually exports (mirrors BulkImport).
+  const exportXlsx = async () => {
+    if (!shown.length || exporting) return
+    setExporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const rows = shown.map(o => {
+        const intake = o.workflow?.intake || {}
+        return {
+          'Order #': o.id,
+          Type: o.type || '',
+          Status: clientStage(o).label,
+          State: o.state || '',
+          County: o.county || '',
+          'Property Address': intake.propertyAddress || '',
+          'Parcel / APN': intake.parcelNumberAPN || '',
+          Created: o.created || '',
+          ETA: o.eta || '',
+        }
+      })
+      const ws = XLSX.utils.json_to_sheet(rows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'My Orders')
+      XLSX.writeFile(wb, `my-orders-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } finally {
+      setExporting(false)
+    }
+  }
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>My Orders</h1>
-        <div className="relative" style={{ minWidth: 260 }}>
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#9AA8BF' }} />
-          <input value={q} onChange={e => setQ(e.target.value)}
-            placeholder="Search order #, property, status…"
-            className="input-field text-sm pl-9 w-full" />
+        <div className="flex items-center gap-3 flex-wrap">
+          <button type="button" onClick={exportXlsx} disabled={!shown.length || exporting}
+            className="btn-secondary text-sm flex items-center gap-2"
+            style={{ opacity: (!shown.length || exporting) ? 0.5 : 1 }}
+            title="Export the orders shown below to an Excel file">
+            <Download className="w-4 h-4" />
+            {exporting ? 'Exporting…' : 'Export to Excel'}
+          </button>
+          <div className="relative" style={{ minWidth: 260 }}>
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#9AA8BF' }} />
+            <input value={q} onChange={e => setQ(e.target.value)}
+              placeholder="Search order #, property, status…"
+              className="input-field text-sm pl-9 w-full" />
+          </div>
         </div>
       </div>
       <div className="space-y-4">
@@ -1062,6 +1215,10 @@ export default function ClientDashboard() {
         <Route path="order"  element={<PlaceOrderPage />} />
         <Route path="orders" element={<MyOrdersPage />} />
         <Route path="orders/:id" element={<OrderDetailPage />} />
+        {/* No nav entry and no email ever links here — client contact is
+            portal-only, so a client is never a notification recipient. The route
+            exists so the URL explains itself instead of rendering a blank page. */}
+        <Route path="notifications" element={<NotificationSettings />} />
         <Route path="messages" element={<MessagesPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="support" element={<SupportPage />} />

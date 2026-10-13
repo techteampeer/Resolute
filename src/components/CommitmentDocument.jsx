@@ -4,6 +4,7 @@ import { useFulfillmentStore } from '../context/FulfillmentContext'
 import { downloadCommitmentPdf } from '../lib/commitmentPdf'
 import {
   requirementText, exceptionText, fmtDate, fmtDateTime, titleVestingAuto, recInfo,
+  documentClauses, deedHasContent, judgmentHasContent,
 } from '../data/fulfillment'
 
 // Inline brand mark (swoosh + wordmark + tagline). Swap for the official PNG by
@@ -31,7 +32,7 @@ const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').
 const val = (s, ph = '—') => (s && String(s).trim() ? esc(s) : `<span class="ph">${ph}</span>`)
 
 function deedRows(deeds = []) {
-  return deeds.map((d, i) => `
+  return deeds.filter(deedHasContent).map((d, i) => `
     <tr>
       <td><b>${i === 0 ? 'Vesting' : '#' + (i + 1)}</b>${d.deedType ? '<br><span class="sub">' + esc(d.deedType) + '</span>' : ''}</td>
       <td>${val(d.grantor)}</td>
@@ -42,12 +43,16 @@ function deedRows(deeds = []) {
     </tr>`).join('')
 }
 
+// Same rule as the PDF: conditional clauses the typer never touched are left
+// out, part-filled ones print a ruled blank rather than a ‹token›.
 function listBlock(items, resolve) {
-  if (!items || !items.length) return '<p class="ph">None.</p>'
-  return `<ol class="clauses">${items.map(it => `<li>${esc(resolve(it)).replace(/\n/g, '<br>')}</li>`).join('')}</ol>`
+  const texts = documentClauses(items, resolve)
+  if (!texts.length) return '<p class="ph">None.</p>'
+  return `<ol class="clauses">${texts.map(t => `<li>${esc(t).replace(/\n/g, '<br>')}</li>`).join('')}</ol>`
 }
 
-function judgmentRows(js = []) {
+function judgmentRows(all = []) {
+  const js = (all || []).filter(judgmentHasContent)
   if (!js.length) return ''
   return `<h2>Judgments / Liens</h2><table><thead><tr>
       <th>Instrument</th><th>Case No.</th><th>Filed</th><th>Recorded</th><th>Rec Info</th><th class="num">Amount</th></tr></thead><tbody>

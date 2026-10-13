@@ -15,8 +15,18 @@ npm-debug.log*
 supabase/.branches/
 supabase/.temp/
 
-# local UI-audit scripts (not part of the app)
-.audit/
+# Audit harness. The reusable pieces are tracked (see .audit/README.md); the
+# hundreds of one-shot probe scripts and the generated pdf bundle are not.
+.audit/*
+!.audit/README.md
+!.audit/harness.mjs
+!.audit/e2e.mjs
+!.audit/e2e-single.mjs
+!.audit/pdf-build.mjs
+!.audit/pdf-entry.js
+!.audit/pdf-run.mjs
+!.audit/verify-*.mjs
+.audit/pdf-bundle.*
 
 # Generated notification previews (scripts/preview-notifications.mjs)
 preview/

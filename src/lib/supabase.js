@@ -17,6 +17,5 @@ export const supabase = isSupabaseConfigured
   : null
 
 if (!isSupabaseConfigured && import.meta.env.DEV) {
-  // eslint-disable-next-line no-console
   console.info('[supabase] Not configured — running on mock data. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable the backend.')
 }

@@ -181,7 +181,7 @@ function InvoiceRow({ order, termKey, onPaid, demo }) {
 }
 
 export default function ClientBilling({ myOrders }) {
-  const { updateOrder, markPayment } = useOrders()
+  const { markPayment } = useOrders()
   const { user } = useAuth()
   const isDemo = !!user?.demo
   const [, bump] = useState(0)

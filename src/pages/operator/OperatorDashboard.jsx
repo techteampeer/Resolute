@@ -6,17 +6,20 @@ import DocUpload from '../../components/DocUpload'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
-import { displayClient, nextRoleFor } from '../../data/mockData'
-import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files } from 'lucide-react'
+import { displayClient, nextRoleFor, roleAfter, lineItemsOf, hasStagePlan, ownerForStage } from '../../data/mockData'
+import SubOrders from '../../components/SubOrders'
+import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files, Bell } from 'lucide-react'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
+import NotificationSettings from '../../components/NotificationSettings'
+import { ROLE_COLOR } from '../../lib/ui'
 
-const ROLE_COLOR = '#2441E5'
 const NAV = [
-  { path: '/operator',          label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/operator/completed',label: 'Completed', icon: CheckCircle },
+  { path: '/user',          label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/user/completed',label: 'Completed', icon: CheckCircle },
+  { path: '/user/notifications', label: 'Notifications', icon: Bell },
 ]
 
 // Stage each order is currently waiting on (first uncompleted production role).
@@ -29,13 +32,13 @@ const STAGE = {
 const ASSIGN = [['in_house', 'In-House'], ['abs', 'ABS (Abstract)'], ['both', 'Both']]
 
 // Full-page order detail that adapts to whichever stage the order is in.
-// Route: /operator/orders/:id  (the typing stage hands off to the full
-// fulfillment screen at /operator/order/:id).
+// Route: /user/orders/:id  (the typing stage hands off to the full
+// fulfillment screen at /user/order/:id).
 function OperatorOrderPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { orders, completeStep, returnToAdmin, updateOrder, activityLog = [] } = useOrders()
+  const { orders, completeStep, returnToAdmin, advanceInSeat, partialHandoff, routeStep, activityLog = [] } = useOrders()
   const { getOrderThread, getOrderNotes } = useSupport()
   const order = orders.find(o => o.id === id)
   const role = order ? nextRoleFor(order) : null
@@ -49,28 +52,54 @@ function OperatorOrderPage() {
   if (!order) return (
     <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
       <div className="text-sm" style={{ color:'#5C6E8C' }}>Order not found, or it isn’t assigned to your desk.</div>
-      <button onClick={() => navigate('/operator')} className="btn-primary text-sm px-5 py-2.5">Back to Workspace</button>
+      <button onClick={() => navigate('/user')} className="btn-primary text-sm px-5 py-2.5">Back to Workspace</button>
     </div>
   )
 
-  // Every step hands back to Admin for approval. Delivery is the final stage —
-  // completing it delivers the order outright.
+  // Actionable only when the order is on the Production Desk with a stage left to
+  // work; delivered or parked-with-Admin is view-only (Sagar's guard).
+  const isActionable = order.status !== 'delivered' && !!role && order.assignedTo === 'user' && order.assignedUserId === user?.id
+  // Routing model (E2): a PLANNED order moves to the next stage's pre-assigned
+  // owner on completion — no Admin gate, and the worker never picks who gets it.
+  // `routeStep` builds the exact move the DB guard accepts. Orders placed before
+  // plans existed fall back to the legacy paths (single-seating in-seat, or the
+  // every-stage Admin gate), so nothing in flight breaks.
+  const planned = hasStagePlan(order)
+  const single = order.workflow?.singleSeating
+  const nextRole = role ? roleAfter(role) : null
+  const nextOwnerId = planned ? ownerForStage(order, nextRole) : null
+  const routesToSelf = !!nextOwnerId && nextOwnerId === user?.id
   const advance = (workflowPatch) => {
-    if (role === 'delivery') {
-      if (workflowPatch) updateOrder({ ...order, workflow: { ...order.workflow, ...workflowPatch } })
-      completeStep(order.id, role, user?.name, notes || 'single seating')
+    if (!isActionable) return   // never write a view-only order, even if called directly
+    if (planned) {
+      routeStep(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
+    } else if (single) {
+      advanceInSeat(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
+    } else if (role === 'delivery') {
+      completeStep(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
     } else {
-      returnToAdmin(order.id, role, user?.name, notes || 'single seating', workflowPatch || {})
+      returnToAdmin(order.id, role, user?.name, notes || 'production desk', workflowPatch || {})
     }
-    navigate('/operator')
+    navigate('/user')
   }
-  const canSubmit = role === 'screener' ? !!assignment
+  // Can't finish this order — hand it back to Admin with an internal note; Admin
+  // reassigns it to someone else (single-seating partial handoff).
+  const handoff = () => {
+    if (!isActionable) return
+    partialHandoff(order.id, notes.trim(), user?.name)
+    navigate('/user')
+  }
+  const canSubmit = isActionable && (role === 'screener' ? !!assignment
     : role === 'examiner' ? !!(doc && doc.status === 'done')
-    : true
+    : true)
   const msgCount = getOrderThread(order.id).length + getOrderNotes(order.id).length
 
   const TABS = [
-    { key:'stage', label: meta.label || 'Stage', icon:Layers, render: () => (
+    { key:'stage', label: meta.label || 'Stage', icon:Layers, render: () => !isActionable ? (
+      <Panel title="View only">
+        <p className="text-sm" style={{ color: '#3D5171' }}>This order is not currently assigned to the Production Desk for action.</p>
+      </Panel>
+    ) : (
       <div className="space-y-4">
         {role === 'screener' && (
           <>
@@ -102,7 +131,7 @@ function OperatorOrderPage() {
             <div className="flex items-center gap-2 mb-1"><Keyboard className="w-4 h-4" style={{ color: '#0e7490' }} />
               <span className="font-semibold text-sm" style={{ color: '#12284C' }}>Type the commitment</span></div>
             <p className="text-xs mb-3" style={{ color: '#3D5171' }}>Opens the full sectioned fulfillment form. Submitting there sends the order to Admin for approval.</p>
-            <button onClick={() => navigate(`/operator/order/${order.id}`)}
+            <button onClick={() => navigate(`/user/order/${order.id}`)}
               className="btn-primary text-sm py-2.5 w-full flex items-center justify-center gap-2">
               <FileText className="w-4 h-4" /> Open Fulfillment Form
             </button>
@@ -130,7 +159,7 @@ function OperatorOrderPage() {
           <>
             <Panel title="Notes">
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
-                placeholder="Notes (optional)…" className="input-field text-sm resize-none" />
+                placeholder={(single || planned) ? 'Notes, or a reason if you escalate to Admin…' : 'Notes (optional)…'} className="input-field text-sm resize-none" />
             </Panel>
             <button disabled={!canSubmit}
               onClick={() => advance(
@@ -140,18 +169,43 @@ function OperatorOrderPage() {
                 : null)}
               className="btn-primary w-full text-sm py-2.5 flex items-center justify-center gap-2"
               style={{ opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
-              <Send className="w-4 h-4" /> {role === 'delivery' ? `${meta.verb} & Complete` : `${meta.verb} & Send to Admin`}
+              <Send className="w-4 h-4" /> {
+                role === 'delivery' ? `${meta.verb} & Complete`
+                : planned ? (!nextOwnerId ? `${meta.verb} & Send to Admin` : routesToSelf ? `${meta.verb} & Continue` : `${meta.verb} & Hand to next stage`)
+                : single ? `${meta.verb} & Continue`
+                : `${meta.verb} & Send to Admin`
+              }
             </button>
+            {/* Stuck on a disruption or query? Escalate to Admin with a note — the
+                only way a production user reaches Admin mid-order (the order never
+                passes user→user). Shown whenever the order stays on this desk. */}
+            {(single || planned) && role !== 'delivery' && (
+              <button onClick={handoff} disabled={!notes.trim()} type="button"
+                className="w-full text-sm py-2 mt-1 rounded-lg font-medium flex items-center justify-center gap-2"
+                title="Send this order to Admin with your note for a disruption or query"
+                style={{ background:'transparent', border:'1px solid rgba(18,40,76,0.15)',
+                  color: notes.trim() ? '#a16207' : '#9AA8BF', cursor: notes.trim() ? 'pointer' : 'not-allowed' }}>
+                Escalate to Admin{notes.trim() ? '' : ' (add a note first)'}
+              </button>
+            )}
           </>
         )}
       </div>
     )},
-    { key:'overview', label:'Overview', icon:FileText, render: () => (
-      <DetailGrid items={[
-        ['Search Type', order.type], ['County', order.county], ['State', order.state],
-        ['Priority', order.priority?.toUpperCase()], ['ETA', order.eta], ['Current stage', meta.label],
-      ]} />
-    )},
+    { key:'overview', label:'Overview', icon:FileText, render: () => {
+      const items = lineItemsOf(order)
+      return (
+        <div className="space-y-4">
+          <DetailGrid items={[
+            ['Client file #', order.clientFileNo || '—'],
+            ['Property', items.length > 1 ? `${items.length} properties — see sub-orders` : (order.workflow?.intake?.propertyAddress || '—')],
+            ['Search Type', order.type], ['County', order.county], ['State', order.state],
+            ['Priority', order.priority?.toUpperCase()], ['ETA', order.eta], ['Current stage', meta.label],
+          ]} />
+          <SubOrders order={order} />
+        </div>
+      )
+    }},
     { key:'files', label:'Files', icon:Files, render: () => (
       <Panel title="Attached documents"><AttachedDocs workflow={order.workflow} /></Panel>
     )},
@@ -165,7 +219,7 @@ function OperatorOrderPage() {
 
   return (
     <OrderDetailLayout order={order} user={user} accent={ROLE_COLOR}
-      backTo="/operator" backLabel="Back to Workspace" tabs={TABS}
+      backTo="/user" backLabel="Back to Workspace" tabs={TABS}
       statusPill={
         <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md"
           style={{ background: `${meta.color}22`, color: meta.color }}>{meta.label}</span>
@@ -177,23 +231,36 @@ const Lbl = ({ children }) => (
   <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#5C6E8C' }}>{children}</label>
 )
 
-// The Single Seating desk only sees orders Admin has routed to it. A routed
-// order stays with the desk start to finish; between steps it parks with
-// Admin for approval and shows here read-only until re-approved.
+// This queue lists only the orders Admin has routed to the desk. A routed order
+// stays with the desk start to finish; between steps it parks with Admin for
+// approval and shows here read-only until re-approved.
+//
+// The filter is a queue, not a boundary: orders_read is `is_staff()`, so every
+// staff account — this desk included — can read any order row it asks for by id.
+// Writes are scoped (orders_update_assigned, fulfillments_write_owner), so a
+// foreign order can be read but not changed.
 function OperatorHome() {
   const { user } = useAuth()
   const { orders } = useOrders()
   const navigate = useNavigate()
   const active = orders.filter(o => o.status !== 'delivered' && nextRoleFor(o))
-  const actionable = active.filter(o => o.assignedTo === 'operator')
-  const awaiting   = active.filter(o => o.workflow?.singleSeating && o.assignedTo !== 'operator')
+  // "My Work" — orders in the pool assigned to me (A2 owner scoping). Unowned
+  // pool orders (no assignee yet) are shown too so nothing is stranded before an
+  // Admin assigns an owner; RLS still blocks writing anyone else's order.
+  // Only orders this user actually OWNS. RLS (orders_update_assigned) allows a
+  // write only when assigned_user_id = auth.uid(), so showing unowned pool orders
+  // as actionable was a trap: any action on them was refused by the database
+  // ("Not saved — you no longer own this order") and lost on refresh. An order
+  // with no owner isn't workable until Admin assigns one.
+  const actionable = active.filter(o => o.assignedTo === 'user' && o.assignedUserId === user?.id)
+  const awaiting   = active.filter(o => o.workflow?.singleSeating && o.assignedTo !== 'user')
   const byStage = (r) => actionable.filter(o => nextRoleFor(o) === r).length
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>Single Seating Workspace</h1>
-        <p className="text-sm" style={{ color: '#3D5171' }}>Orders assigned to your desk — worked start to finish, with Admin approval at every phase</p>
+        <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>Production Workspace</h1>
+        <p className="text-sm" style={{ color: '#3D5171' }}>Orders assigned to you. Complete your stage and it moves to the next person automatically. Stuck on a disruption or query? Escalate to Admin with a note.</p>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {Object.entries(STAGE).map(([r, s]) => (
@@ -218,14 +285,14 @@ function OperatorHome() {
                 style={{ background: 'rgba(18,40,76,0.03)', border: '1px solid rgba(36,65,229,0.08)' }}
                 onMouseOver={e => e.currentTarget.style.borderColor = `${s.color}55`}
                 onMouseOut={e => e.currentTarget.style.borderColor = 'rgba(36,65,229,0.08)'}
-                onClick={() => navigate(`/operator/orders/${o.id}`)}>
+                onClick={() => navigate(`/user/orders/${o.id}`)}>
                 <div className="w-2 h-10 rounded-full flex-shrink-0" style={{ background: s.color }} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{o.id}</span>
                     {o.priority === 'rush' && <span className="text-xs font-semibold px-2 py-0.5 rounded-md" style={{ background: 'rgba(220,80,60,0.18)', color: '#dc2626' }}>RUSH</span>}
                   </div>
-                  <div className="font-medium text-sm mt-0.5 truncate" style={{ color: '#12284C' }}>{displayClient(o.client, user, o.clientCode)}</div>
+                  <div className="font-medium text-sm mt-0.5 truncate" style={{ color: '#12284C' }}>{displayClient(o, user)}</div>
                   <div className="text-xs" style={{ color: '#5C6E8C' }}>{o.type} · {o.state}, {o.county}</div>
                 </div>
                 <div className="text-right flex-shrink-0">
@@ -253,7 +320,7 @@ function OperatorHome() {
                   <div className="w-2 h-10 rounded-full flex-shrink-0" style={{ background: '#9AA8BF' }} />
                   <div className="flex-1 min-w-0">
                     <span className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{o.id}</span>
-                    <div className="font-medium text-sm mt-0.5 truncate" style={{ color: '#12284C' }}>{displayClient(o.client, user, o.clientCode)}</div>
+                    <div className="font-medium text-sm mt-0.5 truncate" style={{ color: '#12284C' }}>{displayClient(o, user)}</div>
                     <div className="text-xs" style={{ color: '#5C6E8C' }}>{o.type} · {o.state}, {o.county}</div>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -284,7 +351,7 @@ function CompletedList() {
           <div key={o.id} className="flex items-center gap-3 p-3 rounded-xl">
             <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#15803d' }} />
             <span className="font-mono text-xs" style={{ color: '#3D5171' }}>{o.id}</span>
-            <span className="text-xs flex-1 truncate" style={{ color: '#3D5171' }}>{displayClient(o.client, user, o.clientCode)}</span>
+            <span className="text-xs flex-1 truncate" style={{ color: '#3D5171' }}>{displayClient(o, user)}</span>
             <span className="text-xs" style={{ color: '#5C6E8C' }}>{o.completed || o.eta}</span>
           </div>
         ))}
@@ -296,12 +363,13 @@ function CompletedList() {
 
 export default function OperatorDashboard() {
   return (
-    <Layout navItems={NAV} role="single seating" roleColor={ROLE_COLOR}>
+    <Layout navItems={NAV} role="production" roleColor={ROLE_COLOR}>
       <Routes>
         <Route index element={<OperatorHome />} />
         <Route path="order/:id"  element={<FulfillmentScreen />} />
         <Route path="orders/:id" element={<OperatorOrderPage />} />
         <Route path="completed" element={<CompletedList />} />
+        <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
       </Routes>
     </Layout>
   )

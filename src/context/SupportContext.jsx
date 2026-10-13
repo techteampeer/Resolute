@@ -47,6 +47,9 @@ export function SupportProvider({ children }) {
     reload()
     unsub = subscribeSupport(reload)
     return () => unsub()
+    // Keyed on identity, not the whole `user` object: re-subscribe only when who's
+    // logged in actually changes, never on every render that hands us a fresh ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.email, user?.demo])
 
   useEffect(() => { if (!isSupabaseConfigured) save(messages) }, [messages])
@@ -64,7 +67,7 @@ export function SupportProvider({ children }) {
   // orderId null → general Support thread; set → that order's inbox.
   // A message may carry a single `attachment` ({ name, type, path }); a body OR
   // an attachment is enough to send.
-  const sendMessage = ({ clientCode, clientName, from, text, author, orderId = null, attachment = null, visibility = 'client' }) => {
+  const sendMessage = ({ clientCode, from, text, author, orderId = null, attachment = null, visibility = 'client' }) => {
     const body = (text || '').trim()
     if (!clientCode || (!body && !attachment)) return
     // Guard before the write so a non-admin never sees a phantom reply that RLS

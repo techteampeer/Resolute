@@ -18,12 +18,14 @@ const toAppOrder = (r) => ({
   clarification: r.clarification,
   clientFileNo: r.client_file_no,
   assignedTo: r.assigned_to,
+  assignedUserId: r.assigned_user_id || null,   // F1: the specific production owner
   screener: r.screener, examiner: r.examiner, typer: r.typer, delivery: r.delivery,
   progress: r.progress,
   created: r.created, eta: r.eta, completed: r.completed,
   completedDates: r.completed_dates || {},
   completedBy: r.completed_by || {},
   workflow: r.workflow || {},
+  updatedAt: r.updated_at || null,   // A8: optimistic-lock baseline
 })
 
 // Date columns (eta/completed/created) reject '' — an empty string is not valid
@@ -34,6 +36,7 @@ const toOrderRow = (o) => ({
   status: o.status, priority: o.priority, payment: o.payment, clarification: o.clarification,
   client_file_no: o.clientFileNo || null,
   assigned_to: o.assignedTo,
+  assigned_user_id: o.assignedUserId ?? null,   // F1: the specific production owner
   screener: o.screener, examiner: o.examiner, typer: o.typer, delivery: o.delivery,
   progress: o.progress, eta: dateOrNull(o.eta), completed: dateOrNull(o.completed),
   completed_dates: o.completedDates, completed_by: o.completedBy,
@@ -41,20 +44,43 @@ const toOrderRow = (o) => ({
 })
 
 const mapUser = (authUser, prof) => ({
+  // profiles.id is the auth user's id. The Notifications screen writes
+  // notification_preferences.profile_id with it, and RLS checks it against
+  // auth.uid(), so a wrong value is refused rather than misfiled.
+  id: prof?.id || authUser.id || null,
   email: authUser.email,
   role: prof?.role || null,        // null when no profile/role — caller must handle, never silently 'client'
   name: prof?.name || authUser.email,
   avatar: initials(prof?.name || authUser.email),
   superAdmin: !!prof?.super_admin,
   clientCode: prof?.client_code || null,
+  // Whether this account may confirm money (client payments, vendor payouts,
+  // subscriptions). Held by the billing owner only, and enforced by database
+  // triggers as well — this is just what the UI hides behind.
+  canConfirmPayments: !!prof?.can_confirm_payments,
+  // Per-user capability grants/revokes (FA-2). Drives can()/workableStages in the
+  // domain authz model; empty = pure role+flags behaviour. Admin-set only.
+  permissions: Array.isArray(prof?.permissions) ? prof.permissions : [],
 })
 
-// ── Auth ─────────────────────────────────────────────────────────────────────
+// ── Auth (the portable seam) ──────────────────────────────────────────────────
+// Everything the app needs from the identity provider lives in these functions —
+// signIn / signOut / getCurrentUser / onAuthChange / getAccessToken. Nothing
+// outside this module calls `supabase.auth.*`. The GCP move (Supabase Auth →
+// Identity Platform) is therefore a swap of THIS block's bodies, not a hunt
+// across the app; mapUser() keeps the returned user shape identical either way.
 export async function getCurrentUser() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return null
   const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
   return mapUser(session.user, prof)
+}
+
+// The current session's bearer token, for authorizing our own serverless
+// endpoints (e.g. the admin user-management API). null when signed out.
+export async function getAccessToken() {
+  const { data: { session } = {} } = await supabase.auth.getSession()
+  return session?.access_token || null
 }
 
 export async function signIn(email, password) {
@@ -78,6 +104,22 @@ export function onAuthChange(cb) {
   return () => data.subscription.unsubscribe()
 }
 
+// Set the signed-in account's password — used by the set-password screen that an
+// invite / reset link lands on (the recovery link establishes a session; the user
+// then chooses their own password here).
+export async function updatePassword(password) {
+  const { error } = await supabase.auth.updateUser({ password })
+  return error ? { success: false, error: error.message } : { success: true }
+}
+
+// Fires when a recovery/invite link has been processed and the app should show
+// "set your password" (Supabase emits PASSWORD_RECOVERY once it consumes the
+// token from the URL).
+export function onPasswordRecovery(cb) {
+  const { data } = supabase.auth.onAuthStateChange((event) => { if (event === 'PASSWORD_RECOVERY') cb() })
+  return () => data.subscription.unsubscribe()
+}
+
 // ── Orders ─────────────────────────────────────────────────────────────────
 export async function fetchOrders() {
   const { data, error } = await supabase.from('orders').select('*, clients(name)').order('created', { ascending: false })
@@ -85,9 +127,60 @@ export async function fetchOrders() {
   return data.map(toAppOrder)
 }
 
+// One order by id, with the same client-name join fetchOrders() uses. Backs the
+// delta-realtime path: a change event fetches only the row that changed instead
+// of re-reading the whole table. RLS-scoped like every read — an order the
+// caller may not see resolves to `{ row: null }`, so this never leaks a row the
+// full fetch would have hidden. Returns a DISCRIMINATED result: `{ row }` on a
+// real answer (row may be null = genuinely absent/hidden) vs `{ error }` on a
+// transient failure — so the caller never mistakes a network blip for a delete.
+export async function fetchOrderById(id) {
+  const { data, error } = await supabase.from('orders').select('*, clients(name)').eq('id', id).maybeSingle()
+  if (error) { console.error('[order]', error.message); return { error: error.message } }
+  return { row: data ? toAppOrder(data) : null }
+}
+
+// Returns { ok, error }. An RLS-filtered UPDATE is not an error in PostgREST —
+// it matches zero rows and returns 200 — so "did anything change?" has to be
+// answered by asking for the affected rows back. Without this the app could not
+// tell a refused write from a successful one, and reported success either way.
+// Postgres' own words for a refused write ("new row violates row-level security
+// policy for table \"fulfillments\"") are exact and useless to a typer. Keep them
+// in the console for diagnosis; put a sentence on the screen.
+const refusalText = (msg, subject) =>
+  /row-level security|permission denied|insufficient privilege/i.test(msg || '')
+    ? `the database refused the change (${subject})`
+    : (msg || 'not saved')
+
 export async function saveOrder(order) {
-  const { error } = await supabase.from('orders').update(toOrderRow(order)).eq('id', order.id)
-  if (error) console.error('[saveOrder]', error.message)
+  // A8 — light optimistic lock: only overwrite the row we last saw. If someone
+  // else changed it since (orders_touch bumped updated_at), the guarded update
+  // matches 0 rows and we report `stale` so the caller reloads instead of
+  // clobbering the newer write. Skipped when we have no baseline (an order loaded
+  // before this field was mapped) so existing flows keep working unchanged.
+  let q = supabase.from('orders').update(toOrderRow(order)).eq('id', order.id)
+  if (order.updatedAt) q = q.eq('updated_at', order.updatedAt)
+  const { data, error } = await q.select('id, updated_at')
+  if (error) {
+    console.error('[saveOrder]', error.message)
+    return { ok: false, error: refusalText(error.message, 'you may no longer own this order') }
+  }
+  if (!data || data.length === 0) {
+    // 0 rows updated: either the optimistic lock missed (the row moved on) or RLS
+    // refused the write. Distinguish so the UI reloads on a conflict but shows an
+    // ownership error otherwise.
+    if (order.updatedAt) {
+      const { data: cur } = await supabase.from('orders')
+        .select('updated_at').eq('id', order.id).maybeSingle()
+      if (cur && cur.updated_at !== order.updatedAt) {
+        return { ok: false, stale: true, error: 'this order changed elsewhere — reloading the latest version' }
+      }
+    }
+    const msg = 'the database refused the change (you may no longer own this order)'
+    console.error('[saveOrder]', msg)
+    return { ok: false, error: msg }
+  }
+  return { ok: true, updatedAt: data[0]?.updated_at || null }
 }
 
 // Insert a new order (client-placed or staff). RLS: orders_insert_client lets a
@@ -103,10 +196,14 @@ export async function insertOrder(order) {
   if (error) { console.error('[insertOrder]', error.message); throw error }
 }
 
-export function subscribeOrders(cb) {
+// `onStatus` receives the channel lifecycle status ('SUBSCRIBED', 'CHANNEL_ERROR',
+// 'TIMED_OUT', 'CLOSED'). Callers that need to avoid a hydration race start their
+// snapshot only once the channel is actually SUBSCRIBED — before that, postgres
+// changes are not yet delivered, so a change in that window would be lost.
+export function subscribeOrders(cb, onStatus) {
   const channel = supabase.channel('orders-rt')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, cb)
-    .subscribe()
+    .subscribe((status) => { onStatus?.(status) })
   return () => supabase.removeChannel(channel)
 }
 
@@ -173,23 +270,117 @@ export async function fetchFulfillment(orderId) {
   return data?.data || null
 }
 
+// Returns { ok, error }. Same reasoning as saveOrder: a refused write comes back
+// as 200 with no rows, and this is the path a typer spends an hour filling in —
+// the autosave badge used to say "Saved" on a timer whether or not the row moved.
 export async function saveFulfillment(orderId, data) {
-  const { error } = await supabase.from('fulfillments').upsert({ order_id: orderId, data, updated_at: new Date().toISOString() })
-  if (error) console.error('[saveFulfillment]', error.message)
+  const { data: rows, error } = await supabase.from('fulfillments')
+    .upsert({ order_id: orderId, data, updated_at: new Date().toISOString() })
+    .select('order_id')
+  if (error) {
+    console.error('[saveFulfillment]', error.message)
+    return { ok: false, error: refusalText(error.message, 'this order may not be on your desk') }
+  }
+  if (!rows || rows.length === 0) {
+    const msg = 'the database refused the change (this order may not be on your desk)'
+    console.error('[saveFulfillment]', msg)
+    return { ok: false, error: msg }
+  }
+  return { ok: true }
 }
 
-// ── Clients ───────────────────────────────────────────────────────────────────
-// The clients table — Admin's client directory, including clients created by
-// email intake. RLS: clients_read lets staff read every client.
-export async function fetchClients() {
-  const { data, error } = await supabase.from('clients').select('code, name').order('code')
-  if (error) { console.error('[clients]', error.message); return null }
+// ── Notification preferences ─────────────────────────────────────────────────
+// notification_types is the catalogue (what exists, who it can reach, and the
+// mode used when someone has expressed no preference); notification_preferences
+// holds one row per person per type, and only when they have chosen something.
+// No row means "the type's default", which is why turning a preference off again
+// deletes the row instead of writing the default into it.
+export async function fetchNotificationTypes() {
+  const { data, error } = await supabase
+    .from('notification_types')
+    .select('key,label,description,default_roles,default_mode,sort_order')
+    .order('sort_order')
+  if (error) { console.error('[notificationTypes]', error.message); return null }
   return data
+}
+
+// RLS (notif_pref_own_read) scopes this to the caller, so no filter is needed —
+// but an admin may read everyone's, hence the explicit profile filter.
+export async function fetchNotificationPreferences(profileId) {
+  let q = supabase.from('notification_preferences').select('type_key,mode,updated_at')
+  if (profileId) q = q.eq('profile_id', profileId)
+  const { data, error } = await q
+  if (error) { console.error('[notificationPreferences]', error.message); return null }
+  return data
+}
+
+// Returns { ok, error } like the other writes: an RLS refusal comes back as 200
+// with no rows, and a settings toggle that silently does nothing is worse than
+// one that says why.
+export async function saveNotificationPreference(profileId, typeKey, mode) {
+  if (!profileId) return { ok: false, error: 'your profile is not linked to a login yet' }
+  const { data, error } = await supabase
+    .from('notification_preferences')
+    .upsert({ profile_id: profileId, type_key: typeKey, mode, updated_at: new Date().toISOString() })
+    .select('type_key')
+  if (error) {
+    console.error('[saveNotificationPreference]', error.message)
+    return { ok: false, error: refusalText(error.message, 'you may only change your own preferences') }
+  }
+  if (!data || data.length === 0) {
+    const msg = 'the database refused the change (you may only change your own preferences)'
+    console.error('[saveNotificationPreference]', msg)
+    return { ok: false, error: msg }
+  }
+  return { ok: true }
+}
+
+// Back to the type's default: remove the row rather than store a copy of the
+// default, so a later change to the default follows the person automatically.
+export async function clearNotificationPreference(profileId, typeKey) {
+  if (!profileId) return { ok: false, error: 'your profile is not linked to a login yet' }
+  const { error } = await supabase
+    .from('notification_preferences')
+    .delete().eq('profile_id', profileId).eq('type_key', typeKey)
+  if (error) {
+    console.error('[clearNotificationPreference]', error.message)
+    return { ok: false, error: refusalText(error.message, 'you may only change your own preferences') }
+  }
+  return { ok: true }
+}
+
+// ── Client registry ───────────────────────────────────────────────────────────
+// Every client Resolute works with. clients_read lets any staff member read it;
+// a client account sees only its own row (RLS), which is all it needs.
+// Two sources, because the name is PII. 20260909120000 restricted
+// public.clients to super admins and added public.client_directory — the same
+// list with code, terms, activity and registration date only. Ask for both: a
+// super admin's `clients` read returns names, everyone else's returns nothing
+// and the directory still supplies the codes. Rows merge by code, so a caller
+// who may not see a name simply does not get one.
+export async function fetchClients() {
+  const [dir, pii] = await Promise.all([
+    supabase.from('client_directory').select('code,payment_terms,activity,registered').order('code'),
+    supabase.from('clients').select('code,name,contact,email,phone,registered,activity,payment,payment_terms').order('code'),
+  ])
+  if (dir.error && pii.error) {
+    console.error('[fetchClients]', dir.error.message, '|', pii.error.message)
+    return null
+  }
+  if (dir.error) console.error('[fetchClients] directory:', dir.error.message)
+  const byCode = new Map()
+  for (const r of dir.data || []) byCode.set(r.code, { ...r })
+  for (const r of pii.data || []) byCode.set(r.code, { ...(byCode.get(r.code) || {}), ...r })
+  return [...byCode.values()].sort((a, b) => String(a.code).localeCompare(String(b.code)))
 }
 
 // ── Client payment terms ──────────────────────────────────────────────────────
 export async function fetchClientTerms() {
-  const { data, error } = await supabase.from('clients').select('code, payment_terms')
+  // From the directory, not the table: clients_read is super-admin-only since
+  // 20260909120000, so reading payment_terms off `clients` returned nothing for
+  // a plain admin and every client on the billing page silently fell back to
+  // "per order". client_directory carries the same column for all staff.
+  const { data, error } = await supabase.from('client_directory').select('code, payment_terms')
   if (error) { console.error('[terms]', error.message); return null }
   return Object.fromEntries(data.map(r => [r.code, r.payment_terms || 'per_order']))
 }
@@ -260,6 +451,20 @@ export async function logEvent({ orderId = null, action, type = 'status', actor 
   if (error) console.error('[logEvent]', error.message)
 }
 
+// ── Staff roster ─────────────────────────────────────────────────────────────
+// The real people who can be assigned work. Admin's Assign modal used to offer
+// mockData's USERS fixture, which contains six staff with no profiles row and no
+// login — so an order could be assigned to someone who does not exist, and the
+// row recorded their name. profiles_read lets any staff member read the roster.
+export async function fetchProfiles() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,name,email,role,super_admin,client_code,status,can_confirm_payments')
+    .order('name')
+  if (error) { console.error('[fetchProfiles]', error.message); return null }
+  return data
+}
+
 // ── Server-generated order IDs ────────────────────────────────────────────────
 export async function nextOrderId() {
   const { data, error } = await supabase.rpc('next_order_id')
@@ -269,7 +474,7 @@ export async function nextOrderId() {
 
 // ── Storage (documents bucket) ────────────────────────────────────────────────
 export async function uploadDocument(orderId, file) {
-  const safe = file.name.replace(/[^\w.\-]+/g, '_')
+  const safe = file.name.replace(/[^\w.-]+/g, '_')
   const path = `orders/${orderId}/${Date.now()}-${safe}`
   const { error } = await supabase.storage.from('documents').upload(path, file)
   if (error) throw error
@@ -289,6 +494,31 @@ export async function removeDocument(path) {
 // and re-sign it on demand here; the stored `url` is only a fallback (e.g.
 // mock-mode blob URLs). The tab is opened synchronously first so the async
 // re-sign doesn't trip the browser's popup blocker.
+// One reusable pop-out window for documents, so once a user drags it onto a
+// second monitor every later document opens there (the browser reuses a window
+// by name and keeps its position).
+const DOC_WINDOW = 'resolute-doc-viewer'
+
+// Option B (progressive enhancement): on a browser with the Window Management
+// API and an extended desktop, auto-place the pop-out on the EXTERNAL screen.
+// Called while the window is still same-origin (about:blank) and before any
+// other await, so the click's user activation is still fresh for the one-time
+// permission prompt. A no-op on single-screen setups or browsers without the
+// API (Safari/Firefox) — there the user just drags the window across (option A).
+async function moveDocWindowToExternalScreen(win) {
+  try {
+    if (!win || win.closed) return
+    if (!window.screen?.isExtended || typeof window.getScreenDetails !== 'function') return
+    const details = await window.getScreenDetails()     // prompts once, then remembered
+    const ext = details.screens.find(s => s.isInternal === false)
+      || details.screens.find(s => s !== details.currentScreen)
+    if (!ext) return
+    win.moveTo(ext.availLeft, ext.availTop)
+    win.resizeTo(Math.min(ext.availWidth, 1100), Math.min(ext.availHeight, 850))
+    win.focus()
+  } catch { /* permission denied / unsupported / cross-origin — user drags it */ }
+}
+
 export async function openDocument(ref) {
   if (!ref) return null
   const canResign = isSupabaseConfigured && supabase && !!ref.path
@@ -296,7 +526,12 @@ export async function openDocument(ref) {
     alert('This document isn’t available to open — it may still be uploading, or was attached in a local session that wasn’t persisted.')
     return null
   }
-  const win = window.open('about:blank', '_blank')
+  // Option A: a dedicated pop-out WINDOW (the `popup` feature makes it a separate,
+  // movable window rather than a tab) under a stable name, opened synchronously so
+  // the later async re-sign doesn't trip the popup blocker. Opening it to
+  // about:blank first keeps it same-origin and movable even on reuse.
+  const win = window.open('about:blank', DOC_WINDOW, 'popup,width=1000,height=800')
+  if (win) await moveDocWindowToExternalScreen(win)
   let url = ref.url || null
   if (canResign) {
     try {

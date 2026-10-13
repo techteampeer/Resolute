@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { isSupabaseConfigured, getCurrentUser, signIn, signOut, onAuthChange } from '../lib/backend'
+import { isSupabaseConfigured, getCurrentUser, signIn, signOut, onAuthChange, onPasswordRecovery, updatePassword as backendUpdatePassword } from '../lib/backend'
 import { DEMO_USER } from '../data/demoData'
 
 const AuthContext = createContext(null)
@@ -24,26 +24,53 @@ const MOCK_USERS = {
   'saravanan@resolute.com': { password: 'admin123',     role: 'admin',    name: 'Saravanan',     avatar: 'SV', superAdmin: true },
   'vivek@resolute.com':     { password: 'vivek123',     role: 'admin',    name: 'Vivek',         avatar: 'VK', superAdmin: true },
   'admin@resolute.com':     { password: 'admin123',     role: 'admin',    name: 'Alex Morrison', avatar: 'AM', superAdmin: false },
-  'screener@resolute.com':  { password: 'screener123',  role: 'screener', name: 'Sam Carter',    avatar: 'SC' },
-  'examiner@resolute.com':  { password: 'examiner123',  role: 'examiner', name: 'Jordan Lee',    avatar: 'JL' },
-  'typer@resolute.com':     { password: 'typer123',     role: 'typer',    name: 'Priya Nair',    avatar: 'PN' },
-  'delivery@resolute.com':  { password: 'delivery123',  role: 'delivery', name: 'Morgan Davis',  avatar: 'MD' },
+  'superadmin@resolute.com':{ password: 'admin123',     role: 'admin',    name: 'Super Admin',   avatar: 'SA', superAdmin: true },
+  // Post-D3 (ADR 0001) the stage login roles are retired; these former stage
+  // staff are now production `user`s (mirrors seed.sql + the D3 migration).
+  // Emails are kept so existing mock-mode logins still resolve.
+  'screener@resolute.com':  { password: 'screener123',  role: 'user',     name: 'Sam Carter',    avatar: 'SC' },
+  'examiner@resolute.com':  { password: 'examiner123',  role: 'user',     name: 'Jordan Lee',    avatar: 'JL' },
+  'typer@resolute.com':     { password: 'typer123',     role: 'user',     name: 'Priya Nair',    avatar: 'PN' },
+  'delivery@resolute.com':  { password: 'delivery123',  role: 'user',     name: 'Morgan Davis',  avatar: 'MD' },
   'client@resolute.com':    { password: 'client123',    role: 'client',   name: 'Taylor Brooks', avatar: 'TB', clientCode: 'CL01' },
-  'operator@resolute.com':  { password: 'operator123',  role: 'operator', name: 'Jordan Blake',   avatar: 'JB' },
+  'operator@resolute.com':  { password: 'operator123',  role: 'user',     name: 'Jordan Blake',   avatar: 'JB' },
 }
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
+  // Whether the stored session has been checked yet. Restoring it is async, so
+  // on a cold load `user` is null for the first render — and a route guard that
+  // reads null as "signed out" redirects before the session arrives. That is why
+  // a refresh, a bookmark, or the "Approve and assign →" deep link in every
+  // notification email landed on the login page instead of the order. Guards
+  // must wait for this, not for `user`.
+  // Mock mode has nothing to restore, so it starts ready.
+  const [ready, setReady] = useState(!isSupabaseConfigured)
+  // True after an invite / password-reset link is opened: the app must show a
+  // "set your password" screen before the account is usable.
+  const [recovery, setRecovery] = useState(false)
 
   // With Supabase: restore the session on load and track auth changes.
   useEffect(() => {
     if (!isSupabaseConfigured) return
     let unsub = () => {}
     // Only restore a session that has a resolved role; never auto-land on client.
-    getCurrentUser().then(u => setUser(u && u.role ? u : null))
-    unsub = onAuthChange(u => setUser(u && u.role ? u : null))
-    return () => unsub()
+    getCurrentUser()
+      .then(u => setUser(u && u.role ? u : null))
+      .catch(() => setUser(null))
+      .finally(() => setReady(true))
+    unsub = onAuthChange(u => { setUser(u && u.role ? u : null); setReady(true) })
+    const unsubRecovery = onPasswordRecovery(() => { setRecovery(true); setReady(true) })
+    return () => { unsub(); unsubRecovery() }
   }, [])
+
+  // Set the account's password from the recovery screen, then clear recovery so
+  // the app routes the (now signed-in) user to their dashboard.
+  const setPassword = async (pw) => {
+    const r = await backendUpdatePassword(pw)
+    if (r.success) { setRecovery(false); const u = await getCurrentUser(); setUser(u && u.role ? u : null) }
+    return r
+  }
 
   const login = async (email, password) => {
     if (isSupabaseConfigured) {
@@ -79,7 +106,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, loginAsDemo, logout }}>
+    <AuthContext.Provider value={{ user, ready, recovery, setPassword, login, loginAsDemo, logout }}>
       {children}
     </AuthContext.Provider>
   )

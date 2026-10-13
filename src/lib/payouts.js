@@ -8,13 +8,18 @@ import {
   isSupabaseConfigured, fetchVendors, saveVendorCycle as saveVendorCycleRemote,
   fetchSubscriptions, saveSubscription,
 } from './backend'
+// Pure payout/subscription math now lives in the portable domain core
+// (packages/domain). This file keeps the localStorage caches, the vendor
+// registry fallback, and Supabase persistence.
+import {
+  PAYOUT_CYCLES, cycleByKey, isAbsAssigned, payoutOf, needsFee, buildPayout, payPayout,
+  subscriptionNextDue, isSubscriptionDue, paySubscription, addDays, todayISO,
+} from '@domain'
 
-export const PAYOUT_CYCLES = [
-  { key: 'weekly', label: 'Weekly',  days: 7,  desc: 'Paid every 7 days' },
-  { key: 'days15', label: '15 Days', days: 15, desc: 'Paid on a 15-day cycle' },
-  { key: 'days30', label: '30 Days', days: 30, desc: 'Paid on a 30-day cycle' },
-]
-export const cycleByKey = (key) => PAYOUT_CYCLES.find(c => c.key === key) || PAYOUT_CYCLES[2]
+export {
+  PAYOUT_CYCLES, cycleByKey, isAbsAssigned, payoutOf, needsFee, buildPayout, payPayout,
+  subscriptionNextDue, isSubscriptionDue, paySubscription,
+}
 
 // Vendor cycles: localStorage is the synchronous read cache; the vendors table
 // is durable when Supabase is configured. The VENDORS registry is the mock
@@ -39,21 +44,9 @@ export async function hydrateVendors() {
   return vendors
 }
 
-// Orders routed to outside abstractors owe the vendor a search fee.
-// 'both' = in-house + ABS (fee reflects the vendor's share); 'abc' = legacy key.
-export const isAbsAssigned = (o) => ['abs', 'both', 'abc'].includes(o.workflow?.searchAssignment)
-export const payoutOf = (o) => o.workflow?.abstractorFee || null
-export const needsFee = (o) => isAbsAssigned(o) && !payoutOf(o)
-
-const todayISO = () => new Date().toISOString().slice(0, 10)
-const addDays = (iso, days) => {
-  if (!iso) return null
-  const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-
 // Fee accrues when the search work happened (screening handed it out), and is
-// due one vendor cycle later.
+// due one vendor cycle later. Depends on the (I/O) vendor-cycle lookup, so it
+// stays here rather than in the pure core.
 export const payoutDue = (o) => {
   const p = payoutOf(o)
   if (!p) return null
@@ -67,14 +60,8 @@ export const isPayoutOverdue = (o) => {
   return Boolean(due && due < todayISO())
 }
 
-export const buildPayout = ({ vendor, amount, userName }) =>
-  ({ vendor, amount: Number(amount) || 0, status: 'accrued', setBy: userName, setAt: todayISO() })
-export const payPayout = (p, userName, reference = null) =>
-  ({ ...p, status: 'paid', paidAt: todayISO(), paidBy: userName, reference })
-
 // ── Recurring subscriptions (title plants, software, services) ───────────────
-// Fully client-side (localStorage): { id, name, amount, cycle, lastPaidAt, paidBy }.
-// nextDue = lastPaidAt + cycle days (or today when never paid).
+// localStorage cache; Supabase durable when configured.
 const SUBS_LS_KEY = 'resolute.subscriptions'
 const DEFAULT_SUBS = [
   { id: 'sub1', name: 'DataTree Title Plant',   amount: 299, cycle: 'days30', lastPaidAt: null, paidBy: null },
@@ -98,7 +85,3 @@ export async function hydrateSubscriptions() {
 export function persistSubscription(s) {
   if (isSupabaseConfigured) saveSubscription(s)
 }
-export const subscriptionNextDue = (s) =>
-  s.lastPaidAt ? addDays(s.lastPaidAt, cycleByKey(s.cycle).days) : todayISO()
-export const isSubscriptionDue = (s) => subscriptionNextDue(s) <= todayISO()
-export const paySubscription = (s, userName) => ({ ...s, lastPaidAt: todayISO(), paidBy: userName })

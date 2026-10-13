@@ -6,7 +6,7 @@ export const STAGE_LABELS = ['Received','Screening','Examining','Typing','Out fo
 
 export const PAYMENT_METHODS = ['Check', 'ACH']
 
-export const ORDERS = [
+const _ORDERS = [
   { id: 'RTS-10041', client: 'Lakewood Title Group',    state: 'FL', county: 'Miami-Dade',  type: 'Full Search',     status: 'examining',  screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'rush',   payment: 'Wire',             clarification: null,        created: '2026-06-09', eta: '2026-06-11', completed: null,         progress: 65,  assignedTo: 'examiner', completedDates: { screener: '2026-06-09', examiner: null, typer: null, delivery: null }, completedBy: { screener: 'Sam Carter', examiner: null, typer: null, delivery: null } },
   { id: 'RTS-10042', client: 'Apex Lending Partners',   state: 'TX', county: 'Harris',      type: 'Current Owner',   status: 'delivered',  screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'normal', payment: 'ACH',              clarification: null,        created: '2026-06-08', eta: '2026-06-10', completed: '2026-06-10', progress: 100, assignedTo: null,       completedDates: { screener: '2026-06-08', examiner: '2026-06-09', typer: '2026-06-09', delivery: '2026-06-10' }, completedBy: { screener: 'Sam Carter', examiner: 'Jordan Lee', typer: 'Priya Nair', delivery: 'Morgan Davis' } },
   { id: 'RTS-10043', client: 'Sterling Law Firm',       state: 'CA', county: 'Los Angeles', type: 'Two-Owner',       status: 'examining',  screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'normal', payment: 'Credit Card',      clarification: 'responded', created: '2026-06-09', eta: '2026-06-12', completed: null,         progress: 45,  assignedTo: 'examiner', completedDates: { screener: '2026-06-09', examiner: null, typer: null, delivery: null }, completedBy: { screener: 'Sam Carter', examiner: null, typer: null, delivery: null } },
@@ -16,6 +16,17 @@ export const ORDERS = [
   { id: 'RTS-10047', client: 'Coastal Title Services',  state: 'NC', county: 'Mecklenburg', type: 'HOA Estoppel',    status: 'examining',  screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'rush',   payment: 'ACH',              clarification: null,        created: '2026-06-09', eta: '2026-06-11', completed: null,         progress: 55,  assignedTo: 'examiner', completedDates: { screener: '2026-06-09', examiner: null, typer: null, delivery: null }, completedBy: { screener: 'Sam Carter', examiner: null, typer: null, delivery: null } },
   { id: 'RTS-10048', client: 'Lakewood Title Group',    state: 'AZ', county: 'Maricopa',    type: 'Current Owner',   status: 'typing',     screener: 'Sam Carter',   examiner: 'Jordan Lee',  typer: 'Priya Nair', delivery: 'Morgan Davis', priority: 'normal', payment: 'Wire',             clarification: null,        created: '2026-06-08', eta: '2026-06-12', completed: null,         progress: 85,  assignedTo: 'typer',    completedDates: { screener: '2026-06-08', examiner: '2026-06-10', typer: null, delivery: null }, completedBy: { screener: 'Sam Carter', examiner: 'Jordan Lee', typer: null, delivery: null } },
 ]
+
+// Post-D3 (ADR 0001): production orders live in the single `user` pool. The
+// fixtures above are written on their stage desk for readability; consolidate
+// any still on a stage desk onto the Production Desk (mirrors seed.sql + the D3
+// migration) and mark them production-owned, so mock mode shows a populated
+// /user workspace. Delivered orders (assignedTo null) are left untouched.
+const STAGE_DESKS = ['screener', 'examiner', 'typer', 'delivery']
+export const ORDERS = _ORDERS.map(o =>
+  STAGE_DESKS.includes(o.assignedTo)
+    ? { ...o, assignedTo: 'user', workflow: { ...(o.workflow || {}), singleSeating: true } }
+    : o)
 
 // Client registry — codes assigned in registration order, stable per client.
 // Non-super-admins see the code; only super admins (Rajni, Saravanan) see the name + contact.
@@ -44,11 +55,26 @@ export const clientCode   = (name) => CODE_BY_NAME[name] || name
 export const clientName   = (code) => NAME_BY_CODE[code] || null
 export const clientByName = (name) => CLIENTS.find(c => c.name === name) || null
 // Returns the real client name for super admins, otherwise the stable client code.
-// Pass the record's own clientCode (orders carry it from the database): the
-// name→code table above only knows the demo clients, so a real or newly created
-// client's name would otherwise reach roles that must see only its code.
-export const displayClient = (name, user, code) =>
-  (user && user.superAdmin) ? name : (code || CODE_BY_NAME[name] || name)
+//
+// Takes an order (or support thread) row rather than a bare name, because the row
+// carries the authoritative `client_code`. The old signature took only the name and
+// mapped it through CODE_BY_NAME, which is built from the demo CLIENTS array above
+// — and fell back to returning the name unchanged on a miss. Every real client is
+// absent from that array by definition, so the masking rule held only for the seven
+// demo clients and leaked the full legal name of exactly the clients that matter:
+// a screener's queue rendered "Northgate Pilot Escrow LLC" beside a correctly
+// masked "CL04". There is deliberately no name fallback now — an unmappable client
+// shows a placeholder rather than an identity.
+//
+// A bare name string is still accepted for the mock-data paths that have no row.
+export const displayClient = (row, user) => {
+  const isRow = row && typeof row === 'object'
+  const name = isRow ? (row.client ?? row.clientName ?? null) : (row ?? null)
+  const code = (isRow ? (row.clientCode ?? row.client_code ?? null) : null)
+    || CODE_BY_NAME[name] || null
+  if (user && user.superAdmin) return name || code || '—'
+  return code || '—'
+}
 
 export const STATE_ORDERS = {
   AL:2, AK:1, AZ:14, AR:3, CA:28, CO:9, CT:5, DE:2, FL:31, GA:18,
@@ -71,53 +97,70 @@ const REGION_BY_STATE = {
   AZ:'West', CO:'West', ID:'West', MT:'West', NV:'West', NM:'West', UT:'West',
   WY:'West', AK:'West', CA:'West', HI:'West', OR:'West', WA:'West',
 }
-export const regionOf = (state) => REGION_BY_STATE[state] || '—'
+// Canonical state list. Orders store the two-letter CODE — everything keyed on
+// state (regionOf, STATE_ORDERS, the coverage map, the by-state report) uses it.
+// The Place Order wizard had its own list of full NAMES and used the name as the
+// option value, so every client-placed order stored "Florida" while every other
+// order stored "FL": the by-state report counted them as two states, regionOf
+// returned '—', and the coverage map could never match them.
+export const US_STATES = [
+  ['AL','Alabama'],['AK','Alaska'],['AZ','Arizona'],['AR','Arkansas'],['CA','California'],
+  ['CO','Colorado'],['CT','Connecticut'],['DE','Delaware'],['DC','District of Columbia'],
+  ['FL','Florida'],['GA','Georgia'],['HI','Hawaii'],['ID','Idaho'],['IL','Illinois'],
+  ['IN','Indiana'],['IA','Iowa'],['KS','Kansas'],['KY','Kentucky'],['LA','Louisiana'],
+  ['ME','Maine'],['MD','Maryland'],['MA','Massachusetts'],['MI','Michigan'],['MN','Minnesota'],
+  ['MS','Mississippi'],['MO','Missouri'],['MT','Montana'],['NE','Nebraska'],['NV','Nevada'],
+  ['NH','New Hampshire'],['NJ','New Jersey'],['NM','New Mexico'],['NY','New York'],
+  ['NC','North Carolina'],['ND','North Dakota'],['OH','Ohio'],['OK','Oklahoma'],['OR','Oregon'],
+  ['PA','Pennsylvania'],['RI','Rhode Island'],['SC','South Carolina'],['SD','South Dakota'],
+  ['TN','Tennessee'],['TX','Texas'],['UT','Utah'],['VT','Vermont'],['VA','Virginia'],
+  ['WA','Washington'],['WV','West Virginia'],['WI','Wisconsin'],['WY','Wyoming'],
+].map(([code, name]) => ({ code, name }))
+
+const CODE_BY_STATE_NAME = Object.fromEntries(US_STATES.map(s => [s.name.toLowerCase(), s.code]))
+const NAME_BY_STATE_CODE = Object.fromEntries(US_STATES.map(s => [s.code, s.name]))
+
+// Coerce either representation to the two-letter code, so rows written before
+// the wizard was fixed still group and filter correctly.
+export const stateCode = (v) => {
+  if (!v) return ''
+  const s = String(v).trim()
+  if (NAME_BY_STATE_CODE[s.toUpperCase()]) return s.toUpperCase()
+  return CODE_BY_STATE_NAME[s.toLowerCase()] || s
+}
+export const stateName = (v) => NAME_BY_STATE_CODE[stateCode(v)] || String(v || '')
+
+export const regionOf = (state) => REGION_BY_STATE[stateCode(state)] || '—'
 
 export const USERS = [
-  { id: 1, name: 'Sam Carter',     email: 'screener@resolute.com',   role: 'screener', status: 'active',   orders: 47, joined: '2025-01-15' },
-  { id: 2, name: 'Jordan Lee',     email: 'examiner@resolute.com',   role: 'examiner', status: 'active',   orders: 63, joined: '2025-02-20' },
-  { id: 3, name: 'Priya Nair',     email: 'typer@resolute.com',      role: 'typer',    status: 'active',   orders: 41, joined: '2025-02-10' },
-  { id: 4, name: 'Morgan Davis',   email: 'delivery@resolute.com',   role: 'delivery', status: 'active',   orders: 58, joined: '2025-01-08' },
+  { id: 1, name: 'Sam Carter',     email: 'screener@resolute.com',   role: 'user'    , status: 'active',   orders: 47, joined: '2025-01-15' },
+  { id: 2, name: 'Jordan Lee',     email: 'examiner@resolute.com',   role: 'user'    , status: 'active',   orders: 63, joined: '2025-02-20' },
+  { id: 3, name: 'Priya Nair',     email: 'typer@resolute.com',      role: 'user',    status: 'active',   orders: 41, joined: '2025-02-10' },
+  { id: 4, name: 'Morgan Davis',   email: 'delivery@resolute.com',   role: 'user'    , status: 'active',   orders: 58, joined: '2025-01-08' },
   { id: 5, name: 'Taylor Brooks',  email: 'client@resolute.com',     role: 'client',   status: 'active',   orders: 12, joined: '2025-03-10' },
   { id: 6, name: 'Casey Wilson',   email: 'casey@apexlending.com',   role: 'client',   status: 'active',   orders: 8,  joined: '2025-04-01' },
   { id: 7, name: 'Riley Stone',    email: 'riley@sterlinglaw.com',   role: 'client',   status: 'inactive', orders: 3,  joined: '2025-05-12' },
   { id: 8, name: 'Rajni',          email: 'rajni@resolute.com',      role: 'admin',    status: 'active',   orders: 0,  joined: '2024-12-01', superAdmin: true },
   { id: 9, name: 'Saravanan',      email: 'saravanan@resolute.com',  role: 'admin',    status: 'active',   orders: 0,  joined: '2024-12-01', superAdmin: true },
   // Additional staff per role, so Admin can route each stage to whoever is available.
-  { id: 10, name: 'Dana Iqbal',    email: 'dana.i@resolute.com',     role: 'screener', status: 'active',   orders: 22, joined: '2025-06-02' },
-  { id: 11, name: 'Marcus Reed',   email: 'marcus.r@resolute.com',   role: 'screener', status: 'active',   orders: 15, joined: '2025-07-14' },
-  { id: 12, name: 'Riley Cho',     email: 'riley.c@resolute.com',    role: 'examiner', status: 'active',   orders: 38, joined: '2025-03-19' },
-  { id: 13, name: 'Owen Park',     email: 'owen.p@resolute.com',     role: 'examiner', status: 'active',   orders: 27, joined: '2025-08-05' },
-  { id: 14, name: 'Leah Tran',     email: 'leah.t@resolute.com',     role: 'typer',    status: 'active',   orders: 19, joined: '2025-05-21' },
-  { id: 15, name: 'Nina Reyes',    email: 'nina.r@resolute.com',     role: 'delivery', status: 'active',   orders: 31, joined: '2025-04-12' },
-  { id: 16, name: 'Jordan Blake',  email: 'operator@resolute.com',   role: 'operator', status: 'active',   orders: 26, joined: '2025-03-01' },
+  { id: 10, name: 'Dana Iqbal',    email: 'dana.i@resolute.com',     role: 'user'    , status: 'active',   orders: 22, joined: '2025-06-02' },
+  { id: 11, name: 'Marcus Reed',   email: 'marcus.r@resolute.com',   role: 'user'    , status: 'active',   orders: 15, joined: '2025-07-14' },
+  { id: 12, name: 'Riley Cho',     email: 'riley.c@resolute.com',    role: 'user'    , status: 'active',   orders: 38, joined: '2025-03-19' },
+  { id: 13, name: 'Owen Park',     email: 'owen.p@resolute.com',     role: 'user'    , status: 'active',   orders: 27, joined: '2025-08-05' },
+  { id: 14, name: 'Leah Tran',     email: 'leah.t@resolute.com',     role: 'user',    status: 'active',   orders: 19, joined: '2025-05-21' },
+  { id: 15, name: 'Nina Reyes',    email: 'nina.r@resolute.com',     role: 'user'    , status: 'active',   orders: 31, joined: '2025-04-12' },
+  { id: 16, name: 'Jordan Blake',  email: 'operator@resolute.com',   role: 'user',     status: 'active',   orders: 26, joined: '2025-03-01' },
 ]
 
-// Fixed order of pipeline roles. Routing flexibility = Admin chooses WHO does
-// each role; the role order itself stays screener → examiner → typer → delivery.
-export const ROLE_SEQUENCE = ['screener', 'examiner', 'typer', 'delivery']
-// The next role that still needs to act on an order (null once all four are done).
-export const nextRoleFor = (order) =>
-  ROLE_SEQUENCE.find(r => !(order.completedDates && order.completedDates[r])) || null
-
-// The single source of truth for status: it follows the owning role.
-// null role (all stages done) → 'delivered'.
-// BUG_010: a delivered order must never read "80% complete". Progress is
-// DERIVED from the order's terminal state rather than trusting the stored
-// column, which can lag (progressFor('delivery') is 80, and rows written at
-// that stage keep it after delivery).
-export const orderProgress = (order) => {
-  if (!order) return 0
-  if (order.status === 'cancelled') return 0
-  if (order.status === 'delivered' || order.completed) return 100
-  return Math.min(100, Math.max(0, Number(order.progress) || 0))
-}
-export const isOrderComplete = (order) =>
-  !!order && (order.status === 'delivered' || !!order.completed)
-
-export const statusForRole = (role) =>
-  role === null ? 'delivered'
-    : ({ screener: 'screening', examiner: 'examining', typer: 'typing', delivery: 'delivery' }[role] || 'received')
+// The order pipeline + state machine now lives in the portable domain package
+// (packages/domain, imported via the '@domain' alias). Re-exported here so the
+// many existing `from '../data/mockData'` imports keep working unchanged.
+export {
+  ROLE_SEQUENCE, nextRoleFor, roleAfter, statusForRole, orderProgress, isOrderComplete,
+  activeCountForUser, workloadWeight, lineItemsOf, lineSubId,
+  stagePlanOf, hasStagePlan, ownerForStage, nextOwnerFor, isSingleSeatingPlan,
+  can, effectiveCapabilities, workableStages,
+} from '@domain'
 
 export const ACTIVITY = [
   { time: '10:42 AM', action: 'Order RTS-10044 received from Pinnacle Real Estate', type: 'new' },

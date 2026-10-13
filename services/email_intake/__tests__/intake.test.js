@@ -1,7 +1,7 @@
 // Unit tests for the email-intake pipeline and its HTTP adapter.
 // Run: npm test
 // Everything is faked — no Supabase, no network, no Gmail, no Gemini.
-import { test } from 'node:test'
+import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import {
@@ -1203,33 +1203,50 @@ test('the HTTP adapter answers 422 for an ambiguous client and reports clientMat
 const restricted = { role: 'screener', superAdmin: false }
 const superAdmin = { role: 'admin', superAdmin: true }
 
+// displayClient now takes the ORDER ROW rather than a name plus a code: main
+// made that change independently and more strictly (no name fallback at all),
+// which supersedes the third argument this branch had added. The guarantee the
+// branch needed is unchanged and asserted here against main's signature — an
+// intake-created client is absent from the demo CLIENTS table by definition, so
+// its name must never reach a restricted role.
 test('restricted roles see the order’s own client code, even for a client created by intake', () => {
-  assert.equal(displayClient('Harbor Point Escrow, LLC', restricted, 'CL08'), 'CL08')
+  assert.equal(displayClient({ client: 'Harbor Point Escrow, LLC', clientCode: 'CL08' }, restricted), 'CL08')
   // The database code wins over the demo name table.
-  assert.equal(displayClient('Lakewood Title Group', restricted, 'CL42'), 'CL42')
+  assert.equal(displayClient({ client: 'Lakewood Title Group', clientCode: 'CL42' }, restricted), 'CL42')
+  // A row straight from the database, before mapping to app shape.
+  assert.equal(displayClient({ client: 'Harbor Point Escrow, LLC', client_code: 'CL08' }, restricted), 'CL08')
+})
+
+test('an unmappable client shows a placeholder, never its name', () => {
+  // The case that matters for intake: a real client with no code to hand.
+  assert.equal(displayClient({ client: 'Harbor Point Escrow, LLC' }, restricted), '—')
+  assert.equal(displayClient('Harbor Point Escrow, LLC', restricted), '—')
 })
 
 test('super admins still see the client name', () => {
-  assert.equal(displayClient('Harbor Point Escrow, LLC', superAdmin, 'CL08'), 'Harbor Point Escrow, LLC')
+  assert.equal(displayClient({ client: 'Harbor Point Escrow, LLC', clientCode: 'CL08' }, superAdmin), 'Harbor Point Escrow, LLC')
 })
 
 test('mock mode, where orders carry no clientCode, still resolves the demo codes', () => {
   assert.equal(displayClient('Lakewood Title Group', restricted), 'CL01')
 })
 
-test('every order call site passes the order’s clientCode', () => {
+test('no call site uses the old name-only form that leaked intake clients', () => {
   const root = new URL('../../../src/', import.meta.url)
   const sources = readdirSync(root, { recursive: true })
     .filter(f => /\.(jsx?|tsx?)$/.test(f))
     .map(f => [f, readFileSync(new URL(f, root), 'utf8')])
   let calls = 0
   for (const [file, text] of sources) {
-    for (const m of text.matchAll(/displayClient\((\w+)\.client, user(, (\w+)\.clientCode)?\)/g)) {
+    for (const m of text.matchAll(/displayClient\(([^),]+),\s*user\s*\)/g)) {
       calls++
-      assert.ok(m[2] && m[3] === m[1], `${file}: displayClient(${m[1]}.client, user) must pass ${m[1]}.clientCode`)
+      // `o.client` passes the NAME, so the row's own code never reaches the
+      // masking rule — exactly the leak main's signature change removed.
+      assert.equal(/\.client$/.test(m[1].trim()), false,
+        `${file}: displayClient(${m[1].trim()}, user) passes a name — pass the row instead`)
     }
   }
-  assert.ok(calls >= 22, `expected the order call sites, found ${calls}`)
+  assert.ok(calls >= 10, `expected the order call sites, found ${calls}`)
 })
 
 test('the new-client indication renders only on Admin’s order view, by code', () => {
@@ -1242,22 +1259,24 @@ test('the new-client indication renders only on Admin’s order view, by code', 
   assert.match(admin, /\{intake\.clientCreated && \([\s\S]{0,200}New client created from email: \{intake\.clientCode\}/)
   // …and that page is admin-only.
   const app = readFileSync(new URL('App.jsx', root), 'utf8')
-  assert.match(app, /path="\/admin\/\*" element=\{\s*<ProtectedRoute allowedRole="admin"><AdminDashboard \/>/)
+  assert.match(app, /path="\/admin\/\*" element=\{\s*<ProtectedRoute allowedRole="admin"><AdminDashboard \/><\/ProtectedRoute>/)
 })
 
-// ── Admin client directory: the clients table, not the demo list ─────────────
-test('Admin’s client picker lists the clients table when Supabase is live', () => {
-  const root = new URL('../../../src/', import.meta.url)
-  const backend = readFileSync(new URL('lib/backend.js', root), 'utf8')
-  assert.match(backend, /export async function fetchClients\(\) \{\s*const \{ data, error \} = await supabase\.from\('clients'\)\.select\('code, name'\)/)
-  const admin = readFileSync(new URL('pages/admin/AdminDashboard.jsx', root), 'utf8')
-  // Live → the table; mock → the demo registry, kept for explicit mock mode.
-  assert.match(admin, /useState\(isSupabaseConfigured \? \[\] : CLIENTS\)/)
-  assert.match(admin, /fetchClients\(\)\.then\(rows => \{ if \(live && rows\) setClients\(rows\) \}\)/)
-  const modal = admin.match(/function NewOrderModal\([\s\S]*?\n\}\n/)[0]
-  assert.match(modal, /const clients = useClientDirectory\(\)/)
-  assert.equal(/CLIENTS\.map/.test(modal), false, 'the picker must not list the hard-coded demo clients')
-  // The picked value is the real code; restricted admins see only the code.
-  assert.match(modal, /clientCode: f\.client,/)
-  assert.match(modal, /user\?\.superAdmin \? `\$\{c\.code\} · \$\{c\.name\}` : c\.code/)
+// The branch's Admin client-picker test is deliberately gone: main retired the
+// admin-side NewOrderModal altogether, and its own fetchClients reads
+// client_directory alongside clients (migration 20260909120000 made `clients`
+// super-admin-only), which supersedes the branch's simpler version. Nothing
+// email-intake depends on remains to assert here — a client created by intake
+// reaches Admin through the order row, covered above.
+test('the API never imports browser-only or aliased portal code', () => {
+  // schema.js reaches into src/data/products.js for the catalog. That file must
+  // stay import-free: main's mockData.js now pulls in the '@domain' Vite alias,
+  // which a serverless function cannot resolve at runtime.
+  const products = readFileSync(new URL('../../../src/data/products.js', import.meta.url), 'utf8')
+  assert.equal(/^\s*import\s/m.test(products), false, 'src/data/products.js must stay dependency-free')
+  for (const f of ['schema.js', 'intake.js', 'store.js']) {
+    const text = readFileSync(new URL(`../${f}`, import.meta.url), 'utf8')
+    assert.equal(/from\s+['"]@domain|import\.meta\.env/.test(text), false,
+      `${f} must not reach portal-only code`)
+  }
 })

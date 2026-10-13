@@ -1,16 +1,21 @@
 # Resolute Portal — Architect Constraints
 
-Role: act as Senior Lead Architect. Focus: high-quality, modular, AWS-native code.
+Role: act as Senior Lead Architect. Focus: high-quality, modular, GCP-native code.
 Verify every new feature against these constraints before implementing.
 
 ## Architecture transition
 
-- **Current:** Vercel (static Vite SPA + serverless functions in `api/`).
-- **Target:** AWS (full server). Abstract Vercel-specific code (request/response
-  handlers, `waitUntil`, rewrites) away from core logic so handlers are thin
-  adapters over portable modules (`api/_lib/`, `services/`).
+- **Current:** Vercel (static Vite SPA + serverless functions in `api/`) on top
+  of Supabase (Postgres + Auth + RLS + Realtime + Storage).
+- **Target:** GCP (full server, e.g. Cloud Run) with the database on Cloud SQL
+  for PostgreSQL — the relational schema, RLS policies and the
+  `guard_order_handoff` trigger move as-is, so do NOT adopt a non-relational
+  store (e.g. Firestore) that would force the security model to be rewritten.
+  Abstract Vercel/Supabase-specific code (request/response handlers, `waitUntil`,
+  rewrites, the `auth.uid()` / JWT-claims coupling) away from core logic so
+  handlers are thin adapters over portable modules (`api/_lib/`, `services/`).
 
-## AI & automation — BLOCKED until post-AWS migration
+## AI & automation — BLOCKED until post-GCP migration
 
 - Do NOT add or extend AI/LLM logic that runs on Vercel. No new AI libraries in
   `package.json` for the Vercel deployment.
@@ -21,8 +26,8 @@ Verify every new feature against these constraints before implementing.
   `/api/orders/email-intake` — so the rule above still holds: no AI runs on
   Vercel and no AI library is in `package.json`.
 - Post-migration goal (unchanged): email stream → parse attachments (invoices /
-  search packages) with AWS-native AI (Textract / Comprehend / Bedrock) →
-  auto-draft order in the portal. Rebuild the extraction behind one
+  search packages) with GCP-native AI (Document AI / Cloud Natural Language /
+  Vertex AI) → auto-draft order in the portal. Rebuild the extraction behind one
   provider-agnostic seam so the provider stays swappable.
 
 ## Billing & payment logic
@@ -51,11 +56,33 @@ Verify every new feature against these constraints before implementing.
 - Pipeline roles in fixed order: screener → examiner → typer → delivery
   (`ROLE_SEQUENCE` in `src/data/mockData.js`). Status derives from the owning
   role (`statusForRole`).
-- Between stages, orders park with Admin for approval
-  (`returnToAdmin` in `src/context/OrderContext.jsx`, `assignedTo: 'admin'`).
-- **Single Seating** desk (role key `operator`): works orders end-to-end, but
-  only orders Admin explicitly assigns to it (`workflow.singleSeating`), with
-  Admin approval after every phase.
+- **Stage routing (E2) — the admin sets the course of flow ONCE.** At intake the
+  admin writes `workflow.stagePlan` (`{screener, examiner, typer, delivery}` →
+  production-user ids; single seating = the same id in every slot; an empty slot
+  parks that stage with Admin). Completing a stage then routes the order straight
+  to the pre-assigned owner of the *next* stage — no return-to-Admin between
+  stages, and **a production user can never choose who gets the order next** (the
+  anti-bias rule). The only ways a production user moves an order are: complete
+  the current stage (→ the plan's next owner), or escalate to Admin with a note
+  for a disruption/query. All of this is enforced server-side by
+  `guard_order_handoff()` (migration `20261012000000_e2_stage_routing_guard.sql`);
+  the UI shares the read model (`stagePlanOf`/`nextOwnerFor`/… in
+  `packages/domain`) and the transitions `applyStagePlan`/`applyRoutedStep`
+  (`setStagePlan`/`routeStep` in `OrderContext`). The admin editor is
+  `components/StagePlanModal.jsx` (toggle: single seating ⟷ stage-by-stage).
+  **Backward-compatible:** an order with no `stagePlan` keeps the legacy
+  behaviour — legacy single-seating (`workflow.singleSeating`, `advanceInSeat`)
+  advances in-seat; otherwise it parks with Admin each stage (`returnToAdmin`,
+  `assignedTo: 'admin'`).
+- **Production Desk** (role key `user` — the single, consolidated production
+  login; renamed from `operator`, generalized from "Single Seating", see
+  docs/adr/0001): the standard production workspace at `/user`. A `user` works
+  whichever stage the plan routes to them — one stage of an order, or all four
+  (single seating) — on orders they own in the `user` pool. The four stage
+  *login* roles (screener/examiner/typer/delivery) are retired (D3) — the stage
+  names survive only as pipeline identifiers (`ROLE_SEQUENCE`/`statusForRole`).
+  RLS: `orders_update_assigned` = `can_work_production()` (`my_role() = 'user'`)
+  `and assigned_to = 'user' and assigned_user_id = auth.uid()` (owner-scoped).
 - Client identities: non-super-admins see client codes, not names
   (`displayClient` — always pass the record's own `clientCode`; its demo
   name→code table only knows CL01–CL07).
@@ -68,7 +95,12 @@ Verify every new feature against these constraints before implementing.
   renders and sends. Routing (who, how often) lives in the DB
   (`notification_types` + per-user `notification_preferences`); wording lives in
   `types.js`. Modes: `immediate`, and a daily `digest` so nobody gets forty
-  mails a day.
+  mails a day. Staff set their own under **Notifications** in their portal
+  (`components/NotificationSettings.jsx`, mounted at `/<role>/notifications` in
+  the staff portals — Admin and the production `user` desk after D3); no
+  preference row means "follow the type's
+  `default_mode`", and RLS keys on `auth.uid()`, so nobody — super admins
+  included — edits anyone else's.
 - **Staff-only recipients.** Notifications go to Resolute team members by role.
   Clients are never notified by email — portal-only still governs client
   contact. Templates mask client names for non-admin recipients, mirroring
@@ -76,7 +108,7 @@ Verify every new feature against these constraints before implementing.
 - **The provider is one file.** `providers/ses.js` (SigV4 over `node:crypto`,
   no SDK) and `providers/preview.js`. `NOTIFY_PROVIDER` defaults to `preview`,
   which writes files and mails nobody — an unconfigured deploy cannot mail real
-  colleagues. Nothing in `services/notify/` knows where it runs, so the AWS move
+  colleagues. Nothing in `services/notify/` knows where it runs, so the GCP move
   replaces the caller, not the code.
 - **The app still reads no mail.** The old in-app ingest
   (`api/webhooks/inbound-email.js`, `services/email_ingest/`) stays removed and

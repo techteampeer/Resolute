@@ -1,23 +1,32 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { ORDERS, ACTIVITY, nextRoleFor, statusForRole } from '../data/mockData'
-import { isSupabaseConfigured, fetchOrders, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
+import { ORDERS, ACTIVITY } from '../data/mockData'
+// The order state machine is now the portable domain core (packages/domain).
+// This context keeps the side effects (setState, persistence, logging) and
+// delegates every state transition to these pure functions.
+import {
+  applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
+  applySingleSeatStep, applyReassign, applyPartialHandoff, applyStagePlan, applyRoutedStep,
+  STAGE_BY_ROLE, todayISO,
+} from '@domain'
+import { isSupabaseConfigured, fetchOrders, fetchOrderById, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
 import { useAuth } from './AuthContext'
 
 const OrderContext = createContext(null)
 
-// Status follows the owning role, so it advances one stage at a time in order.
-const PIPELINE = ['received', 'screening', 'examining', 'typing', 'delivery', 'delivered']
-const progressFor = (status) => {
-  const i = PIPELINE.indexOf(status)
-  return i <= 0 ? (status === 'received' ? 5 : 0) : Math.round((i / (PIPELINE.length - 1)) * 100)
-}
-const STAGE_BY_ROLE = { screener: 'screening', examiner: 'examination', typer: 'typing', delivery: 'delivery' }
-const todayISO = () => new Date().toISOString().slice(0, 10)
+// Mock-mode order-id sequence. Module-scoped so it survives across createOrder
+// calls that happen faster than React flushes state (e.g. a bulk import loop),
+// where the closed-over `orders` array would otherwise yield the same max twice.
+let mockIdSeq = null
 
 export function OrderProvider({ children }) {
   const { user } = useAuth()
   const [orders, setOrders]           = useState(ORDERS)
   const [activityLog, setActivityLog] = useState(ACTIVITY)
+  // Why the last order write was refused, or null. A write filtered out by RLS
+  // comes back from PostgREST as 200 with zero rows, so completing a stage on an
+  // order that is no longer yours looked identical to succeeding — the optimistic
+  // local update stayed on screen and the work was silently discarded.
+  const [writeError, setWriteError]   = useState(null)
 
   // Hydrate from Supabase + live updates when configured; otherwise keep mock.
   // Keyed on the signed-in identity: the provider mounts on the login page
@@ -26,65 +35,220 @@ export function OrderProvider({ children }) {
   // actually sees their own rows. Demo users have no backend session — skip.
   useEffect(() => {
     if (!isSupabaseConfigured || !user || user.demo) return
-    let unsub = () => {}
-    const load = () => fetchOrders().then(rows => { if (rows) setOrders(rows) })
-    load()
-    fetchActivity().then(rows => { if (rows) setActivityLog(rows) })
-    unsub = subscribeOrders(load)
-    return () => unsub()
+    let alive = true
+    let started = false          // snapshot fetch begun (once, after SUBSCRIBED)
+    let hydrated = false         // snapshot applied
+    const pending = new Set()    // ids that changed before the snapshot landed
+    const gen = new Map()        // per-id generation: the newest event/read wins
+
+    // Realtime applies DELTAS instead of re-reading the whole table. The old
+    // handler re-ran fetchOrders() on every change, so N connected staff each
+    // re-read every order on every write — O(N²) traffic that melts at ~100
+    // concurrent. Now a change fetches only the row that changed (by id, RLS-
+    // scoped, same client-name join) and upserts it, or drops it if it is gone.
+    const bump = (id) => { const g = (gen.get(id) || 0) + 1; gen.set(id, g); return g }
+
+    // Fetch this id's CURRENT row and apply it, unless a newer event superseded
+    // this read (generation guard — prevents a slow read from resurrecting a
+    // deleted row or applying stale data). A transient fetch error is ignored, so
+    // a network blip is never mistaken for a delete.
+    const refresh = (id) => {
+      const g = bump(id)
+      return fetchOrderById(id).then(res => {
+        if (!alive || gen.get(id) !== g || res.error) return
+        const row = res.row
+        setOrders(os => {
+          if (!row) return os.some(o => o.id === id) ? os.filter(o => o.id !== id) : os
+          const i = os.findIndex(o => o.id === row.id)
+          if (i === -1) return [row, ...os]
+          const next = os.slice(); next[i] = row; return next
+        })
+      })
+    }
+
+    const onChange = (payload) => {
+      const id = payload?.new?.id ?? payload?.old?.id
+      if (!id) return
+      // Before the snapshot lands, buffer ids — applying now would be clobbered by
+      // the snapshot; they are replayed against the CURRENT state after hydrate.
+      if (!hydrated) { pending.add(id); return }
+      if (payload.eventType === 'DELETE') { bump(id); setOrders(os => os.filter(o => o.id !== id)); return }
+      refresh(id)   // INSERT / UPDATE
+    }
+
+    // Start the snapshot only once the channel is actually SUBSCRIBED — before
+    // that, postgres changes are not delivered, so a change would be neither seen
+    // nor buffered. On a channel error/timeout, hydrate anyway (degraded realtime
+    // beats an empty screen). Either way it runs once.
+    const startHydrate = () => {
+      if (started) return
+      started = true
+      fetchOrders().then(rows => {
+        if (!alive) return
+        if (rows) setOrders(rows)
+        hydrated = true
+        pending.forEach(refresh)   // replay changes that raced the snapshot
+        pending.clear()
+      })
+    }
+    const unsub = subscribeOrders(onChange, (status) => {
+      if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') startHydrate()
+    })
+    // Safety net: if the channel never reports a status (realtime down/misconfig),
+    // hydrate anyway after a moment so data still loads (startHydrate is idempotent).
+    const fallback = setTimeout(startHydrate, 3000)
+    fetchActivity().then(rows => { if (alive && rows) setActivityLog(rows) })
+    return () => { alive = false; clearTimeout(fallback); unsub() }
+    // Keyed on identity, not the whole `user` object: re-subscribe only when who's
+    // logged in actually changes, never on every render that hands us a fresh ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.email, user?.demo])
 
   // Local activity feed + best-effort append to the durable order_events audit
   // trail (orderId/actor ride on the entry when the caller knows them).
   const log = (entry) => {
     setActivityLog(a => [entry, ...a])
-    if (isSupabaseConfigured) logEvent({
+    // Only staff may append to the durable trail — order_events_insert is
+    // is_staff(). Everything a client does is recorded by the database itself
+    // (log_order_created() on placement, client_cancel_order() and
+    // client_mark_payment() for the rest), so attempting the insert from a
+    // client session added nothing and put a 403 in the console on every single
+    // order placed.
+    if (isSupabaseConfigured && user?.role && user.role !== 'client') logEvent({
       orderId: entry.orderId, action: entry.action, type: entry.type, actor: entry.actor,
       // Whoever performed the action does not need to be told about it.
       actorEmail: entry.actorEmail || user?.email || null,
       audience: entry.audience || 'staff',
     })
   }
-  const persist = (order) => { if (isSupabaseConfigured) saveOrder(order) }
+  const persist = (order) => {
+    if (!isSupabaseConfigured) return
+    saveOrder(order)
+      .then(r => {
+        if (r && r.ok === false) {
+          // A8: on a stale conflict the realtime subscription is already
+          // delivering the newer row, so we just surface the notice; otherwise
+          // it's an ownership/RLS refusal.
+          setWriteError(r.error || 'not saved')
+        } else {
+          setWriteError(null)
+          // Advance our optimistic-lock baseline to the row's new updated_at so a
+          // rapid second save by the same user isn't misread as a conflict.
+          if (r?.updatedAt) setOrders(os => os.map(o => (o.id === order.id ? { ...o, updatedAt: r.updatedAt } : o)))
+        }
+      })
+      .catch(e => setWriteError(e.message))
+  }
+  const clearWriteError = () => setWriteError(null)
 
-  const assignOrder = (orderId, { queue, personName } = {}) => {
+  const assignOrder = (orderId, { queue, personName, userId } = {}) => {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
-      const next = { ...o, assignedTo: queue }
-      // Routing to the Single Seating desk claims the order for that desk
-      // end-to-end; routing to a stage role releases it back to the pipeline.
-      if (queue === 'operator') next.workflow = { ...o.workflow, singleSeating: true }
-      else if (['screener', 'examiner', 'typer', 'delivery'].includes(queue)) next.workflow = { ...o.workflow, singleSeating: false }
-      if (personName) next[queue] = personName
-      // Status follows the owning role, always — pinning it to 'received' here
-      // left a freshly assigned order reading "Received" while it sat in the
-      // screener's queue. 'admin' and 'operator' aren't pipeline stages, so for
-      // those the status reflects the stage actually being worked next.
-      const STAGES = ['screener', 'examiner', 'typer', 'delivery']
-      next.status = statusForRole(STAGES.includes(queue) ? queue : nextRoleFor(o))
-      next.progress = progressFor(next.status)
+      const next = applyAssign(o, { queue, personName, userId })
       persist(next)
       return next
     }))
-    log({ id: Date.now(), orderId, action: `Admin assigned ${orderId} to ${queue}${personName ? ` · ${personName}` : ''}`, time: 'Just now', type: 'status', audience: 'staff' })
+    log({ id: Date.now(), orderId, action: `Admin assigned ${orderId} to ${personName || queue}`, time: 'Just now', type: 'status', audience: 'staff' })
   }
 
-  let advancedTo = null
-  const completeStep = (orderId, role, userName, notes) => {
-    advancedTo = null
+  // Admin sets the order's COURSE OF FLOW once (E2): which production user owns
+  // each stage (workflow.stagePlan). Routes the order to the owner of the stage
+  // currently due; from then on, completing a stage auto-routes to the next
+  // planned owner with no Admin gate — the production team never picks who gets
+  // an order next. Admin writes bypass the guard, so the owner is set directly.
+  const setStagePlan = (orderId, { singleSeating, plan }, adminName = 'Admin') => {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
-      const newDates = { ...o.completedDates, [role]: todayISO() }
-      const nextRole = nextRoleFor({ completedDates: newDates })
-      advancedTo = nextRole
-      const allDone = nextRole === null
-      const nextStatus = statusForRole(nextRole)   // owner and status stay in lockstep
-      const next = {
-        ...o, status: nextStatus, assignedTo: nextRole,
-        progress: allDone ? 100 : progressFor(nextStatus),
-        completed: allDone ? (o.completed || todayISO()) : o.completed,
-        completedDates: newDates, completedBy: { ...o.completedBy, [role]: userName },
-      }
+      const next = applyStagePlan(o, { singleSeating, plan })
+      persist(next)
+      return next
+    }))
+    log({ id: Date.now(), orderId, action: `${adminName} set the stage plan for ${orderId}${singleSeating ? ' (single seating)' : ''}`, time: 'Just now', type: 'status', audience: 'staff' })
+  }
+
+  // A production owner completes a stage on a PLANNED order and the order routes
+  // itself to the pre-assigned next owner (E2) — in-pool, no Admin gate — or to
+  // Admin if that stage has no owner, or delivered on the final stage. The owner
+  // never chooses the recipient; the plan does.
+  const routeStep = (orderId, role, userName, notes, extra = {}) => {
+    let advancedTo = null, routedTo = null
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const r = applyRoutedStep(o, role, userName, extra)
+      advancedTo = r.advancedTo; routedTo = r.routedTo
+      persist(r.next)
+      return r.next
+    }))
+    log({
+      id: Date.now(), orderId, actor: userName,
+      action: `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId}`
+        + (advancedTo ? (routedTo === 'admin' ? ' → returned to Admin (no one assigned to the next stage)' : ` → routed to the ${STAGE_BY_ROLE[advancedTo] || advancedTo} owner`) : ' → delivered')
+        + (notes ? ` (${notes})` : ''),
+      time: 'Just now', type: advancedTo && routedTo !== 'admin' ? 'progress' : 'status',
+      audience: advancedTo ? 'staff' : 'all',
+    })
+  }
+
+  // Admin reassigns an order to a different production user (cover an absence,
+  // rebalance workload). Keeps the pipeline position; admin writes bypass the
+  // handoff guard, so this may set the owner directly.
+  const reassign = (orderId, toUserId, toName) => {
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const next = applyReassign(o, toUserId)
+      persist(next)
+      return next
+    }))
+    log({ id: Date.now(), orderId, action: `Admin reassigned ${orderId}${toName ? ` to ${toName}` : ''}`, time: 'Just now', type: 'status', audience: 'staff' })
+  }
+
+  // Single-seating: the owner completes a stage and CONTINUES on the same order
+  // with no Admin gate (A1). Delivery completes the order. Mirrors completeStep
+  // but keeps the order with the same production user between stages.
+  const advanceInSeat = (orderId, role, userName, notes, extra = {}) => {
+    let advancedTo = null
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const { next, advancedTo: adv } = applySingleSeatStep(o, role, userName, extra)
+      advancedTo = adv
+      persist(next)
+      return next
+    }))
+    log({
+      id: Date.now(), orderId, actor: userName,
+      action: `${userName} completed ${STAGE_BY_ROLE[role] || role} on ${orderId}`
+        + (advancedTo ? ` → continuing to ${STAGE_BY_ROLE[advancedTo] || advancedTo}` : ' → delivered') + (notes ? ` (${notes})` : ''),
+      time: 'Just now', type: 'progress',
+      audience: advancedTo ? 'staff' : 'all',
+    })
+  }
+
+  // A production user hands a partially-completed order back to Admin with an
+  // internal note (they can't finish it); Admin then reassigns it. No stage is
+  // stamped. Handoffs route through Admin, never user-to-user.
+  const partialHandoff = (orderId, note, userName) => {
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const next = applyPartialHandoff(o, note, userName)
+      persist(next)
+      return next
+    }))
+    log({ id: Date.now(), orderId, actor: userName, action: `${userName} handed ${orderId} back to Admin` + (note ? ` (${note})` : ''), time: 'Just now', type: 'status', audience: 'staff' })
+  }
+
+  // `extra` merges into workflow as part of the SAME write as the stage move.
+  // Callers used to do updateOrder() for their documents and then completeStep()
+  // for the move, as two independent un-awaited PATCHes; whichever landed last
+  // won, and the updateOrder one carries the pre-move status. It only ever
+  // appeared to work because RLS refused the stale write once the move took the
+  // order off the caller's desk (orders_update_assigned), which is not
+  // protection — it is luck, and it runs out for anyone with a broader policy.
+  const completeStep = (orderId, role, userName, notes, extra = {}) => {
+    let advancedTo = null
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const { next, advancedTo: adv } = applyCompleteStep(o, role, userName, extra)
+      advancedTo = adv
       persist(next)
       return next
     }))
@@ -104,19 +268,7 @@ export function OrderProvider({ children }) {
   const returnToAdmin = (orderId, role, userName, notes, extra = {}) => {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
-      const newDates = { ...o.completedDates, [role]: todayISO() }
-      const nextRole = nextRoleFor({ completedDates: newDates })
-      const nextStatus = statusForRole(nextRole)
-      const next = {
-        ...o,
-        status: nextStatus,
-        assignedTo: 'admin',
-        // Pipeline finished → 100, never progressFor('delivery') = 80.
-        progress: nextRole === null ? 100 : progressFor(nextStatus),
-        completedDates: newDates,
-        completedBy: { ...o.completedBy, [role]: userName },
-        workflow: { ...o.workflow, ...extra },
-      }
+      const { next } = applyReturnToAdmin(o, role, userName, extra)
       persist(next)
       return next
     }))
@@ -127,6 +279,12 @@ export function OrderProvider({ children }) {
     setOrders(os => os.map(o => (o.id === updated.id ? updated : o)))
     persist(updated)
   }
+
+  // Record an admin action in the durable audit trail. Hold, resume and
+  // clarification all changed the row and messaged the client but wrote no
+  // order_events row, so none of them appeared in the order's history.
+  const logAction = ({ orderId, action, type = 'status', audience = 'all', actor }) =>
+    log({ id: Date.now(), orderId, actor, action, time: 'Just now', type, audience })
 
   // Client marks an invoice paid. Clients can't UPDATE orders directly (RLS), so
   // persist through the client_mark_payment RPC; the row's other fields are
@@ -143,15 +301,11 @@ export function OrderProvider({ children }) {
   // outright; once any stage is underway it becomes a request parked for Admin.
   const cancelOrder = (orderId, actor = 'Client') => {
     const target = orders.find(o => o.id === orderId)
-    const fresh = target?.status === 'received'
-    const mode = fresh ? 'cancelled' : 'requested'
-    // Optimistic local update.
-    setOrders(os => os.map(o => {
-      if (o.id !== orderId) return o
-      return fresh
-        ? { ...o, status: 'cancelled', assignedTo: null, progress: 0, workflow: { ...o.workflow, cancelRequested: null } }
-        : { ...o, workflow: { ...o.workflow, cancelRequested: { by: actor, at: todayISO() } } }
-    }))
+    // The cancel policy (free until screening) lives in the domain core; take the
+    // resulting mode from it rather than re-deriving the rule here.
+    const mode = target ? applyClientCancel(target, actor).mode : 'requested'
+    // Optimistic local update (same pure transition).
+    setOrders(os => os.map(o => (o.id === orderId ? applyClientCancel(o, actor).next : o)))
     // Durable persistence: clients can't UPDATE orders (RLS), so go through the
     // SECURITY DEFINER RPC, which also records the order_events row that shows up
     // in Admin's notifications. Mock mode just keeps the local update.
@@ -178,9 +332,7 @@ export function OrderProvider({ children }) {
   const resolveCancel = (orderId, approve, actor = 'Admin') => {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
-      const next = approve
-        ? { ...o, status: 'cancelled', assignedTo: null, progress: 0, workflow: { ...o.workflow, cancelRequested: null } }
-        : { ...o, workflow: { ...o.workflow, cancelRequested: null } }
+      const next = applyResolveCancel(o, approve)
       persist(next)
       return next
     }))
@@ -195,11 +347,16 @@ export function OrderProvider({ children }) {
   const createOrder = async (data = {}) => {
     let id = isSupabaseConfigured ? await nextOrderId() : null
     if (!id) {
-      const max = orders.reduce((m, o) => {
-        const n = parseInt(String(o.id).replace(/\D/g, ''), 10)
-        return Number.isNaN(n) ? m : Math.max(m, n)
-      }, 10048)
-      id = `RTS-${max + 1}`
+      // Seed the monotonic sequence once from the current max, then increment —
+      // so a rapid loop can't collide before setOrders flushes.
+      if (mockIdSeq === null) {
+        mockIdSeq = orders.reduce((m, o) => {
+          const n = parseInt(String(o.id).replace(/\D/g, ''), 10)
+          return Number.isNaN(n) ? m : Math.max(m, n)
+        }, 10048)
+      }
+      mockIdSeq += 1
+      id = `RTS-${mockIdSeq}`
     }
     const order = {
       id,
@@ -230,7 +387,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, assignOrder, completeStep, returnToAdmin, updateOrder, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, writeError, clearWriteError, assignOrder, reassign, setStagePlan, routeStep, advanceInSeat, partialHandoff, completeStep, returnToAdmin, updateOrder, logAction, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )

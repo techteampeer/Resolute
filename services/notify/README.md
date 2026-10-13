@@ -47,10 +47,39 @@ templates can be reviewed before SES or DNS are ready.
 The default is `preview` on purpose. An unconfigured deploy writes files instead
 of mailing real colleagues.
 
+## Who chooses what
+
+Two layers, and the order matters:
+
+- **`notification_types`** is the catalogue. `default_roles` says which roles a
+  type can reach; `default_mode` (`immediate` / `digest` / `off`) is what a
+  recipient gets when they have expressed no preference.
+- **`notification_preferences`** holds one row per person per type, and *only*
+  when that person has chosen something. No row means "follow the default", so
+  changing a default moves everyone who never chose.
+
+`enqueue_notification()` reads `coalesce(np.mode, default_mode)` and skips
+anyone whose effective mode is `off`, so a preference decides delivery before an
+outbox row is ever written.
+
+Staff set their own under **Notifications** in their portal
+(`src/components/NotificationSettings.jsx`, mounted at `/<role>/notifications`
+in all six staff portals). RLS is per-user: `notif_pref_own_*` keys on
+`auth.uid()`, so nobody — super admins included — can write another person's
+row; admins may only read them. Clients never appear: client contact is
+portal-only, so no client account is ever a recipient.
+
+A dynamically routed type lists every role that could receive it in
+`default_roles` and is narrowed per event by the caller's `p_roles`
+(`order.assigned` is the one that does this). That keeps the settings screen
+able to ask one question — "what can reach me?" — without restating the routing
+rules in the UI.
+
 ## Adding an event type
 
 1. Insert a row in `notification_types` (key, label, `default_roles`,
-   `default_mode`) — this decides *who* and *how often*.
+   `default_mode`) — this decides *who* and *how often*, and makes the type
+   appear on the Notifications screen of every role in `default_roles`.
 2. Add a matching entry to `TYPES` in `types.js` — this decides *how it reads*.
 3. Raise it: either extend the classifier in `notify_on_order_event()`, or call
    `enqueue_notification()` directly from a new trigger.

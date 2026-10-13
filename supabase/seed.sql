@@ -54,6 +54,16 @@ insert into public.orders
    '{"screener":"2026-06-08","examiner":"2026-06-10"}','{"screener":"Sam Carter","examiner":"Jordan Lee"}')
 on conflict (id) do nothing;
 
+-- Post-D3 (ADR 0001): the stage LOGIN roles are retired and production orders
+-- live in the `user` pool. The fixtures above are written on stage desks for
+-- readability; consolidate them into the pool exactly as the D3 migration
+-- re-points real in-flight data, so they surface on the Production Desk /user
+-- workspace. Their pipeline stage still derives from completed_dates.
+update public.orders
+   set assigned_to = 'user',
+       workflow = coalesce(workflow, '{}'::jsonb) || '{"singleSeating":true}'::jsonb
+ where assigned_to in ('screener', 'examiner', 'typer', 'delivery');
+
 -- Demo: attach screener/examiner docs to RTS-10044 (Files section).
 update public.orders
 set workflow = coalesce(workflow, '{}'::jsonb) || jsonb_build_object(
@@ -96,12 +106,16 @@ from (values
   ('saravanan@resolute.com','admin123',    'Saravanan',     'admin'),
   ('vivek@resolute.com',    'vivek123',    'Vivek',         'admin'),
   ('admin@resolute.com',    'admin123',    'Alex Morrison', 'admin'),
-  ('screener@resolute.com', 'screener123', 'Sam Carter',    'screener'),
-  ('examiner@resolute.com', 'examiner123', 'Jordan Lee',    'examiner'),
-  ('typer@resolute.com',    'typer123',    'Priya Nair',    'typer'),
-  ('delivery@resolute.com', 'delivery123', 'Morgan Davis',  'delivery'),
+  ('superadmin@resolute.com','admin123',   'Super Admin',   'admin'),
+  -- Post-D3: former stage staff are consolidated into the `user` production
+  -- role (the migration re-roles the same accounts on a real database). The
+  -- emails are kept so existing logins/bookmarks still resolve.
+  ('screener@resolute.com', 'screener123', 'Sam Carter',    'user'),
+  ('examiner@resolute.com', 'examiner123', 'Jordan Lee',    'user'),
+  ('typer@resolute.com',    'typer123',    'Priya Nair',    'user'),
+  ('delivery@resolute.com', 'delivery123', 'Morgan Davis',  'user'),
   ('client@resolute.com',   'client123',   'Taylor Brooks', 'client'),
-  ('operator@resolute.com', 'operator123', 'Jordan Blake',  'operator')
+  ('operator@resolute.com', 'operator123', 'Jordan Blake',  'user')
 ) as d(email, pass, name, role)
 where not exists (select 1 from auth.users u where u.email = d.email);
 
@@ -116,7 +130,41 @@ from auth.users u
 where u.email like '%@resolute.com'
   and not exists (select 1 from auth.identities i where i.user_id = u.id and i.provider = 'email');
 
--- Fields the trigger doesn't set: super admins + the demo client's code.
+-- Fields the trigger doesn't set: the role, super admins, the demo client's code.
+--
+-- handle_new_user() deliberately provisions every new profile as 'client' and
+-- ignores the role in raw_user_meta_data — otherwise anyone could POST to the
+-- public /auth/v1/signup endpoint with {"data":{"role":"admin"}} and mint an
+-- administrator (see 20260901220000_close_signup_privilege_escalation.sql). Real
+-- accounts get their role from an admin through api/admin/users.js, which runs as
+-- the service role; these demo logins get theirs here. Without this every seeded
+-- login lands on the client portal.
+update public.profiles p set role = d.role::user_role
+from (values
+  ('rajni@resolute.com',    'admin'),
+  ('saravanan@resolute.com','admin'),
+  ('vivek@resolute.com',    'admin'),
+  ('admin@resolute.com',    'admin'),
+  ('superadmin@resolute.com','admin'),
+  ('screener@resolute.com', 'user'),
+  ('examiner@resolute.com', 'user'),
+  ('typer@resolute.com',    'user'),
+  ('delivery@resolute.com', 'user'),
+  ('client@resolute.com',   'client'),
+  ('operator@resolute.com', 'user')
+) as d(email, role)
+where p.email = d.email;
+
 update public.profiles set super_admin = true
-where email in ('rajni@resolute.com','saravanan@resolute.com','vivek@resolute.com');
+where email in ('rajni@resolute.com','saravanan@resolute.com','vivek@resolute.com','superadmin@resolute.com');
+
+-- Vivek alone reconciles money (CLAUDE.md). 20260908010000 seeds the same flag,
+-- but a `db reset` runs every migration before this file, so at that point
+-- profiles is still empty and the update matches nothing -- leaving a local
+-- database on which NOBODY can confirm a payment, mark a vendor payout paid, or
+-- mark a subscription paid, since the guard triggers refuse all three. Set it
+-- here too, where the rows actually exist. Production is unaffected: its
+-- profiles predate the migration, so the update there found Vivek.
+update public.profiles set can_confirm_payments = true
+where email = 'vivek@resolute.com';
 update public.profiles set client_code = 'CL01' where email = 'client@resolute.com';
