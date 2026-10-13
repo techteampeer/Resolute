@@ -104,6 +104,22 @@ export function onAuthChange(cb) {
   return () => data.subscription.unsubscribe()
 }
 
+// Set the signed-in account's password — used by the set-password screen that an
+// invite / reset link lands on (the recovery link establishes a session; the user
+// then chooses their own password here).
+export async function updatePassword(password) {
+  const { error } = await supabase.auth.updateUser({ password })
+  return error ? { success: false, error: error.message } : { success: true }
+}
+
+// Fires when a recovery/invite link has been processed and the app should show
+// "set your password" (Supabase emits PASSWORD_RECOVERY once it consumes the
+// token from the URL).
+export function onPasswordRecovery(cb) {
+  const { data } = supabase.auth.onAuthStateChange((event) => { if (event === 'PASSWORD_RECOVERY') cb() })
+  return () => data.subscription.unsubscribe()
+}
+
 // ── Orders ─────────────────────────────────────────────────────────────────
 export async function fetchOrders() {
   const { data, error } = await supabase.from('orders').select('*, clients(name)').order('created', { ascending: false })
