@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useOrders } from '../context/OrderContext'
 import { clientCode as codeByName } from '../data/mockData'
 import { ROLE_COLOR } from '../lib/ui'
-import { MapPin, LogOut, Bell, ChevronDown, Menu } from 'lucide-react'
+import { LogOut, Bell, ChevronDown, Menu } from 'lucide-react'
 
 // BUG_001: notifications derive from the live activity feed. A stable per-item
 // key (durable id, else time+text) lets us track which the signed-in user has
@@ -132,9 +132,9 @@ export default function Layout({ children, navItems, role, roleColor = ROLE_COLO
       style={{ background: T.sidebarBg }}>
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b" style={{ borderColor: T.sidebarBdr }}>
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: ROLE_COLOR }}>
-          <MapPin className="w-4 h-4" style={{ color: '#FFFFFF' }} />
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden"
+          style={{ background: '#FFFFFF' }}>
+          <img src="/logo-icon.png" alt="Resolute" className="w-7 h-7" style={{ objectFit: 'contain' }} />
         </div>
         {(!collapsed || mobile) && (
           <div className="overflow-hidden min-w-0">

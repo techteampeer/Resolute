@@ -7,26 +7,12 @@ import {
   documentClauses, deedHasContent, judgmentHasContent,
 } from '../data/fulfillment'
 
-// Inline brand mark (swoosh + wordmark + tagline). Swap for the official PNG by
-// dropping it in /public and replacing this with <img src="/resolute-logo.png">.
-export const LOGO_SVG = `
-<svg width="150" height="52" viewBox="0 0 150 52" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Resolute">
-  <defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="#f0a020"/><stop offset="1" stop-color="#e0431f"/></linearGradient></defs>
-  <g transform="translate(2,2)">
-    <path d="M24 4a20 20 0 1 0 14 6" fill="none" stroke="url(#rg)" stroke-width="7" stroke-linecap="round"/>
-    <path d="M38 2 L42 14 L30 12 Z" fill="#e0431f"/>
-  </g>
-  <text x="52" y="26" font-family="Georgia, serif" font-size="20" font-weight="700" fill="#12284C" letter-spacing="1">RESOLUTE</text>
-  <text x="52" y="40" font-family="Arial, sans-serif" font-size="8" fill="#2441E5" letter-spacing="0.5">integrity · intelligence · innovation</text>
-</svg>`
-
-// Prefer the official logo from /public; fall back to the inline mark if absent.
-const LOGO_HTML = `<span style="display:inline-block">
-  <img src="/logo-left.jpg" alt="Resolute" style="height:58px;width:auto;max-width:300px;display:block"
-       onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'" />
-  <span style="display:none">${LOGO_SVG}</span>
-</span>`
+// Official company brand mark (public/logo-horizontal.png). If the asset ever
+// fails to load the header degrades to the plain company name rather than a
+// broken-image icon.
+const LOGO_HTML = `<img src="/logo-horizontal.png" alt="Resolute Title Services"
+     style="height:54px;width:auto;max-width:340px;display:block"
+     onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'Resolute Title Services',style:'font-size:17pt;font-weight:700;color:#12284C'}))" />`
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const val = (s, ph = '—') => (s && String(s).trim() ? esc(s) : `<span class="ph">${ph}</span>`)

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth, toErrorMessage } from '../context/AuthContext'
 import {
   ShieldCheck, Users,
-  Eye, EyeOff, ArrowRight, MapPin, CheckCircle2, AlertCircle
+  Eye, EyeOff, ArrowRight, CheckCircle2, AlertCircle
 } from 'lucide-react'
 
 // Dev/staging quick-login tiles — labelled by ROLE, never by person. Each pre-
@@ -99,13 +99,10 @@ export default function LoginPage({ variant = 'client' }) {
       {/* ── Left hero panel ── */}
       <div className="hidden lg:flex flex-col justify-between w-1/2 p-16 relative z-10">
         <div>
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-16">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#2441E5' }}>
-              <MapPin className="w-5 h-5" style={{ color: '#FFFFFF' }} />
-            </div>
-            <span className="text-2xl font-bold tracking-tight" style={{ color: '#12284C' }}>Resolute</span>
-            <span className="text-sm font-medium ml-1" style={{ color: '#5C6E8C' }}>Portal</span>
+          {/* Logo — official vertical brand lockup */}
+          <div className="mb-14">
+            <img src="/logo-vertical.png" alt="Resolute Title Services"
+              style={{ height: 140, width: 'auto' }} />
           </div>
 
           <h1 className="text-5xl font-bold leading-tight mb-6">
@@ -135,12 +132,10 @@ export default function LoginPage({ variant = 'client' }) {
       {/* ── Right sign-in panel ── */}
       <div className="flex-1 flex items-center justify-center p-6 relative z-10">
         <div className="w-full max-w-md">
-          {/* Mobile logo */}
-          <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#2441E5' }}>
-              <MapPin className="w-4 h-4" style={{ color: '#FFFFFF' }} />
-            </div>
-            <span className="text-xl font-bold" style={{ color: '#12284C' }}>Resolute Portal</span>
+          {/* Mobile logo — official horizontal brand lockup */}
+          <div className="mb-8 lg:hidden">
+            <img src="/logo-horizontal.png" alt="Resolute Title Services"
+              style={{ height: 38, width: 'auto', maxWidth: '100%' }} />
           </div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
