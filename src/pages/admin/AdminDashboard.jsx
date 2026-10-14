@@ -14,7 +14,7 @@ import {
 import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument, getAccessToken } from '../../lib/backend'
-import { isSupabaseConfigured } from '../../lib/supabase'
+import { isSupabaseConfigured } from '../../lib/backend'
 import { useProfiles } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
 import { money } from '../../lib/billing'
