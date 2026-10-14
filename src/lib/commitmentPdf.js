@@ -12,7 +12,6 @@ import {
   requirementText, exceptionText, fmtDate, fmtDateTime, titleVestingAuto, recInfo,
   documentClauses, deedHasContent, judgmentHasContent,
 } from '../data/fulfillment'
-import { LOGO_SVG } from '../components/CommitmentDocument'
 
 const ACCENT = '#2441E5'
 const TEXT   = '#12284C'
@@ -93,8 +92,10 @@ const bullets = (arr) => {
   return { ul: vals, fontSize: 9.5, margin: [0, 2, 0, 4] }
 }
 
-// pdfmake document definition mirroring buildCommitmentHtml().
-export function commitmentDocDefinition(order, f) {
+// pdfmake document definition mirroring buildCommitmentHtml(). `logo` is the
+// official brand mark as a data URI (resolved by brandLogo() at generation
+// time); the document still renders without it, falling back to a wordmark.
+export function commitmentDocDefinition(order, f, logo) {
   const m = f.meta || {}
   const vest = f.titleVesting?.isAuto
     ? titleVestingAuto(f.deeds?.[0] || {}, m.county)
@@ -123,7 +124,9 @@ export function commitmentDocDefinition(order, f) {
     // Header: brand mark left, document title right.
     {
       columns: [
-        { svg: LOGO_SVG, width: 150 },
+        logo
+          ? { image: logo, fit: [190, 52] }
+          : { text: 'Resolute Title Services', style: 'h1', margin: [0, 6, 0, 0] },
         {
           width: '*',
           stack: [
@@ -235,20 +238,42 @@ async function pdfMakeInstance() {
   return pdfMake
 }
 
+// The official brand mark (public/logo-horizontal.png) as a data URI, which is
+// what pdfmake needs to embed a raster image. Fetched at generation time and
+// memoised, so the ~190KB PNG never bloats the app bundle — only the person who
+// actually generates a commitment pays for it. If the asset can't be read the
+// document still renders (the header falls back to a text wordmark).
+let _brandLogo
+async function brandLogo() {
+  if (_brandLogo !== undefined) return _brandLogo
+  try {
+    const res = await fetch('/logo-horizontal.png')
+    if (!res.ok) throw new Error(`logo ${res.status}`)
+    const blob = await res.blob()
+    _brandLogo = await new Promise((resolve, reject) => {
+      const r = new FileReader()
+      r.onload = () => resolve(r.result)
+      r.onerror = () => reject(r.error)
+      r.readAsDataURL(blob)
+    })
+  } catch { _brandLogo = null }
+  return _brandLogo
+}
+
 export const commitmentFileName = (order) => `Title Commitment - ${order.id}.pdf`
 
 // Blob for upload/attachment (what the client eventually downloads).
 export async function commitmentPdfBlob(order, f) {
-  const pdfMake = await pdfMakeInstance()
+  const [pdfMake, logo] = await Promise.all([pdfMakeInstance(), brandLogo()])
   return new Promise((resolve, reject) => {
     try {
-      pdfMake.createPdf(commitmentDocDefinition(order, f)).getBlob(resolve)
+      pdfMake.createPdf(commitmentDocDefinition(order, f, logo)).getBlob(resolve)
     } catch (err) { reject(err) }
   })
 }
 
 // Direct browser download (preview modal).
 export async function downloadCommitmentPdf(order, f) {
-  const pdfMake = await pdfMakeInstance()
-  pdfMake.createPdf(commitmentDocDefinition(order, f)).download(commitmentFileName(order))
+  const [pdfMake, logo] = await Promise.all([pdfMakeInstance(), brandLogo()])
+  pdfMake.createPdf(commitmentDocDefinition(order, f, logo)).download(commitmentFileName(order))
 }

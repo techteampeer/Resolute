@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { MapPin, Eye, EyeOff, ArrowRight, AlertCircle, ShieldCheck } from 'lucide-react'
+import { Eye, EyeOff, ArrowRight, AlertCircle, ShieldCheck } from 'lucide-react'
 import { useAuth, toErrorMessage } from '../context/AuthContext'
 
 // Where an invite / password-reset link lands. The recovery link has already
@@ -35,11 +35,9 @@ export default function SetPassword() {
   return (
     <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#F3F5F8' }}>
       <div className="w-full max-w-md">
-        <div className="flex items-center gap-3 mb-8 justify-center">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#2441E5' }}>
-            <MapPin className="w-4 h-4" style={{ color: '#FFFFFF' }} />
-          </div>
-          <span className="text-xl font-bold" style={{ color: '#12284C' }}>Resolute Portal</span>
+        <div className="flex items-center justify-center mb-8">
+          <img src="/logo-horizontal.png" alt="Resolute Title Services"
+            style={{ height: 42, width: 'auto', maxWidth: '100%' }} />
         </div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-8">
           <div className="flex items-center gap-2 mb-1">
