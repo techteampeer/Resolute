@@ -4,7 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { OrderProvider } from './context/OrderContext'
 import { FulfillmentProvider } from './context/FulfillmentContext'
 import { SupportProvider } from './context/SupportContext'
-import { isSupabaseConfigured } from './lib/supabase'
+import { isSupabaseConfigured } from './lib/backend'
 import LoginPage from './pages/LoginPage'
 import SetPassword from './pages/SetPassword'
 // Dashboards are route-split: a signed-in user downloads only their own portal,
