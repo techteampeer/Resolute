@@ -4,7 +4,9 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { OrderProvider } from './context/OrderContext'
 import { FulfillmentProvider } from './context/FulfillmentContext'
 import { SupportProvider } from './context/SupportContext'
+import { isSupabaseConfigured } from './lib/supabase'
 import LoginPage from './pages/LoginPage'
+import SetPassword from './pages/SetPassword'
 // Dashboards are route-split: a signed-in user downloads only their own portal,
 // not all seven. This also stops a client's bundle from carrying the admin,
 // billing, payout and fulfillment code (defence-in-depth + smaller client app).
@@ -20,6 +22,25 @@ const OperatorDashboard  = lazy(() => import('./pages/operator/OperatorDashboard
 // (what used to happen) threw the user out of their own session.
 function SessionGate() {
   return <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center', color: '#5C6E8C', fontSize: 13 }}>Loading…</div>
+}
+
+// A PRODUCTION build that lacks VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY runs
+// entirely on mock data — sign-in only accepts demo accounts and nothing touches
+// the real database. That used to fail silently (the console hint fires only in
+// dev), so a misconfigured deploy looked live while being a demo. This banner
+// makes that state impossible to miss. In dev, mock mode is intentional, so it
+// stays quiet there.
+function MockDataBanner() {
+  if (import.meta.env.DEV || isSupabaseConfigured) return null
+  return (
+    <div role="alert" style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+      background: '#b45309', color: '#fff', textAlign: 'center',
+      fontSize: 12, fontWeight: 600, padding: '6px 12px', letterSpacing: '0.02em',
+    }}>
+      Demo data — backend not connected. This build is missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY, so sign-in and all data are mock only.
+    </div>
+  )
 }
 
 function ProtectedRoute({ children, allowedRole }) {
@@ -47,14 +68,26 @@ function RoleRedirect() {
   return <Navigate to={`/${user.role}`} replace />
 }
 
+// When an invite / password-reset link has been opened, take over the whole app
+// with the set-password screen until the person chooses a password — otherwise
+// the recovery session would silently drop them on a dashboard with a password
+// they never set.
+function RecoveryGate({ children }) {
+  const { recovery } = useAuth()
+  return recovery ? <SetPassword /> : children
+}
+
 export default function App() {
   return (
+    <>
+    <MockDataBanner />
     <AuthProvider>
       <OrderProvider>
       <FulfillmentProvider>
       <SupportProvider>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Suspense fallback={<SessionGate />}>
+        <RecoveryGate>
         <Routes>
           <Route path="/login" element={<LoginPage variant="client" />} />
           <Route path="/staff" element={<LoginPage variant="staff" />} />
@@ -70,11 +103,13 @@ export default function App() {
           } />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
+        </RecoveryGate>
         </Suspense>
       </BrowserRouter>
       </SupportProvider>
       </FulfillmentProvider>
       </OrderProvider>
     </AuthProvider>
+    </>
   )
 }

@@ -13,7 +13,6 @@ const ACCENT = '#2441E5'
 // tolerant of case and punctuation (see `norm`), so "Property State", "state",
 // "STATE" all map to state.
 const COLUMNS = [
-  { key: 'groupId',      label: 'Group ID',      required: false, example: 'A' },
   { key: 'businessName', label: 'Business Name', required: false, example: 'Acme Title LLC' },
   { key: 'clientFileNo', label: 'Your File #',   required: false, example: 'ABC-2291' },
   { key: 'searchType',   label: 'Search Type',   required: true,  example: 'Full Search' },
@@ -34,7 +33,6 @@ const COLUMNS = [
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 // Accepted header spellings → canonical field key.
 const HEADER_MAP = {
-  groupid: 'groupId', group: 'groupId',
   businessname: 'businessName', business: 'businessName', company: 'businessName', companyname: 'businessName',
   state: 'state', propertystate: 'state',
   county: 'county',
@@ -68,19 +66,11 @@ const rowErrors = (r) => {
 const priorityOf = (r) => (norm(r.priority) === 'rush' ? 'rush' : 'normal')
 
 // Creation units — one per order to create — from the valid rows ({ r, srcRow }).
-// Separate: one unit per row. Combine: rows with the same non-empty trimmed
-// Group ID share one unit (placed where the group first appears); a blank
-// Group ID is always its own unit.
+// Separate: one order per row. Combine (the default): the ENTIRE upload becomes
+// ONE order whose rows are its sub-orders — always, no matter how many rows.
 const unitsFor = (validRows, mode) => {
   if (mode !== 'combine') return validRows.map(x => ({ group: null, rows: [x] }))
-  const units = [], byGroup = new Map()
-  for (const x of validRows) {
-    const g = String(x.r.groupId || '').trim()
-    if (!g) { units.push({ group: null, rows: [x] }); continue }
-    if (!byGroup.has(g)) { const u = { group: g, rows: [] }; byGroup.set(g, u); units.push(u) }
-    byGroup.get(g).rows.push(x)
-  }
-  return units
+  return validRows.length ? [{ group: null, rows: validRows }] : []
 }
 
 export default function BulkImport() {
@@ -93,7 +83,7 @@ export default function BulkImport() {
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState(null)  // { created:[ids], failed:[{group,rows,error}], skipped }
   const [drag, setDrag] = useState(false)
-  const [mode, setMode] = useState('separate')   // 'separate' | 'combine'
+  const [mode, setMode] = useState('combine')   // 'combine' (default, one grouped order) | 'separate'
 
   const parse = async (file) => {
     setParseErr(''); setResult(null); setRows(null); setFileName(file?.name || '')
@@ -139,11 +129,13 @@ export default function BulkImport() {
   // switching mode re-plans the counts automatically.
   const validRows = (rows || []).map((r, idx) => ({ r, srcRow: idx + 1 })).filter(x => !x.r._errors.length)
   const units = unitsFor(validRows, mode)
-  const hasGroups = (rows || []).some(r => r.groupId)
 
   // One createOrder payload per unit. The unit's first valid row carries every
   // order-level field (so existing order views read as before); a multi-row
-  // unit also lists each grouped row's property on intake.properties.
+  // unit also lists each row as a sub-order (line item) on intake.lineItems —
+  // the parent order moves through the pipeline as one unit, but each line is an
+  // individually identified search (display id `${orderId}-${n}`), and the
+  // order's workload weight is the number of lines (see domain workloadWeight).
   const orderPayload = ({ rows: unitRows }) => {
     const { r } = unitRows[0]
     // Display/intake only — identity stays the signed-in client's clientCode.
@@ -156,7 +148,9 @@ export default function BulkImport() {
     return {
       state: stateCode(r.state), county: r.county,
       type: r.searchType,
-      priority: priorityOf(r),
+      // A combined order is one order, so it takes a single priority — escalate
+      // to Rush if ANY grouped row is Rush rather than silently dropping it.
+      priority: unitRows.some(({ r: p }) => priorityOf(p) === 'rush') ? 'rush' : 'normal',
       clientFileNo: r.clientFileNo || null,
       clientCode: user?.clientCode || null,
       client: business,
@@ -169,11 +163,17 @@ export default function BulkImport() {
         from: `${user?.name || ''} <${user?.email || ''}>`.trim(),
         company: business,
         specialInstructions: r.notes || '',
-        // PropertyItem (packages/domain pipeline.ts) per grouped row.
+        // LineItem[] (packages/domain pipeline.ts) — one sub-order per grouped
+        // row. Only written when the order spans more than one search.
         ...(unitRows.length > 1 && {
-          properties: unitRows.map(({ r: p }) => ({
+          lineItems: unitRows.map(({ r: p }, i) => ({
+            n: i + 1,
+            searchType: p.searchType || r.searchType,
+            propertyType: p.propertyType || null,
             address: p.address || '', city: p.city || '', state: stateCode(p.state),
             county: p.county || '', zip: p.zip || '', parcelId: p.parcel || '',
+            buyer: p.buyer || '', seller: p.seller || '', borrower: p.borrower || '',
+            clientFileNo: p.clientFileNo || null, notes: p.notes || '',
           })),
         }),
       },
@@ -184,17 +184,19 @@ export default function BulkImport() {
     if (busy || !units.length) return
     setBusy(true); setProgress(0)
     const created = [], failed = []
+    let subOrders = 0
     for (let i = 0; i < units.length; i++) {
       const unit = units[i]
       try {
         const order = await createOrder(orderPayload(unit))
         created.push(order.id)
+        if (unit.rows.length > 1) subOrders += unit.rows.length
       } catch (e) {
         failed.push({ group: unit.group, rows: unit.rows.map(x => x.srcRow), error: e?.message || 'failed' })
       }
       setProgress(i + 1)
     }
-    setResult({ created, failed, skipped: (rows || []).length - validRows.length })
+    setResult({ created, failed, skipped: (rows || []).length - validRows.length, subOrders })
     setBusy(false)
   }
 
@@ -205,6 +207,9 @@ export default function BulkImport() {
         <CheckCircle className="w-8 h-8" style={{ color: '#15803d' }} />
       </div>
       <h2 className="text-xl font-bold mb-1" style={{ color: '#12284C' }}>{result.created.length} order{result.created.length === 1 ? '' : 's'} placed</h2>
+      {result.subOrders > 0 && (
+        <p className="text-sm" style={{ color: '#5C6E8C' }}>with {result.subOrders} sub-orders worked as one unit</p>
+      )}
       {result.skipped > 0 && (
         <p className="text-sm" style={{ color: '#b45309' }}>{result.skipped} row{result.skipped === 1 ? '' : 's'} skipped (missing a Search Type, a valid State, or a County).</p>
       )}
@@ -231,7 +236,7 @@ export default function BulkImport() {
       {/* Import mode — how valid rows become orders */}
       <div className="space-y-1.5">
         <div className="inline-flex p-1 rounded-xl" style={{ background: 'rgba(18,40,76,0.05)' }}>
-          {[['separate', 'Separate orders'], ['combine', 'Combine into one order']].map(([k, l]) => (
+          {[['combine', 'One grouped order'], ['separate', 'Separate orders']].map(([k, l]) => (
             <button key={k} type="button" onClick={() => setMode(k)} disabled={busy} aria-pressed={mode === k}
               className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
               style={mode === k ? { background: '#fff', color: '#12284C', boxShadow: '0 1px 2px rgba(18,40,76,0.10)' } : { color: '#5C6E8C' }}>
@@ -241,8 +246,8 @@ export default function BulkImport() {
         </div>
         <p className="text-[11px]" style={{ color: '#5C6E8C' }}>
           {mode === 'combine'
-            ? 'Rows that share a Group ID become one order covering all of their properties. Rows with no Group ID stay separate orders.'
-            : 'Each valid row becomes its own order.'}
+            ? 'The whole sheet becomes ONE order with a numbered sub-order per row (RTS-####-1, -2 …), assigned to one person and worked as a single unit. Workload counts every sub-order.'
+            : 'Each valid row becomes its own separate order.'}
         </p>
       </div>
 
@@ -278,7 +283,6 @@ export default function BulkImport() {
               <thead>
                 <tr style={{ background: 'rgba(18,40,76,0.04)' }}>
                   <th className="px-2 py-1.5 text-left" style={{ color: '#5C6E8C' }}>#</th>
-                  {hasGroups && <th className="px-2 py-1.5 text-left" style={{ color: '#5C6E8C' }}>Group</th>}
                   <th className="px-2 py-1.5 text-left" style={{ color: '#5C6E8C' }}>State</th>
                   <th className="px-2 py-1.5 text-left" style={{ color: '#5C6E8C' }}>County</th>
                   <th className="px-2 py-1.5 text-left" style={{ color: '#5C6E8C' }}>Search</th>
@@ -290,7 +294,6 @@ export default function BulkImport() {
                 {rows.map((r, i) => (
                   <tr key={i} style={{ background: r._errors.length ? 'rgba(220,60,60,0.06)' : '#fff', borderTop: '1px solid rgba(18,40,76,0.06)' }}>
                     <td className="px-2 py-1.5" style={{ color: '#9AA8BF' }}>{i + 1}</td>
-                    {hasGroups && <td className="px-2 py-1.5 font-mono" style={{ color: '#3D5171' }}>{r.groupId || '—'}</td>}
                     <td className="px-2 py-1.5" style={{ color: r._errors.includes('state') ? '#dc2626' : '#12284C' }}>{r.state || '—'}</td>
                     <td className="px-2 py-1.5" style={{ color: r._errors.includes('county') ? '#dc2626' : '#12284C' }}>{r.county || '—'}</td>
                     <td className="px-2 py-1.5" style={{ color: r._errors.includes('searchType') ? '#dc2626' : '#3D5171' }}>{r.searchType || '—'}</td>

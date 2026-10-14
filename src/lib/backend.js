@@ -58,14 +58,29 @@ const mapUser = (authUser, prof) => ({
   // subscriptions). Held by the billing owner only, and enforced by database
   // triggers as well — this is just what the UI hides behind.
   canConfirmPayments: !!prof?.can_confirm_payments,
+  // Per-user capability grants/revokes (FA-2). Drives can()/workableStages in the
+  // domain authz model; empty = pure role+flags behaviour. Admin-set only.
+  permissions: Array.isArray(prof?.permissions) ? prof.permissions : [],
 })
 
-// ── Auth ─────────────────────────────────────────────────────────────────────
+// ── Auth (the portable seam) ──────────────────────────────────────────────────
+// Everything the app needs from the identity provider lives in these functions —
+// signIn / signOut / getCurrentUser / onAuthChange / getAccessToken. Nothing
+// outside this module calls `supabase.auth.*`. The GCP move (Supabase Auth →
+// Identity Platform) is therefore a swap of THIS block's bodies, not a hunt
+// across the app; mapUser() keeps the returned user shape identical either way.
 export async function getCurrentUser() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return null
   const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
   return mapUser(session.user, prof)
+}
+
+// The current session's bearer token, for authorizing our own serverless
+// endpoints (e.g. the admin user-management API). null when signed out.
+export async function getAccessToken() {
+  const { data: { session } = {} } = await supabase.auth.getSession()
+  return session?.access_token || null
 }
 
 export async function signIn(email, password) {
@@ -86,6 +101,22 @@ export const signOut = () => supabase.auth.signOut()
 
 export function onAuthChange(cb) {
   const { data } = supabase.auth.onAuthStateChange(async () => { cb(await getCurrentUser()) })
+  return () => data.subscription.unsubscribe()
+}
+
+// Set the signed-in account's password — used by the set-password screen that an
+// invite / reset link lands on (the recovery link establishes a session; the user
+// then chooses their own password here).
+export async function updatePassword(password) {
+  const { error } = await supabase.auth.updateUser({ password })
+  return error ? { success: false, error: error.message } : { success: true }
+}
+
+// Fires when a recovery/invite link has been processed and the app should show
+// "set your password" (Supabase emits PASSWORD_RECOVERY once it consumes the
+// token from the URL).
+export function onPasswordRecovery(cb) {
+  const { data } = supabase.auth.onAuthStateChange((event) => { if (event === 'PASSWORD_RECOVERY') cb() })
   return () => data.subscription.unsubscribe()
 }
 
@@ -463,6 +494,31 @@ export async function removeDocument(path) {
 // and re-sign it on demand here; the stored `url` is only a fallback (e.g.
 // mock-mode blob URLs). The tab is opened synchronously first so the async
 // re-sign doesn't trip the browser's popup blocker.
+// One reusable pop-out window for documents, so once a user drags it onto a
+// second monitor every later document opens there (the browser reuses a window
+// by name and keeps its position).
+const DOC_WINDOW = 'resolute-doc-viewer'
+
+// Option B (progressive enhancement): on a browser with the Window Management
+// API and an extended desktop, auto-place the pop-out on the EXTERNAL screen.
+// Called while the window is still same-origin (about:blank) and before any
+// other await, so the click's user activation is still fresh for the one-time
+// permission prompt. A no-op on single-screen setups or browsers without the
+// API (Safari/Firefox) — there the user just drags the window across (option A).
+async function moveDocWindowToExternalScreen(win) {
+  try {
+    if (!win || win.closed) return
+    if (!window.screen?.isExtended || typeof window.getScreenDetails !== 'function') return
+    const details = await window.getScreenDetails()     // prompts once, then remembered
+    const ext = details.screens.find(s => s.isInternal === false)
+      || details.screens.find(s => s !== details.currentScreen)
+    if (!ext) return
+    win.moveTo(ext.availLeft, ext.availTop)
+    win.resizeTo(Math.min(ext.availWidth, 1100), Math.min(ext.availHeight, 850))
+    win.focus()
+  } catch { /* permission denied / unsupported / cross-origin — user drags it */ }
+}
+
 export async function openDocument(ref) {
   if (!ref) return null
   const canResign = isSupabaseConfigured && supabase && !!ref.path
@@ -470,7 +526,12 @@ export async function openDocument(ref) {
     alert('This document isn’t available to open — it may still be uploading, or was attached in a local session that wasn’t persisted.')
     return null
   }
-  const win = window.open('about:blank', '_blank')
+  // Option A: a dedicated pop-out WINDOW (the `popup` feature makes it a separate,
+  // movable window rather than a tab) under a stable name, opened synchronously so
+  // the later async re-sign doesn't trip the popup blocker. Opening it to
+  // about:blank first keeps it same-origin and movable even on reuse.
+  const win = window.open('about:blank', DOC_WINDOW, 'popup,width=1000,height=800')
+  if (win) await moveDocWindowToExternalScreen(win)
   let url = ref.url || null
   if (canResign) {
     try {

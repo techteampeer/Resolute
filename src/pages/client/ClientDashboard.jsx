@@ -10,7 +10,8 @@ import {
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign, Search,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye, Download
 } from 'lucide-react'
-import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, US_STATES, stateName } from '../../data/mockData'
+import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, US_STATES, stateName, lineItemsOf } from '../../data/mockData'
+import SubOrders from '../../components/SubOrders'
 import { PRODUCTS } from '../../data/products'
 import { isSupabaseConfigured, openDocument, uploadDocument } from '../../lib/backend'
 import { fileKind, uid } from '../../data/fulfillment'
@@ -105,7 +106,13 @@ function TrackOrder({ order, onOpen }) {
       onClick={onOpen} onKeyDown={e => onOpen && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}>
       <div className="flex items-center justify-between">
         <div>
-          <div className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{order.id}</div>
+          <div className="flex items-center gap-2">
+            <div className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{order.id}</div>
+            {lineItemsOf(order).length > 1 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                style={{ background:`${ROLE_COLOR}14`, color:ROLE_COLOR }}>{lineItemsOf(order).length} sub-orders</span>
+            )}
+          </div>
           <div className="font-bold" style={{ color:'#12284C' }}>{order.client}</div>
           <div className="text-xs" style={{ color:'#5C6E8C' }}>{order.type} · {order.state}</div>
         </div>
@@ -348,10 +355,13 @@ function OrderDetailPage() {
           )}
           <div className="glass-card p-4 space-y-1.5 text-sm">
             <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Order details</div>
-            <Row k="Property" v={intake?.propertyAddress} />
+            <Row k="Property" v={lineItemsOf(order).length > 1 ? `${lineItemsOf(order).length} properties — see sub-orders below` : intake?.propertyAddress} />
+            <Row k="County / State" v={[order.county, order.state].filter(Boolean).join(', ')} />
+            <Row k="Search type" v={intake?.orderType || order.type} />
             <Row k="Property type" v={intake?.propertyType} />
             <Row k="Parcel / APN" v={intake?.parcelNumberAPN} />
             <Row k="Your file #" v={order.clientFileNo} />
+            <Row k="Business" v={intake?.company} />
             <Row k="Buyer" v={intake?.buyer} />
             <Row k="Borrower" v={intake?.borrowerName} />
             <Row k="Seller" v={intake?.seller} />
@@ -359,6 +369,7 @@ function OrderDetailPage() {
             <Row k="Special instructions" v={intake?.specialInstructions} />
             {!intake && <div className="text-xs" style={{ color:'#5C6E8C' }}>Submitted before detailed intake was captured.</div>}
           </div>
+          <SubOrders order={order} />
           <div className="glass-card p-4 text-sm space-y-1.5">
             <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Timeline</div>
             <Row k="Placed" v={order.created} />
@@ -551,7 +562,9 @@ function PlaceOrderPage() {
         // Attribute to the signed-in client so the order is trackable in My
         // Orders and readable back under RLS (client_code = my_client_code()).
         clientCode: user?.clientCode || null,
-        client: clientName(user?.clientCode) || user?.name || 'Web Order',
+        // Business Name (required in step 3) identifies the order, matching
+        // BulkImport. Falls back to the account's client name / user name.
+        client: form.company.trim() || clientName(user?.clientCode) || user?.name || 'Web Order',
         intake: {
           source: 'web', propertyAddress: [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', '),
           parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
@@ -839,17 +852,39 @@ function PlaceOrderPage() {
             {step===4 && (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Review & Submit</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[['State',stateName(form.state)||'—'],['County',form.county||'—'],
-                    ['Search Type',form.searchType || form.customSearch || '—'],
-                    ['Property Type',(form.propertyType==='Other' ? (form.propertyTypeOther.trim()||'Other') : form.propertyType) || '—'],
-                    ['Parties', form.parties.filter(p=>p.name.trim()).length ? `${form.parties.filter(p=>p.name.trim()).length} listed` : '—'],
-                    ['Your file #',form.clientFileNo||'—'],
-                    ['Priority',form.priority.toUpperCase()],['Business Name',form.company||'—'],
-                    ['Contact',form.contactName||'—'],['Email',form.email||'—']].map(([k,v]) => (
-                    <div key={k} className="glass p-3 rounded-xl">
-                      <div className="text-xs mb-0.5" style={{ color:'#5C6E8C' }}>{k}</div>
-                      <div className="font-medium text-sm" style={{ color:'#12284C' }}>{v}</div>
+                <div className="space-y-3">
+                  {[
+                    ['Property', [
+                      ['State', stateName(form.state)],
+                      ['County', form.county],
+                      ['Address', [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', ')],
+                      ['Property type', form.propertyType === 'Other' ? (form.propertyTypeOther.trim() || 'Other') : form.propertyType],
+                      ['Parcel / APN #', form.parcelId],
+                      ['Your file #', form.clientFileNo],
+                    ]],
+                    ['Search', [
+                      ['Product', form.searchType],
+                      ...(form.customSearch.trim() ? [['Custom search', form.customSearch]] : []),
+                      ['Turnaround', (() => { const t = TURNAROUND.find(x => x.key === form.priority); return t ? `${t.label}${t.fee ? ` (+$${t.fee})` : ''}` : form.priority })()],
+                      ['Special instructions', form.notes],
+                    ]],
+                    ['Parties', form.parties.filter(p => p.name.trim()).map(p => [p.role, p.name])],
+                    ['Contact', [
+                      ['Business name', form.company],
+                      ['Contact name', form.contactName],
+                      ['Work email', form.email],
+                    ]],
+                  ].map(([title, pairs]) => (
+                    <div key={title} className="glass p-4 rounded-xl">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color:'#5C6E8C' }}>
+                        {title}{title === 'Parties' ? ` (${pairs.length})` : ''}
+                      </div>
+                      {pairs.length ? pairs.map(([k, v], idx) => (
+                        <div key={idx} className="flex gap-3 py-0.5 text-sm">
+                          <span style={{ color:'#5C6E8C', minWidth:150, flexShrink:0 }}>{k}</span>
+                          <span className="font-medium" style={{ color:'#12284C', wordBreak:'break-word' }}>{v || '—'}</span>
+                        </div>
+                      )) : <div className="text-sm" style={{ color:'#9AA8BF' }}>None added</div>}
                     </div>
                   ))}
                 </div>

@@ -4,25 +4,21 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth, toErrorMessage } from '../context/AuthContext'
 import {
   ShieldCheck, Users,
-  Eye, EyeOff, ArrowRight, MapPin, CheckCircle2, AlertCircle
+  Eye, EyeOff, ArrowRight, CheckCircle2, AlertCircle
 } from 'lucide-react'
 
+// Dev/staging quick-login tiles — labelled by ROLE, never by person. Each pre-
+// fills a generic account (no personal names, no emails like rajni@). "Admin" and
+// "Super admin" both sign in as role `admin`; the super_admin flag on the account
+// is what actually separates them (client details, payouts, billing) — the tile
+// is only a prefill convenience.
 const ROLES = [
-  { key: 'admin',    label: 'Admin',    icon: ShieldCheck, color: '#2441E5', desc: 'Full system control',        demo: 'rajni@resolute.com',    pass: 'admin123'    },
-  // Post-D3 (ADR 0001) the four stage login roles (screener/examiner/typer/
-  // delivery) are retired: production staff sign in here as a single `user` and
-  // work an order through every stage, with Admin approval between phases.
-  { key: 'user', label: 'Production', icon: Users, color: '#2441E5', desc: 'Standard desk · all stages, admin approved', demo: 'operator@resolute.com', pass: 'operator123' },
-  // Client is intentionally excluded — clients sign in at /login (their own
-  // entry), never the staff picker.
-]
-
-// Admin tier accounts — super admins see full client detail, members see client codes only.
-const ADMIN_ACCOUNTS = [
-  { key: 'rajni',     label: 'Rajni',     tier: 'Super admin', email: 'rajni@resolute.com',     pass: 'admin123' },
-  { key: 'saravanan', label: 'Saravanan', tier: 'Super admin', email: 'saravanan@resolute.com', pass: 'admin123' },
-  { key: 'vivek',     label: 'Vivek',     tier: 'Super admin · Billing', email: 'vivek@resolute.com', pass: 'vivek123' },
-  { key: 'member',    label: 'Member',    tier: 'Client codes only', email: 'admin@resolute.com', pass: 'admin123' },
+  { key: 'admin', label: 'Admin',       icon: ShieldCheck, color: '#2441E5', desc: 'Operations · client codes only',             demo: 'admin@resolute.com',      pass: 'admin123' },
+  { key: 'super', label: 'Super admin', icon: ShieldCheck, color: '#2441E5', desc: 'Full access · client details, payouts, billing', demo: 'superadmin@resolute.com', pass: 'admin123' },
+  // Post-D3 (ADR 0001) the four stage login roles are retired: production staff
+  // sign in as one `user` and work an order through every stage.
+  { key: 'user',  label: 'Production',  icon: Users,       color: '#2441E5', desc: 'Standard desk · all stages, admin approved',  demo: 'operator@resolute.com',   pass: 'operator123' },
+  // Client is intentionally excluded — clients sign in at /login (their own entry).
 ]
 
 // The role picker + credential pre-fill are a LOCAL-DEV convenience only.
@@ -52,7 +48,6 @@ export default function LoginPage({ variant = 'client' }) {
   const isStaff = variant === 'staff'
   const showPicker = isStaff && SHOW_DEMO
   const [selectedRole, setSelectedRole] = useState(null)
-  const [adminAccount, setAdminAccount] = useState('rajni')
   const [email, setEmail]     = useState('')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass]  = useState(false)
@@ -63,14 +58,6 @@ export default function LoginPage({ variant = 'client' }) {
     setSelectedRole(role)
     setEmail(role.demo)
     setPassword(role.pass)
-    if (role.key === 'admin') setAdminAccount('rajni')
-    setError('')
-  }
-
-  const handleAdminAccount = (acct) => {
-    setAdminAccount(acct.key)
-    setEmail(acct.email)
-    setPassword(acct.pass)
     setError('')
   }
 
@@ -112,13 +99,10 @@ export default function LoginPage({ variant = 'client' }) {
       {/* ── Left hero panel ── */}
       <div className="hidden lg:flex flex-col justify-between w-1/2 p-16 relative z-10">
         <div>
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-16">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#2441E5' }}>
-              <MapPin className="w-5 h-5" style={{ color: '#FFFFFF' }} />
-            </div>
-            <span className="text-2xl font-bold tracking-tight" style={{ color: '#12284C' }}>Resolute</span>
-            <span className="text-sm font-medium ml-1" style={{ color: '#5C6E8C' }}>Portal</span>
+          {/* Logo — official vertical brand lockup */}
+          <div className="mb-14">
+            <img src="/logo-vertical.png" alt="Resolute Title Services"
+              style={{ height: 140, width: 'auto' }} />
           </div>
 
           <h1 className="text-5xl font-bold leading-tight mb-6">
@@ -148,12 +132,10 @@ export default function LoginPage({ variant = 'client' }) {
       {/* ── Right sign-in panel ── */}
       <div className="flex-1 flex items-center justify-center p-6 relative z-10">
         <div className="w-full max-w-md">
-          {/* Mobile logo */}
-          <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#2441E5' }}>
-              <MapPin className="w-4 h-4" style={{ color: '#FFFFFF' }} />
-            </div>
-            <span className="text-xl font-bold" style={{ color: '#12284C' }}>Resolute Portal</span>
+          {/* Mobile logo — official horizontal brand lockup */}
+          <div className="mb-8 lg:hidden">
+            <img src="/logo-horizontal.png" alt="Resolute Title Services"
+              style={{ height: 38, width: 'auto', maxWidth: '100%' }} />
           </div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
@@ -200,35 +182,6 @@ export default function LoginPage({ variant = 'client' }) {
                     <span className="text-xs ml-auto" style={{ color: '#5C6E8C' }}>
                       {selectedRole.desc}
                     </span>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Admin tier sub-picker */}
-            <AnimatePresence>
-              {selectedRole?.key === 'admin' && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-5">
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
-                    style={{ color: '#5C6E8C' }}>Admin account</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {ADMIN_ACCOUNTS.map(acct => {
-                      const active = adminAccount === acct.key
-                      return (
-                        <button key={acct.key} type="button" onClick={() => handleAdminAccount(acct)}
-                          className="px-2 py-2 rounded-xl border text-left transition-all"
-                          style={{
-                            background: active ? 'rgba(90,140,62,0.16)' : 'rgba(18,40,76,0.04)',
-                            borderColor: active ? 'rgba(90,140,62,0.45)' : 'rgba(18,40,76,0.08)',
-                          }}>
-                          <div className="text-xs font-semibold"
-                            style={{ color: active ? '#12284C' : '#3D5171' }}>{acct.label}</div>
-                          <div className="text-[10px] leading-tight mt-0.5"
-                            style={{ color: active ? '#2441E5' : '#5C6E8C' }}>{acct.tier}</div>
-                        </button>
-                      )
-                    })}
                   </div>
                 </motion.div>
               )}

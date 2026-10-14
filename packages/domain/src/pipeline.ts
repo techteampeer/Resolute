@@ -32,6 +32,43 @@ export interface PropertyItem {
   parcelId?: string
 }
 
+// A sub-order (line item) inside a GROUPED bulk order. The order moves through
+// the pipeline as ONE unit owned by ONE production user (see the
+// "combine into one order" bulk import), but each line is an individually
+// identified search — its display id is `${orderId}-${n}` (see lineSubId).
+// Lives at workflow.intake.lineItems on the parent order. A plain single-search
+// order carries no lineItems (or one) and weighs 1.
+export interface LineItem extends PropertyItem {
+  n: number            // 1-based position; the sub-id suffix
+  searchType?: string
+  propertyType?: string | null
+  buyer?: string
+  seller?: string
+  borrower?: string
+  clientFileNo?: string | null
+  notes?: string
+}
+
+// The line items of a grouped order (empty for a plain order). Falls back to the
+// older `properties` array so orders placed before line items still read.
+export const lineItemsOf = (order?: Order | null): LineItem[] => {
+  const w = order?.workflow?.intake
+  const items = w?.lineItems ?? w?.properties
+  return Array.isArray(items) ? items : []
+}
+
+// The display id of a sub-order: parent id + 1-based position, e.g. RTS-10110-3.
+export const lineSubId = (orderId: string, n: number): string => `${orderId}-${n}`
+
+// How much an order counts toward a production user's workload. A grouped order
+// of N sub-searches is N units of work; every plain order is 1. This is what
+// makes the assign picker and Team Workload reflect the TRUE load, not an
+// order count.
+export const workloadWeight = (order?: Order | null): number => {
+  const len = lineItemsOf(order).length
+  return len > 1 ? len : 1
+}
+
 // The internal note attached when a partially-completed single-seating order is
 // handed back to Admin for reassignment. Lives at workflow.handoff on the order.
 export interface HandoffNote {
@@ -72,6 +109,42 @@ export const roleAfter = (role: StageRole): StageRole | null => {
   return i === -1 || i === ROLE_SEQUENCE.length - 1 ? null : ROLE_SEQUENCE[i + 1]
 }
 
+// ── Stage plan (E2) ─────────────────────────────────────────────────────────
+// The admin's routing plan for an order: WHICH production user (by id) owns each
+// stage. The admin sets it ONCE at intake (workflow.stagePlan) and no production
+// user can change it. Single-seating = the same id in every slot. A missing /
+// empty slot parks that stage with Admin to fill. Completing a stage routes the
+// order straight to the next stage's owner — no Admin gate in between. The DB
+// guard (guard_order_handoff, migration 20261012000000) enforces every bit of
+// this server-side; these helpers are the read model the UI shares with it.
+export type StagePlan = Partial<Record<StageRole, string | null>>
+
+export const stagePlanOf = (order?: Order | null): StagePlan => {
+  const p = order?.workflow?.stagePlan
+  return p && typeof p === 'object' ? (p as StagePlan) : {}
+}
+
+// A plan is "set" once any stage names an owner.
+export const hasStagePlan = (order?: Order | null): boolean =>
+  ROLE_SEQUENCE.some(r => !!stagePlanOf(order)[r])
+
+// The production user the admin pre-assigned to a given stage (null if none).
+export const ownerForStage = (order: Order | null | undefined, role: StageRole | null): string | null =>
+  role ? (stagePlanOf(order)[role] || null) : null
+
+// The owner of the next stage still due — who a completion routes the order to.
+export const nextOwnerFor = (order?: Order | null): string | null =>
+  ownerForStage(order, nextRoleFor(order ?? ({ completedDates: {} } as Order)))
+
+// True when the plan sends the order to the same person for every remaining
+// stage (single seating, whether set by the toggle or by picking one person for
+// all four). Used only for labelling — routing is driven by the plan itself.
+export const isSingleSeatingPlan = (order?: Order | null): boolean => {
+  const plan = stagePlanOf(order)
+  const owners = ROLE_SEQUENCE.map(r => plan[r]).filter(Boolean)
+  return owners.length === ROLE_SEQUENCE.length && new Set(owners).size === 1
+}
+
 // The single source of truth for status: it follows the owning role.
 // null role (all stages done) -> 'delivered'.
 export const statusForRole = (role: StageRole | null): Status =>
@@ -108,8 +181,10 @@ export const isOrderComplete = (order?: Order | null): boolean =>
 // lightest queue) and admin rebalancing. Pure — the caller passes the roster of
 // orders it already holds.
 export const activeCountForUser = (orders: Order[] | null | undefined, userId: string): number =>
-  !userId ? 0 : (orders || []).filter(o =>
-    o.assignedUserId === userId && !isOrderComplete(o) && o.status !== 'cancelled',
-  ).length
+  !userId ? 0 : (orders || [])
+    .filter(o => o.assignedUserId === userId && !isOrderComplete(o) && o.status !== 'cancelled')
+    // Weighted: a grouped order of N sub-searches counts as N, a plain order as 1,
+    // so the number reflects real work, not order count (the "correct load").
+    .reduce((sum, o) => sum + workloadWeight(o), 0)
 
 export const todayISO = (): string => new Date().toISOString().slice(0, 10)

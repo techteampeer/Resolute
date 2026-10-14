@@ -3,20 +3,19 @@ import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
-import AssignModal from '../../components/AssignModal'
-import { useClients, clientNameOf } from '../../lib/useClients'
+import StagePlanModal from '../../components/StagePlanModal'
 import NotificationSettings from '../../components/NotificationSettings'
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
   Package, CheckCircle, Clock, Search, Plus, Filter, Eye, DollarSign,
-  ChevronDown, ChevronUp, FileText, ArrowUpRight, X, Lock, ShieldCheck, UserPlus, Download,
-  MessageSquare, Send, StickyNote, Bell,
+  ChevronDown, ChevronUp, FileText, ArrowUpRight, X, Lock, ShieldCheck, Download,
+  MessageSquare, Send, StickyNote, Bell, Workflow,
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
-import { openDocument } from '../../lib/backend'
-import { supabase, isSupabaseConfigured } from '../../lib/supabase'
-import { useProfiles, namesForRole } from '../../lib/useProfiles'
+import { openDocument, getAccessToken } from '../../lib/backend'
+import { isSupabaseConfigured } from '../../lib/supabase'
+import { useProfiles } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
 import { money } from '../../lib/billing'
 import { ROLE_COLOR, density } from '../../lib/ui'
@@ -24,30 +23,83 @@ import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
 import { orderSubtitle } from '../../components/OrderDetailLayout'
 import OrderThread from '../../components/OrderThread'
+import SubOrders from '../../components/SubOrders'
 import {
   USERS, MONTHLY_STATS, PAYMENT_METHODS,
-  STAGE_KEYS, STAGE_LABELS, displayClient, clientByName, clientCode, stateCode,
-  REGIONS, regionOf, nextRoleFor, statusForRole,
+  displayClient, clientByName, clientCode, stateCode,
+  REGIONS, regionOf, nextRoleFor, lineItemsOf, workloadWeight,
+  stagePlanOf, hasStagePlan, isSingleSeatingPlan,
+  ROLE_SEQUENCE, can, workableStages,
 } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-// Staff names per pipeline role, from the real profiles table (see useProfiles).
-// This was built from mockData's USERS fixture, which offers six people who have
-// no profiles row and no login, so an order could be assigned to someone who does
-// not exist.
-// Post-D3 (ADR 0001) the stage login roles are retired: every production staffer
-// is a single `user`, so each pipeline stage draws its people from the one
-// production pool. The keys stay per-stage — they name who worked each stage on
-// the order (order.screener / .examiner / …) — but they all resolve to `user`s.
-const teamFrom = (profiles) => {
-  const pool = namesForRole(profiles, 'user')
-  return { screener: pool, examiner: pool, typer: pool, delivery: pool }
-}
-
 const ROLE_HOVER  = '#1B34C4'
+
+// The admin's view of an order's course of flow (E2). Shows who owns each stage,
+// which stage the order is with right now, and what's already done — and opens
+// the plan editor. Read-only awareness here; editing happens in StagePlanModal.
+const PLAN_STAGES = [
+  { key:'screener', label:'Screener' }, { key:'examiner', label:'Examiner' },
+  { key:'typer', label:'Typer' }, { key:'delivery', label:'Delivery' },
+]
+function StagePlanPanel({ order, profiles, onEdit }) {
+  const plan = stagePlanOf(order)
+  const isSet = hasStagePlan(order)
+  const due = nextRoleFor(order)
+  const nameOf = (id) => profiles.find(p => p.id === id)?.name || (id ? 'Unknown user' : null)
+  const mode = isSingleSeatingPlan(order) ? 'Single seating' : 'Stage by stage'
+  const dueLabel = (PLAN_STAGES.find(s => s.key === due) || {}).label || ''
+  return (
+    <div style={{ background:Q.bg, border:`1px solid ${Q.border}`, borderRadius:10, padding:'14px 16px' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: isSet ? 12 : 8 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:11, fontWeight:700,
+          textTransform:'uppercase', letterSpacing:'0.05em', color:Q.faint }}>
+          <Workflow style={{ width:13, height:13 }} /> Stage plan
+          {isSet && <span style={{ textTransform:'none', letterSpacing:0, fontSize:10.5, fontWeight:700,
+            color:ROLE_COLOR, background:`${ROLE_COLOR}14`, borderRadius:5, padding:'2px 7px' }}>{mode}</span>}
+        </div>
+        <button onClick={onEdit} style={{ fontSize:12, fontWeight:600, color:ROLE_COLOR,
+          background:'none', border:'none', cursor:'pointer', padding:0 }}>
+          {isSet ? 'Edit plan' : 'Set plan'}
+        </button>
+      </div>
+      {!isSet ? (
+        <div style={{ fontSize:13, color:Q.muted, lineHeight:1.5 }}>
+          No one is assigned yet. Set the plan to route this order to the production
+          team — it can’t start until you do.
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px 16px' }}>
+          {PLAN_STAGES.map(s => {
+            const owner = plan[s.key]
+            const isDue = due === s.key
+            const doneDate = order.completedDates?.[s.key]
+            return (
+              <div key={s.key} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12.5 }}>
+                <span style={{ width:7, height:7, borderRadius:'50%', flexShrink:0,
+                  background: doneDate ? '#16a34a' : isDue ? ROLE_COLOR : Q.border }} />
+                <span style={{ minWidth:0 }}>
+                  <span style={{ color:Q.faint }}>{s.label}: </span>
+                  <span style={{ color: owner ? Q.text : '#b45309', fontWeight:600 }}>{nameOf(owner) || 'unassigned'}</span>
+                  {isDue && !doneDate && <span style={{ color:ROLE_COLOR, fontWeight:600, fontSize:11 }}> · here now</span>}
+                  {doneDate && <span style={{ color:'#16a34a', fontSize:11 }}> · done</span>}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {isSet && due && !plan[due] && (
+        <div style={{ marginTop:10, fontSize:12, color:'#b45309' }}>
+          The {dueLabel} stage (due now) has no one assigned — the order is parked with Admin.
+        </div>
+      )}
+    </div>
+  )
+}
 
 const NAV = [
   { path: '/admin',          label: 'Dashboard',    icon: LayoutDashboard },
@@ -351,6 +403,35 @@ function AdminOrderPage() {
     )
 }
 
+// Portal (client-login) orders carry workflow.intake.source === 'web' and are
+// priced when the client places them, so they skip the admin price-confirmation
+// step entirely. Mail / website orders (negotiated price — built separately) are
+// the only ones that still need "Confirm & price" before work starts.
+const isPortalOrder = (o) => o?.workflow?.intake?.source === 'web'
+
+// A small styled prompt — replaces window.prompt for the hold reason and the
+// clarification question, so these actions feel part of the app and give the
+// admin a real text box (not a browser popup).
+function ActionPrompt({ title, hint, placeholder, confirmLabel, requireText = false, onConfirm, onCancel }) {
+  const [text, setText] = useState('')
+  const ok = !requireText || text.trim()
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(12,29,56,0.45)' }} onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()} style={{ background: Q.card, borderRadius: 12, width: '100%', maxWidth: 420, padding: 22 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: Q.text }}>{title}</div>
+        {hint && <div style={{ fontSize: 12.5, color: Q.muted, margin: '4px 0 10px' }}>{hint}</div>}
+        <textarea value={text} onChange={e => setText(e.target.value)} rows={3} placeholder={placeholder} autoFocus
+          style={{ width: '100%', padding: '9px 12px', border: `1px solid ${Q.border}`, borderRadius: 8, fontSize: 13, outline: 'none', resize: 'none', color: Q.text, background: '#fff' }} />
+        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+          <button disabled={!ok} onClick={() => onConfirm(text.trim())}
+            style={{ flex: 1, padding: '10px', background: ok ? ROLE_COLOR : Q.border, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 600, cursor: ok ? 'pointer' : 'not-allowed' }}>{confirmLabel}</button>
+          <button onClick={onCancel} style={{ padding: '10px 18px', background: Q.bg, border: `1px solid ${Q.border}`, borderRadius: 8, color: Q.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Hooks below must run unconditionally, so the not-found guard lives in the
 // wrapper above and this component always receives a real order.
 function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCancel, updateOrder }) {
@@ -362,37 +443,22 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
   // decides. (Orders cancelled while still queued never reach here.)
   const cancelReq = order.status !== 'cancelled' ? order.workflow?.cancelRequested : null
   const [tab, setTab] = useState('overview')
-  const [form, setForm] = useState({
-    screener: order.screener, examiner: order.examiner, typer: order.typer,
-    delivery: order.delivery, payment: order.payment, status: order.status,
-    assignedTo: order.assignedTo || '',
-  })
-  // Status is derived from the owning role; changing the owner therefore moves
-  // the status with it, so the two can't silently drift. Status stays editable
-  // afterwards for a deliberate correction.
-  const STAGES = ['screener', 'examiner', 'typer', 'delivery']
-  const TEAM = teamFrom(useProfiles())
-  const set = (k, v) => setForm(f => {
-    if (k !== 'assignedTo') return { ...f, [k]: v }
-    const derived = statusForRole(STAGES.includes(v) ? v : nextRoleFor(order))
-    return { ...f, assignedTo: v, status: v ? derived : f.status }
-  })
+  // Hold / clarification UX: a styled prompt + an auto-dismissing confirmation
+  // toast, both local to this still-mounted detail view (the actions no longer
+  // navigate away).
+  const [prompt, setPrompt] = useState(null)   // { kind: 'hold' | 'clarify' } | null
+  const [toast, setToast] = useState(null)
+  const flash = (m) => setToast(m)
+  useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t) }, [toast])
+  const profiles = useProfiles()
+  // The order's owner, status and pipeline position are DERIVED and set through
+  // the stage plan (StagePlanModal) — not free-typed here. This editor keeps only
+  // the genuinely editable field, the mode of payment. The old owner/status/stage
+  // dropdowns routed nothing and let the two silently drift; they're gone.
+  const [form, setForm] = useState({ payment: order.payment })
+  const [planning, setPlanning] = useState(false)
   const save = () => {
-    const completed = form.status === 'delivered'
-      ? (order.completed || order.eta)
-      : null
-    const assignedTo = form.assignedTo || null
-    // Mirror assignOrder: routing to the production (`user`) desk claims the
-    // order end-to-end. Post-D3 that is the only production owner; Admin and
-    // Unassigned leave the workflow untouched.
-    const workflow = assignedTo === 'user'
-      ? { ...order.workflow, singleSeating: true }
-      : order.workflow
-    // Keep the per-person owner (A1/A2) consistent with the queue: an order that
-    // leaves the `user` pool has no owner. Assigning a specific person is done in
-    // the Assign modal (a picker); this editor only clears a stale owner.
-    const assignedUserId = assignedTo === 'user' ? (order.assignedUserId ?? null) : null
-    onSave({ ...order, ...form, assignedTo, assignedUserId, workflow, completed })
+    onSave({ ...order, payment: form.payment })
     onClose()
   }
 
@@ -413,32 +479,31 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
   // clarification (client sees "Clarification Required" + a prompt to reply).
   const onHold = !!order.workflow?.onHold
   const notify = (text) => { if (orderClientCode) sendMessage({ clientCode: orderClientCode, clientName: order.client, from: 'support', text, author: user?.name || 'Admin', orderId: order.id }) }
-  const toggleHold = () => {
-    const on = !onHold
-    const reason = on ? (window.prompt('Reason for holding this order (optional):', '') ?? null) : null
-    updateOrder({ ...order, workflow: { ...order.workflow, onHold: on, holdReason: on ? (reason || null) : null } })
-    notify(on ? `Your order was placed on hold${reason ? `: ${reason}` : ''}.` : 'Your order has resumed.')
-    // Neither hold nor resume was recorded in the audit trail, so an order could
-    // sit paused for days with nothing in its history explaining why.
-    logAction({
-      orderId: order.id, actor: user?.name || 'Admin',
-      action: on
-        ? `${user?.name || 'Admin'} put ${order.id} on hold${reason ? ` — ${reason}` : ''}`
-        : `${user?.name || 'Admin'} resumed ${order.id}`,
-    })
-    onClose()
+  // Hold / clarification stay ON the order (no more jumping back to the list),
+  // use a styled prompt (no browser popup), and confirm with a toast + a
+  // persistent banner so it's obvious the change landed. The actions are recorded
+  // in the audit trail, as before.
+  const applyHold = (reason) => {
+    updateOrder({ ...order, workflow: { ...order.workflow, onHold: true, holdReason: reason || null, holdBy: user?.name || 'Admin', holdAt: new Date().toISOString().slice(0, 10) } })
+    notify(`Your order was placed on hold${reason ? `: ${reason}` : ''}.`)
+    logAction({ orderId: order.id, actor: user?.name || 'Admin', action: `${user?.name || 'Admin'} put ${order.id} on hold${reason ? ` — ${reason}` : ''}` })
+    setPrompt(null); flash('Order placed on hold — client notified.')
   }
-  const requestClarification = () => {
-    const note = window.prompt('What clarification do you need from the client?', '')
-    if (note == null) return
-    updateOrder({ ...order, clarification: 'pending' })
-    notify(`Clarification needed: ${note}`)
-    logAction({
-      orderId: order.id, actor: user?.name || 'Admin',
-      action: `${user?.name || 'Admin'} requested clarification from the client on ${order.id}${note ? ` — ${note}` : ''}`,
-    })
-    onClose()
+  const resumeHold = () => {
+    updateOrder({ ...order, workflow: { ...order.workflow, onHold: false, holdReason: null } })
+    notify('Your order has resumed.')
+    logAction({ orderId: order.id, actor: user?.name || 'Admin', action: `${user?.name || 'Admin'} resumed ${order.id}` })
+    flash('Order resumed — client notified.')
   }
+  const toggleHold = () => (onHold ? resumeHold() : setPrompt({ kind: 'hold' }))
+  const applyClarify = (noteText) => {
+    if (!noteText) return
+    updateOrder({ ...order, clarification: 'pending', workflow: { ...order.workflow, clarificationNote: noteText } })
+    notify(`Clarification needed: ${noteText}`)
+    logAction({ orderId: order.id, actor: user?.name || 'Admin', action: `${user?.name || 'Admin'} requested clarification from the client on ${order.id} — ${noteText}` })
+    setPrompt(null); flash('Clarification requested — client notified.')
+  }
+  const requestClarification = () => setPrompt({ kind: 'clarify' })
   // Confirm step: portal orders (source 'web') are a one-click acknowledgment;
   // website/email orders need a negotiated price entered before confirming.
   const confirmed = !!order.workflow?.confirmed
@@ -485,6 +550,21 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
   return (
     <div style={{ maxWidth:900, margin:'0 auto' }}>
       {confirming && <ConfirmOrderModal order={order} started={started} onCancel={() => setConfirming(false)} onConfirm={applyConfirm} />}
+      {planning && <StagePlanModal order={order} user={user} onClose={() => setPlanning(false)} />}
+      {prompt?.kind === 'hold' && (
+        <ActionPrompt title={`Put ${order.id} on hold`} hint="The client sees “On Hold”. Add a reason (optional) — it’s recorded and shown here."
+          placeholder="Reason (optional)…" confirmLabel="Put on hold" onConfirm={applyHold} onCancel={() => setPrompt(null)} />
+      )}
+      {prompt?.kind === 'clarify' && (
+        <ActionPrompt title={`Request clarification on ${order.id}`} hint="Sent to the client in the portal; they’ll see a prompt to reply." requireText
+          placeholder="What do you need from the client?" confirmLabel="Send request" onConfirm={applyClarify} onCancel={() => setPrompt(null)} />
+      )}
+      {toast && (
+        <div style={{ position:'fixed', bottom:20, right:20, zIndex:80, background:'#12284C', color:'#fff', padding:'11px 16px',
+          borderRadius:10, fontSize:13, fontWeight:500, boxShadow:'0 10px 30px rgba(0,0,0,0.25)', display:'flex', alignItems:'center', gap:8 }}>
+          <CheckCircle style={{ width:15, height:15 }} /> {toast}
+        </div>
+      )}
       <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.18 }}
         style={{ background:Q.card, borderRadius:12, border:`1px solid ${Q.border}`, overflow:'hidden' }}>
         <div style={{ padding:'16px 22px 0' }}>
@@ -529,6 +609,24 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 Keep order active
               </button>
             </div>
+          </div>
+        )}
+        {/* On-hold banner — who/why/when, with Resume right here (no page jump). */}
+        {order.status !== 'cancelled' && onHold && (
+          <div style={{ margin:'0 22px 14px', padding:'12px 14px', borderRadius:10, display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12,
+            background:'rgba(220,140,40,0.10)', border:'1px solid rgba(220,140,40,0.28)' }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color:'#b45309' }}>On hold{order.workflow?.holdReason ? ` — ${order.workflow.holdReason}` : ''}</div>
+              <div style={{ fontSize:11.5, color:'#a16207', marginTop:2 }}>{[order.workflow?.holdBy, order.workflow?.holdAt].filter(Boolean).join(' · ') || 'Paused'}</div>
+            </div>
+            <button onClick={resumeHold} style={{ flexShrink:0, padding:'7px 14px', background:'#fff', border:'1px solid rgba(220,140,40,0.45)', borderRadius:8, color:'#b45309', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>Resume</button>
+          </div>
+        )}
+        {/* Clarification-requested banner — the question + awaiting-reply state. */}
+        {order.status !== 'cancelled' && order.clarification === 'pending' && (
+          <div style={{ margin:'0 22px 14px', padding:'12px 14px', borderRadius:10, background:'rgba(220,60,60,0.08)', border:'1px solid rgba(220,60,60,0.22)' }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'#dc2626' }}>Clarification requested — awaiting client reply</div>
+            {order.workflow?.clarificationNote && <div style={{ fontSize:12.5, color:'#b91c1c', marginTop:3, whiteSpace:'pre-wrap' }}>“{order.workflow.clarificationNote}”</div>}
           </div>
         )}
 
@@ -599,7 +697,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em',
                   color:Q.faint, marginBottom:8 }}>Order details (from client)</div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 16px', fontSize:13 }}>
-                  <Detail label="Property" value={intake.propertyAddress} wide />
+                  <Detail label="Property" value={lineItemsOf(order).length > 1 ? `${lineItemsOf(order).length} properties — see sub-orders` : intake.propertyAddress} wide />
                   <Detail label="County / State" value={[order.county, order.state].filter(Boolean).join(', ')} />
                   <Detail label="Property type" value={intake.propertyType} />
                   <Detail label="Parcel / APN" value={intake.parcelNumberAPN} />
@@ -611,57 +709,33 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                   <Detail label="Requested by" value={intake.from} wide />
                   <Detail label="Company" value={intake.company} />
                 </div>
+                {/* Internal intake metadata — Admin's view only, and by code only */}
+                {intake.clientCreated && (
+                  <div style={{ marginTop:10, fontSize:12.5, fontWeight:600, color:'#b45309' }}>
+                    New client created from email: {intake.clientCode}
+                  </div>
+                )}
                 {intake.specialInstructions && (
                   <div style={{ marginTop:10 }}>
                     <div style={{ fontSize:11, color:Q.faint, marginBottom:2 }}>Special instructions</div>
                     <div style={{ fontSize:13, color:Q.text, whiteSpace:'pre-wrap' }}>{intake.specialInstructions}</div>
                   </div>
                 )}
+                <div style={{ marginTop:10 }}><SubOrders order={order} /></div>
               </div>
             </div>
           )}
 
-          {/* Assignment — drives the Assigned/Unassigned state */}
+          {/* Stage plan — the admin-set course of flow (E2). Who works each stage,
+              where the order is now, and the editor. Replaces the old owner /
+              status / per-stage dropdowns that routed nothing. */}
           <div style={{ padding:'16px 22px 0' }}>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-              <Field label="Assigned To (current owner)">
-                <select style={selectStyle} value={form.assignedTo} onChange={e => set('assignedTo', e.target.value)}>
-                  <option value="">Unassigned</option>
-                  <option value="admin">Admin (awaiting approval)</option>
-                  <option value="user">Production Desk</option>
-                </select>
-              </Field>
-              <Field label="Status">
-                <select style={selectStyle} value={form.status} onChange={e => set('status', e.target.value)}>
-                  {STAGE_KEYS.map((k, i) => <option key={k} value={k}>{STAGE_LABELS[i]}</option>)}
-                </select>
-              </Field>
-            </div>
+            <StagePlanPanel order={order} profiles={profiles} onEdit={() => setPlanning(true)} />
           </div>
 
           <div style={{ padding:'14px 22px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <Field label="Screener">
-              <select style={selectStyle} value={form.screener} onChange={e => set('screener', e.target.value)}>
-                {TEAM.screener.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </Field>
-            <Field label="Examiner">
-              <select style={selectStyle} value={form.examiner} onChange={e => set('examiner', e.target.value)}>
-                {TEAM.examiner.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </Field>
-            <Field label="Typer">
-              <select style={selectStyle} value={form.typer} onChange={e => set('typer', e.target.value)}>
-                {TEAM.typer.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </Field>
-            <Field label="Delivery">
-              <select style={selectStyle} value={form.delivery} onChange={e => set('delivery', e.target.value)}>
-                {TEAM.delivery.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </Field>
             <Field label="Mode of Payment">
-              <select style={selectStyle} value={form.payment} onChange={e => set('payment', e.target.value)}>
+              <select style={selectStyle} value={form.payment} onChange={e => setForm(f => ({ ...f, payment: e.target.value }))}>
                 {PAYMENT_METHODS.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </Field>
@@ -692,7 +766,9 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
           {/* Order actions — confirm + on-hold + clarification (live orders) */}
           {order.status !== 'delivered' && order.status !== 'cancelled' && (
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', padding:'0 22px 14px' }}>
-              {!confirmed && (
+              {/* Portal orders are priced at placement → no confirm-price step.
+                  Only mail/website orders (negotiated) still get it. */}
+              {!confirmed && !isPortalOrder(order) && (
                 <button onClick={confirmOrder} style={{ padding:'8px 14px', borderRadius:8, fontSize:12.5, fontWeight:700, cursor:'pointer',
                   background:ROLE_COLOR, border:'none', color:'#fff' }}>
                   {started ? 'Set price & date' : 'Confirm & price order'}
@@ -827,101 +903,6 @@ const awaitingApproval = (o) =>
 // Admin-side intake. Orders placed here land in Admin's own queue
 // (createOrder parks with assignedTo 'admin'), exactly like a client-placed
 // order, so the approval path is identical.
-function NewOrderModal({ onClose }) {
-  const { createOrder } = useOrders()
-  // Every client in the registry, not the seven in the fixture — Admin could not
-  // place an order for a newly onboarded client, including the pilot.
-  const clients = useClients()
-  // Keyed on the client CODE, not the name. The name is PII a plain admin may
-  // not read (20260909120000), so an option labelled by name would be blank for
-  // them — and the old code derived client_code by looking the NAME up in
-  // mockData, which returned nothing for any client added since, saving the
-  // order with no client link at all.
-  const [f, setF] = useState({ clientCode: '', state: '', county: '', type: 'Full Search', priority: 'normal', eta: '' })
-  const [busy, setBusy] = useState(false)
-  const set = (k, v) => setF(p => ({ ...p, [k]: v }))
-  const ready = f.clientCode && f.state && f.county
-  const submit = async () => {
-    if (!ready || busy) return
-    setBusy(true)
-    try {
-      await createOrder({
-        client: clientNameOf(clients, f.clientCode) || f.clientCode,
-        clientCode: f.clientCode,
-        state: f.state.toUpperCase(), county: f.county, type: f.type,
-        priority: f.priority, eta: f.eta || '',
-        intake: { source: 'admin', propertyAddress: '', orderType: f.type },
-      })
-      onClose()
-    } finally { setBusy(false) }
-  }
-  const field = { width:'100%', padding:'8px 11px', borderRadius:8, border:`1px solid ${Q.border}`,
-    background:Q.card, color:Q.text, fontSize:13, outline:'none' }
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background:'rgba(12,29,56,0.45)' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()}
-        style={{ background:Q.card, borderRadius:12, width:'100%', maxWidth:460, padding:'20px 22px' }}>
-        <div style={{ fontSize:17, fontWeight:700, color:Q.text, marginBottom:4 }}>New Order</div>
-        <div style={{ fontSize:12.5, color:Q.muted, marginBottom:16 }}>
-          Placed on behalf of a client. It parks in your queue for routing.
-        </div>
-        <div style={{ display:'grid', gap:10 }}>
-          <div>
-            <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>CLIENT</div>
-            <select value={f.clientCode} onChange={e => set('clientCode', e.target.value)} style={field}>
-              <option value="">{clients.length ? 'Select a client…' : 'Loading clients…'}</option>
-              {clients.map(c => (
-                <option key={c.code} value={c.code}>{c.name ? `${c.code} · ${c.name}` : c.code}</option>
-              ))}
-            </select>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <div>
-              <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>STATE</div>
-              <input value={f.state} onChange={e => set('state', e.target.value)} placeholder="FL" maxLength={2} style={field} />
-            </div>
-            <div>
-              <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>COUNTY</div>
-              <input value={f.county} onChange={e => set('county', e.target.value)} placeholder="Miami-Dade" style={field} />
-            </div>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <div>
-              <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>SEARCH TYPE</div>
-              <select value={f.type} onChange={e => set('type', e.target.value)} style={field}>
-                {['Full Search','Current Owner','Two-Owner','Lien Search','Tax Certificate','HOA Estoppel']
-                  .map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>PRIORITY</div>
-              <select value={f.priority} onChange={e => set('priority', e.target.value)} style={field}>
-                <option value="normal">Normal</option><option value="rush">Rush</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize:11, fontWeight:600, color:Q.muted, marginBottom:4 }}>ETA <span style={{ fontWeight:400 }}>(optional)</span></div>
-            <input type="date" value={f.eta} onChange={e => set('eta', e.target.value)} style={field} />
-          </div>
-        </div>
-        <div style={{ display:'flex', gap:8, marginTop:18 }}>
-          <button onClick={submit} disabled={!ready || busy}
-            style={{ flex:1, padding:'9px 14px', borderRadius:8, border:'none', fontSize:13, fontWeight:600,
-              background: ready && !busy ? ROLE_COLOR : Q.border, color: ready && !busy ? '#fff' : Q.faint,
-              cursor: ready && !busy ? 'pointer' : 'not-allowed' }}>
-            {busy ? 'Creating…' : 'Create Order'}
-          </button>
-          <button onClick={onClose}
-            style={{ padding:'9px 16px', borderRadius:8, border:`1px solid ${Q.border}`, background:Q.bg,
-              color:Q.muted, fontSize:13, fontWeight:600, cursor:'pointer' }}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // A small pill for a workload status (busiest / available).
 const wlChip = (fg, bg) => ({
   fontSize: 9.5, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
@@ -932,8 +913,8 @@ const wlInitials = (n = '') =>
 
 // A5 — Team Workload. Visualizes each production user's live active-order count
 // so Admin can spot who's overloaded vs idle and rebalance: expand a person to
-// see their orders and Reassign one (reuses the AssignModal person picker, which
-// on an already-owned order routes through reassign()).
+// see their orders and open the stage plan to move one to someone else (the
+// plan editor is the single assignment surface — StagePlanModal).
 function TeamWorkload() {
   const { orders } = useOrders()
   const { user } = useAuth()
@@ -942,12 +923,17 @@ function TeamWorkload() {
   const [openId, setOpenId] = useState(null)
 
   const isClosed = (o) => o.status === 'delivered' || o.status === 'cancelled'
+  // Load is WEIGHTED by sub-orders: a grouped order of N searches counts as N,
+  // so the bars show real work, not order count (matches the assign picker).
   const team = profiles
     .filter(p => p.role === 'user' && (p.status || 'active') === 'active')
-    .map(p => ({ ...p, active: orders.filter(o => o.assignedUserId === p.id && !isClosed(o)) }))
-    .sort((a, b) => b.active.length - a.active.length)   // busiest first
-  const maxLoad = Math.max(1, ...team.map(t => t.active.length))
-  const busiest = team.length ? team[0].active.length : 0
+    .map(p => {
+      const active = orders.filter(o => o.assignedUserId === p.id && !isClosed(o))
+      return { ...p, active, load: active.reduce((s, o) => s + workloadWeight(o), 0) }
+    })
+    .sort((a, b) => b.load - a.load)   // busiest first
+  const maxLoad = Math.max(1, ...team.map(t => t.load))
+  const busiest = team.length ? team[0].load : 0
 
   return (
     <QCard className="p-5">
@@ -958,7 +944,7 @@ function TeamWorkload() {
       <div className="mt-3" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {team.length === 0 && <p style={{ fontSize: 13, color: Q.muted }}>Loading the team…</p>}
         {team.map(p => {
-          const load = p.active.length
+          const load = p.load
           const overloaded = load > 1 && load === busiest
           const idle = load === 0
           return (
@@ -988,6 +974,10 @@ function TeamWorkload() {
                   {p.active.map(o => (
                     <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: Q.muted }}>
                       <span style={{ fontFamily: 'monospace', fontWeight: 600, color: Q.text }}>{o.id}</span>
+                      {workloadWeight(o) > 1 && (
+                        <span style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: ROLE_COLOR,
+                          background: `${ROLE_COLOR}14`, borderRadius: 5, padding: '1px 6px' }}>×{workloadWeight(o)}</span>
+                      )}
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {o.type} · {STATUS_MAP[o.status]?.label || o.status}
                       </span>
@@ -1005,7 +995,7 @@ function TeamWorkload() {
           )
         })}
       </div>
-      {assigning && <AssignModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
+      {assigning && <StagePlanModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
     </QCard>
   )
 }
@@ -1013,11 +1003,12 @@ function TeamWorkload() {
 function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const { user } = useAuth()
   const { orders } = useOrders()
+  const profiles = useProfiles()
+  const ownerName = (o) => profiles.find(p => p.id === o.assignedUserId)?.name || null
   const navigate = useNavigate()
   const [assigning, setAssigning] = useState(null)  // focused assign modal
   const [search, setSearch]     = useState('')
   const [activeTab, setActiveTab] = useState('all')   // lifecycle tab
-  const [newOrder, setNewOrder]   = useState(false)
   const [showMap, setShowMap]   = useState(false)
   // Real orders per state for the inline coverage map — same source as the
   // Coverage Map page, so the two cannot disagree.
@@ -1106,8 +1097,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
 
   return (
     <div className="space-y-4">
-      {assigning && <AssignModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
-      {newOrder && <NewOrderModal onClose={() => setNewOrder(false)} />}
+      {assigning && <StagePlanModal order={assigning} user={user} onClose={() => setAssigning(null)} />}
       {/* Toolbar — row 1: search · date range · new order */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative" style={{ flex:'1 1 260px', minWidth: 240 }}>
@@ -1130,12 +1120,6 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
             {DATE_RANGES.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
           </select>
         </div>
-        <button onClick={() => setNewOrder(true)}
-          style={{ ...ctlBtn, background:ROLE_COLOR, border:'none', color:'#fff' }}
-          onMouseOver={e => e.currentTarget.style.background = ROLE_HOVER}
-          onMouseOut={e => e.currentTarget.style.background = ROLE_COLOR}>
-          <Plus style={{ width:15, height:15 }} /> New Order
-        </button>
       </div>
 
       {/* Toolbar — row 2: filter chips */}
@@ -1266,7 +1250,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
                           background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0' }}>Assigned</span>
                       )}
-                      {!o.workflow?.confirmed && o.status === 'received' && (
+                      {!o.workflow?.confirmed && o.status === 'received' && !isPortalOrder(o) && (
                         <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
                           background:'#EEF1FE', color:'#2441E5', border:'1px solid #C6CFFA' }}>Awaiting confirm</span>
                       )}
@@ -1281,11 +1265,17 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                     </div>
                   </td>
                   <td style={{ padding:CELL_PAD, color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{o.payment}</td>
+                  {/* Assignee — the real current owner (assigned_user_id → name)
+                      and which stage they hold, not the empty o[assignedTo]. */}
                   <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',
-                    color: o.assignedTo ? Q.text : Q.faint, textTransform:'capitalize' }}>
-                    {o.assignedTo
-                      ? `${o.assignedTo === 'user' ? 'production' : o.assignedTo}${o[o.assignedTo] ? ` · ${o[o.assignedTo]}` : ''}`
-                      : '—'}
+                    color: (o.assignedTo && o.assignedTo !== 'admin') ? Q.text : Q.faint }}>
+                    {o.assignedTo === 'admin'
+                      ? 'Admin'
+                      : o.assignedTo === 'user'
+                        ? (ownerName(o)
+                            ? <>{ownerName(o)}{nextRoleFor(o) ? <span style={{ color:Q.faint }}> · {cap(nextRoleFor(o))}</span> : null}</>
+                            : 'Production (unassigned)')
+                        : '—'}
                   </td>
                   <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',
                     color: lastCompleted(o) ? '#16a34a' : Q.faint }}>
@@ -1304,10 +1294,8 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                             color:ROLE_COLOR, fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}
                           onMouseOver={e => e.currentTarget.style.background = `${ROLE_COLOR}22`}
                           onMouseOut={e => e.currentTarget.style.background = `${ROLE_COLOR}12`}>
-                          <UserPlus style={{ width:13, height:13 }} />
-                          {r.kind === 'inprogress' ? 'Reassign'
-                            : r.kind === 'ready' ? `Approve & Assign ${cap(r.next)}`
-                            : `Assign ${cap(r.next)}`}
+                          <Workflow style={{ width:13, height:13 }} />
+                          {hasStagePlan(o) ? 'Edit plan' : 'Set plan'}
                         </button>
                       )}
                       <button title="View details" onClick={e => { e.stopPropagation(); navigate(`/admin/orders/${o.id}`) }}
@@ -1397,25 +1385,32 @@ function AdminHome() {
   // A client counts as active while it has at least one order in flight.
   const activeClients  = new Set(orders.filter(o => !isClosed(o)).map(o => o.clientCode || clientCode(o.client)).filter(Boolean)).size
   const navigate = useNavigate()
-  const orderIds = new Set(orders.map(o => o.id))
-  // Recent Activity: only the referenced order number links to the order. The
-  // entry's orderId wins; seed entries carry the id only in their text. No
-  // known order in the text → the line stays plain.
+  const orderIds = useMemo(() => new Set(orders.map(o => o.id)), [orders])
+  // Recent Activity: the referenced order links to its detail page. The entry's
+  // own orderId wins; otherwise an RTS-#### mentioned in the text is used. When
+  // that id appears verbatim in the text we underline just that token; when the
+  // order is known but its id isn't in the text, the whole line opens it. No
+  // known order at all → the line stays plain.
+  const linkStyle = { background:'none', border:'none', padding:0, font:'inherit', color:'inherit',
+    cursor:'pointer', textAlign:'left' }
   const activityText = (a) => {
     const parts  = String(a.action || '').split(/(RTS-\d+)/)   // odd indexes are whole RTS tokens
-    const tokens = parts.filter((_, i) => i % 2)
-    const id = [a.orderId, tokens[0]].find(x => x && tokens.includes(x) && orderIds.has(x))
+    const id = [a.orderId, ...parts.filter((_, i) => i % 2)].find(x => x && orderIds.has(x))
     if (!id) return a.action
+    const open = () => navigate(`/admin/orders/${id}`)
+    const hover = { onMouseOver: e => e.currentTarget.style.color = ROLE_COLOR,
+      onMouseOut: e => e.currentTarget.style.color = 'inherit' }
     const at = parts.indexOf(id)
-    return <>
-      {parts.slice(0, at).join('')}
-      <button type="button" onClick={() => navigate(`/admin/orders/${id}`)} title={`Open ${id}`}
-        style={{ background:'none', border:'none', padding:0, font:'inherit', color:'inherit', cursor:'pointer',
-          textDecoration:'underline', textDecorationColor:Q.faint, textUnderlineOffset:2 }}
-        onMouseOver={e => e.currentTarget.style.color = ROLE_COLOR}
-        onMouseOut={e => e.currentTarget.style.color = 'inherit'}>{id}</button>
-      {parts.slice(at + 1).join('')}
-    </>
+    if (at > 0 && at % 2 === 1) {   // id is a token in the text → underline it inline
+      return <>
+        {parts.slice(0, at).join('')}
+        <button type="button" onClick={open} title={`Open ${id}`} {...hover}
+          style={{ ...linkStyle, textDecoration:'underline', textDecorationColor:Q.faint, textUnderlineOffset:2 }}>{id}</button>
+        {parts.slice(at + 1).join('')}
+      </>
+    }
+    // Known order, but its id isn't written in the text → make the line clickable.
+    return <button type="button" onClick={open} title={`Open ${id}`} {...hover} style={linkStyle}>{a.action}</button>
   }
   return (
     <div className="space-y-5">
@@ -1521,11 +1516,26 @@ function AdminOrders() {
 // still carries the stage labels for history, but Admin never mints them.
 const USER_ROLES = ['admin', 'user', 'client']
 
+// Stage-scope (trainee) helper: translate the four work stages a production user
+// may do, to/from the portable permissions grants. All four selected = unscoped
+// (empty grants); a subset = revoke the all-stages default, then re-grant scoped.
+const permissionsForStages = (stages) => {
+  if (stages.length >= ROLE_SEQUENCE.length) return []
+  return [
+    { capability: 'orders.work', effect: 'revoke' },
+    ...(stages.length ? [{ capability: 'orders.work', effect: 'grant', scope: { stages } }] : []),
+  ]
+}
+const stagesForUser = (role, permissions) => {
+  const w = workableStages({ role, permissions: permissions || [] })
+  return w === null ? ROLE_SEQUENCE.slice() : w   // null = every stage
+}
+
 async function usersApi(method, body) {
-  const { data: { session } = {} } = await supabase.auth.getSession()
+  const token = await getAccessToken()
   const res = await fetch('/api/admin/users', {
     method,
-    headers: { 'content-type': 'application/json', ...(session ? { authorization: `Bearer ${session.access_token}` } : {}) },
+    headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
     body: method === 'POST' ? JSON.stringify(body) : undefined,
   })
   const j = await res.json().catch(() => ({}))
@@ -1533,39 +1543,113 @@ async function usersApi(method, body) {
   return j
 }
 
-function UserFormModal({ initial, onClose, onSave, busy }) {
+// `canGrantSuper` — whether the signed-in admin is a super admin. Only then are
+// the super-admin / billing toggles editable (a plain admin manages basic users).
+function UserFormModal({ initial, onClose, onSave, busy, canGrantSuper }) {
   const isEdit = !!initial?.id
-  const [f, setF] = useState({ name: initial?.name || '', email: initial?.email || '', role: initial?.role || 'client', clientCode: initial?.clientCode || '' })
+  const [f, setF] = useState({
+    name: initial?.name || '', email: initial?.email || '', role: initial?.role || 'client',
+    clientCode: initial?.clientCode || '',
+    superAdmin: !!initial?.superAdmin,
+    canConfirmPayments: !!initial?.canConfirmPayments,
+    stages: stagesForUser(initial?.role || 'user', initial?.permissions),
+  })
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
+  const toggleStage = (s) => setF(st => ({ ...st, stages: st.stages.includes(s) ? st.stages.filter(x => x !== s) : [...st.stages, s] }))
   const inputStyle = { width: '100%', padding: '9px 12px', border: `1px solid ${Q.border}`, borderRadius: 8, fontSize: 13, outline: 'none', color: Q.text, background: '#fff' }
+  const lbl = { fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }
+
+  const submit = () => {
+    const payload = { id: initial?.id, name: f.name, email: f.email, role: f.role, clientCode: f.clientCode }
+    // Stage scope only applies to production users; everyone else clears grants.
+    payload.permissions = f.role === 'user' ? permissionsForStages(f.stages) : []
+    // Only send the elevated bits when the caller may set them AND the role is admin,
+    // so a plain admin's basic edits never trip the server's super-admin gate.
+    if (canGrantSuper && f.role === 'admin') {
+      payload.superAdmin = f.superAdmin
+      payload.canConfirmPayments = f.canConfirmPayments
+    }
+    onSave(payload)
+  }
+
+  const Toggle = ({ k, label, hint }) => (
+    <button type="button" disabled={!canGrantSuper} onClick={() => set(k, !f[k])}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 11px',
+        borderRadius: 8, cursor: canGrantSuper ? 'pointer' : 'not-allowed', background: f[k] ? `${ROLE_COLOR}10` : Q.bg,
+        border: `1px solid ${f[k] ? ROLE_COLOR : Q.border}`, opacity: canGrantSuper ? 1 : 0.55 }}>
+      <span style={{ width: 34, height: 20, borderRadius: 99, flexShrink: 0, position: 'relative', transition: 'all .15s',
+        background: f[k] ? ROLE_COLOR : Q.border }}>
+        <span style={{ position: 'absolute', top: 2, left: f[k] ? 16 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'all .15s' }} />
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: Q.text }}>{label}</span>
+        <span style={{ display: 'block', fontSize: 11, color: Q.muted }}>{hint}</span>
+      </span>
+    </button>
+  )
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(12,29,56,0.45)' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: Q.card, borderRadius: 12, width: '100%', maxWidth: 420, padding: 22 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: Q.card, borderRadius: 12, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto', padding: 22 }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: Q.text, marginBottom: 14 }}>{isEdit ? 'Edit user' : 'Invite / add user'}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Name</label>
+            <label style={lbl}>Name</label>
             <input value={f.name} onChange={e => set('name', e.target.value)} style={inputStyle} placeholder="Full name" />
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Email</label>
+            <label style={lbl}>Email</label>
             <input value={f.email} onChange={e => set('email', e.target.value)} disabled={isEdit} style={{ ...inputStyle, opacity: isEdit ? 0.6 : 1 }} placeholder="user@company.com" />
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Role</label>
+            <label style={lbl}>Role</label>
             <select value={f.role} onChange={e => set('role', e.target.value)} style={inputStyle}>
-              {USER_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              {USER_ROLES.map(r => <option key={r} value={r}>{r === 'user' ? 'production' : r}</option>)}
             </select>
           </div>
           {f.role === 'client' && (
             <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client code</label>
+              <label style={lbl}>Client code</label>
               <input value={f.clientCode} onChange={e => set('clientCode', e.target.value.toUpperCase())} style={inputStyle} placeholder="e.g. CL08" />
+            </div>
+          )}
+
+          {/* Admin access level — super admin (PII + payouts) and the money gate. */}
+          {f.role === 'admin' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={lbl}>Access</label>
+              <Toggle k="superAdmin" label="Super admin" hint="Sees client details + vendor payouts" />
+              <Toggle k="canConfirmPayments" label="Billing — confirm payments" hint="The only one who can mark funds received" />
+              {!canGrantSuper && <div style={{ fontSize: 11, color: '#b45309' }}>Only a super admin can change these.</div>}
+            </div>
+          )}
+
+          {/* Production stage scope — the trainee case ("screener only", etc.). */}
+          {f.role === 'user' && (
+            <div>
+              <label style={lbl}>Stages this person can work</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 6 }}>
+                {ROLE_SEQUENCE.map(s => {
+                  const on = f.stages.includes(s)
+                  return (
+                    <button key={s} type="button" onClick={() => toggleStage(s)}
+                      style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize',
+                        background: on ? `${ROLE_COLOR}12` : Q.bg, border: `1px solid ${on ? ROLE_COLOR : Q.border}`, color: on ? ROLE_COLOR : Q.muted }}>
+                      {on ? '✓ ' : ''}{s}
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: Q.muted, marginTop: 6 }}>
+                {f.stages.length >= ROLE_SEQUENCE.length ? 'All stages (full production access).'
+                  : f.stages.length ? `Limited to ${f.stages.join(', ')} — admin can only route these stages to them.`
+                  : 'No stages selected — they won’t be assignable to any stage.'}
+              </div>
             </div>
           )}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-          <button disabled={busy || !f.email || !f.role} onClick={() => onSave(f)}
+          <button disabled={busy || !f.email || !f.role} onClick={submit}
             style={{ flex: 1, padding: '10px', background: ROLE_COLOR, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 600, cursor: busy ? 'wait' : 'pointer', opacity: (!f.email || !f.role) ? 0.6 : 1 }}>
             {busy ? 'Saving…' : isEdit ? 'Save changes' : 'Create user'}
           </button>
@@ -1577,6 +1661,8 @@ function UserFormModal({ initial, onClose, onSave, busy }) {
 }
 
 function AdminUsers() {
+  const { user: me } = useAuth()
+  const canGrantSuper = can(me, 'users.grant_super')   // super admins elevate others
   const live = isSupabaseConfigured
   const [users, setUsers] = useState(() => live ? [] : USERS.map(u => ({ ...u, active: u.status !== 'inactive' })))
   const [loading, setLoading] = useState(live)
@@ -1597,8 +1683,18 @@ function AdminUsers() {
   const remove = (u) => { if (window.confirm(`Remove ${u.name || u.email}? This permanently deletes their account.`)) run(() => usersApi('POST', { action: 'remove', id: u.id })) }
   const reset = (u) => run(async () => { const j = await usersApi('POST', { action: 'resetPassword', email: u.email }); setNotice(`Password reset link for ${u.email}:\n\n${j.link || '(recovery email sent)'}`) })
   const save = (form) => run(async () => {
-    if (form.id) await usersApi('POST', { action: 'update', id: form.id, name: form.name, role: form.role, clientCode: form.clientCode })
-    else { const j = await usersApi('POST', { action: 'create', email: form.email, name: form.name, role: form.role, clientCode: form.clientCode }); setNotice(`User created. Temporary password for ${form.email}:\n\n${j.tempPassword}\n\nShare it securely; they can change it via a password reset.`) }
+    // Forward the elevated bits only when present (the form includes them solely
+    // for a super-admin caller editing an admin), plus the stage-scope grants.
+    const base = { name: form.name, role: form.role, clientCode: form.clientCode, permissions: form.permissions }
+    if ('superAdmin' in form) base.superAdmin = form.superAdmin
+    if ('canConfirmPayments' in form) base.canConfirmPayments = form.canConfirmPayments
+    if (form.id) await usersApi('POST', { action: 'update', id: form.id, ...base })
+    else {
+      const j = await usersApi('POST', { action: 'create', email: form.email, ...base })
+      setNotice(j.inviteLink
+        ? `Invitation ready for ${form.email}.\n\nSend them this secure link to set their own password (expires shortly):\n\n${j.inviteLink}`
+        : `User ${form.email} created. Use “Reset” on their row to send a set-password link.`)
+    }
     setEditing(null)
   })
 
@@ -1672,7 +1768,16 @@ function AdminUsers() {
                         <div style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, background: `${ROLE_COLOR}18`, color: ROLE_COLOR }}>
                           {(u.name || u.email || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                         </div>
-                        <span style={{ fontWeight: 500, color: Q.text }}>{u.name || '—'}{u.superAdmin && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#b45309' }}>SUPER</span>}</span>
+                        <span style={{ fontWeight: 500, color: Q.text }}>
+                          {u.name || '—'}
+                          {u.superAdmin && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#b45309' }}>SUPER</span>}
+                          {u.canConfirmPayments && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#16a34a' }}>BILLING</span>}
+                          {u.role === 'user' && workableStages({ role: 'user', permissions: u.permissions }) && (
+                            <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: ROLE_COLOR }}>
+                              {workableStages({ role: 'user', permissions: u.permissions }).map(s => s[0].toUpperCase()).join('')}-ONLY
+                            </span>
+                          )}
+                        </span>
                       </div>
                     </td>
                     <td style={{ padding: '10px 16px', color: Q.muted, fontSize: 12 }}>{u.email}</td>
@@ -1687,7 +1792,7 @@ function AdminUsers() {
                     {live ? (
                       <td style={{ padding: '10px 16px' }}>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {btn('Edit', () => setEditing({ id: u.id, name: u.name, email: u.email, role: u.role, clientCode: u.clientCode }), 'accent')}
+                          {btn('Edit', () => setEditing({ id: u.id, name: u.name, email: u.email, role: u.role, clientCode: u.clientCode, superAdmin: u.superAdmin, canConfirmPayments: u.canConfirmPayments, permissions: u.permissions }), 'accent')}
                           {btn(active ? 'Deactivate' : 'Activate', () => toggleActive(u))}
                           {btn('Reset', () => reset(u))}
                           {btn('Remove', () => remove(u), 'danger')}
@@ -1704,7 +1809,7 @@ function AdminUsers() {
         </div>
       </div>
 
-      {editing && <UserFormModal initial={editing} busy={busy} onClose={() => setEditing(null)} onSave={save} />}
+      {editing && <UserFormModal initial={editing} busy={busy} canGrantSuper={canGrantSuper} onClose={() => setEditing(null)} onSave={save} />}
     </div>
   )
 }
