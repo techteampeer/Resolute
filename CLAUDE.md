@@ -132,6 +132,17 @@ Verify every new feature against these constraints before implementing.
   / `clientCode` / `clientCreated`) shown only on Admin's order view — never
   in special instructions. Pilot assumption: the `resolute` label is a trusted
   queue; production hardening of auto-creation is future work.
+- **Website order intake: `services/website_intake/`** (see its README). The
+  public website form's Apps Script forwards the form's own JSON — no AI — to
+  `POST /api/orders/website-intake` (own secret `WEBSITE_INTAKE_API_SECRET`).
+  It reuses email intake's store and `intake_create_order` UNCHANGED: source
+  `'website'`, idempotency key `website:<submissionId>` in the same messageId
+  index. Website products have no confirmed catalog equivalents, so the order
+  keeps the website product name as its (quote-only) type and Admin prices it
+  at Confirm & price; Admin-only `workflow.intake.reviewNotes` say what to
+  check. Never route intake review through hold/clarification (client-visible).
+  `'web'` still means Portal (`isPortalOrder`); display labels come from
+  `src/lib/orderSource.js`.
 - Supabase Database Webhooks must not point at this app — there is still no
   endpoint to receive them.
 

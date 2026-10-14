@@ -37,6 +37,24 @@ payload, the response table and the manual curl.
 There is no intake-mailbox variable: the queue is a Gmail label configured in
 the Apps Script project, and this app never reads mail.
 
+## `POST /api/orders/website-intake`
+
+Order intake for the public website form (resolutetitleservices.com/order).
+Machine-to-machine: the website's Google Apps Script — which also keeps its
+Google Sheet log and its team/customer emails — forwards the form's own JSON
+with a stable `submissionId`. No AI, no extraction. Gated by its own secret in
+`x-intake-secret` (unset ⇒ 503). Creates one normal order (`received`, parked
+with Admin, `workflow.intake.source = 'website'`) through the same
+`intake_create_order` transaction and client rules as email intake,
+deduplicated on `website:<submissionId>` in the shared messageId index. Logic
+lives in `services/website_intake/` — see its README for the payload, the
+product mapping and the response table.
+
+### Environment variables
+| Var | Purpose |
+|---|---|
+| `WEBSITE_INTAKE_API_SECRET` | **Server-only** shared secret for `x-intake-secret`. Unset ⇒ endpoint disabled. |
+
 ## Email — the inbound mail reader is still removed
 
 - **Outbound notifications** — rebuilt as one cycle in `services/notify/`; still
