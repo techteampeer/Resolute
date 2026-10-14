@@ -20,7 +20,11 @@ Verify every new feature against these constraints before implementing.
 - Do NOT add or extend AI/LLM logic that runs on Vercel. No new AI libraries in
   `package.json` for the Vercel deployment.
 - The email→order ingest that carried the old extraction seam has been removed
-  (see "Email" below), so there is no dormant AI path left in the app.
+  (see "Email" below), so there is no dormant AI path left in the app. Email
+  intake now arrives *already extracted* — Google Apps Script + Vertex AI /
+  Gemini do the parsing outside this repo and POST structured JSON to
+  `/api/orders/email-intake` — so the rule above still holds: no AI runs on
+  Vercel and no AI library is in `package.json`.
 - Post-migration goal (unchanged): email stream → parse attachments (invoices /
   search packages) with GCP-native AI (Document AI / Cloud Natural Language /
   Vertex AI) → auto-draft order in the portal. Rebuild the extraction behind one
@@ -80,9 +84,10 @@ Verify every new feature against these constraints before implementing.
   RLS: `orders_update_assigned` = `can_work_production()` (`my_role() = 'user'`)
   `and assigned_to = 'user' and assigned_user_id = auth.uid()` (owner-scoped).
 - Client identities: non-super-admins see client codes, not names
-  (`displayClient`).
+  (`displayClient` — always pass the record's own `clientCode`; its demo
+  name→code table only knows CL01–CL07).
 
-## Email — outbound rebuilt; inbound still removed
+## Email — outbound rebuilt; the inbound mail READER stays removed
 
 - **Outbound notifications: rebuilt as one cycle** in `services/notify/`
   (see its README). Event → `enqueue_notification()` fans out to
@@ -105,9 +110,28 @@ Verify every new feature against these constraints before implementing.
   which writes files and mails nobody — an unconfigured deploy cannot mail real
   colleagues. Nothing in `services/notify/` knows where it runs, so the GCP move
   replaces the caller, not the code.
-- **Inbound email→order ingest stays removed** (`api/webhooks/inbound-email.js`,
-  `services/email_ingest/`). Do not reintroduce it piecemeal; it is the half
-  that carried the AI extraction seam and is blocked until post-GCP.
+- **The app still reads no mail.** The old in-app ingest
+  (`api/webhooks/inbound-email.js`, `services/email_ingest/`) stays removed and
+  must not be reintroduced — it carried the on-Vercel AI extraction seam.
+- **Email order intake: `services/email_intake/`** (see its README) is the
+  approved replacement for the client-facing half. Google Apps Script + Vertex
+  AI / Gemini read the inbox and extract outside this repo, then POST already
+  structured JSON to `POST /api/orders/email-intake` (shared secret in
+  `x-intake-secret`; unset ⇒ 503, never open). The endpoint validates,
+  deduplicates on the source `Message-ID`, resolves the client from the
+  extracted `company` name, and inserts ONE normal order in the existing
+  initial Admin state — no email-only lifecycle, and the audit event plus the
+  `order.new` notification come from the existing `orders_log_created`
+  trigger. Client and order are ONE DB transaction (`intake_create_order`):
+  exact match on the normalised name → that client; several → 422; none → a
+  new `CL` client created under a per-name lock — rolled back if the order
+  insert fails. Never fuzzy, and Gemini never supplies a client code (an
+  explicit `client_identifier` is an exact-code path for trusted callers
+  only). Client identity is never inferred from a sender or contact address.
+  How the client was matched is internal metadata (`workflow.intake.clientMatch`
+  / `clientCode` / `clientCreated`) shown only on Admin's order view — never
+  in special instructions. Pilot assumption: the `resolute` label is a trusted
+  queue; production hardening of auto-creation is future work.
 - Supabase Database Webhooks must not point at this app — there is still no
   endpoint to receive them.
 

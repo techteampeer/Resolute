@@ -709,6 +709,12 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                   <Detail label="Requested by" value={intake.from} wide />
                   <Detail label="Company" value={intake.company} />
                 </div>
+                {/* Internal intake metadata — Admin's view only, and by code only */}
+                {intake.clientCreated && (
+                  <div style={{ marginTop:10, fontSize:12.5, fontWeight:600, color:'#b45309' }}>
+                    New client created from email: {intake.clientCode}
+                  </div>
+                )}
                 {intake.specialInstructions && (
                   <div style={{ marginTop:10 }}>
                     <div style={{ fontSize:11, color:Q.faint, marginBottom:2 }}>Special instructions</div>
