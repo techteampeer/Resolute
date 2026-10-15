@@ -1,0 +1,6 @@
+# Copy to terraform.tfvars and adjust. Only project_id is required.
+project_id = "resolute-509617"
+region     = "us-central1"
+
+# Staging defaults are fine to start; raise the tier for production load.
+# db_tier = "db-custom-2-7680"
