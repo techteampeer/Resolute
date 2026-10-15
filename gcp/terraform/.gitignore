@@ -1,0 +1,16 @@
+# Local Terraform working files — never commit state or the provider cache.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Real variable values (may name the project / sizing); commit only the example.
+terraform.tfvars
+*.auto.tfvars
+*.auto.tfvars.json
+
+override.tf
+override.tf.json
+
+# Keep .terraform.lock.hcl tracked — it pins provider versions across applies.
