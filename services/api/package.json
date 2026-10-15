@@ -1,0 +1,16 @@
+{
+  "name": "resolute-api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Cloud Run data-API tier (ADR 0002, B2). Replaces Supabase PostgREST: authenticates the Firebase token, injects per-transaction JWT claims, and runs RLS-enforced queries as the non-superuser app role.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "firebase-admin": "^12.7.0",
+    "pg": "^8.13.1"
+  }
+}
