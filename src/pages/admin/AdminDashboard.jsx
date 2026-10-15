@@ -18,6 +18,7 @@ import { isSupabaseConfigured } from '../../lib/backend'
 import { useProfiles } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
 import { money } from '../../lib/billing'
+import { orderSourceOf, orderSourceLabel } from '../../lib/orderSource'
 import { ROLE_COLOR, density } from '../../lib/ui'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
@@ -580,6 +581,9 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
             <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:13, color:ROLE_COLOR }}>{order.id}</div>
             <div style={{ fontSize:20, fontWeight:700, color:Q.text }}>{displayClient(order, user)}</div>
             <div style={{ fontSize:12, color:Q.muted }}>{orderSubtitle(order)}</div>
+            <div style={{ fontSize:12, color:Q.muted, marginTop:2 }}>
+              Source: <span style={{ color:Q.text, fontWeight:600 }}>{orderSourceLabel(order)}</span>
+            </div>
           </div>
           {order.priority === 'rush' && (
             <span style={{ fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:99,
@@ -712,7 +716,18 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                 {/* Internal intake metadata — Admin's view only, and by code only */}
                 {intake.clientCreated && (
                   <div style={{ marginTop:10, fontSize:12.5, fontWeight:600, color:'#b45309' }}>
-                    New client created from email: {intake.clientCode}
+                    {orderSourceOf(order) !== 'website'
+                      ? <>New client created from email: {intake.clientCode}</>
+                      : <>New client created from website order: {intake.clientCode}</>}
+                  </div>
+                )}
+                {intake.reviewNotes?.length > 0 && (
+                  <div style={{ marginTop:10, padding:'10px 12px', borderRadius:8,
+                    background:'#fffbeb', border:'1px solid #fde68a' }}>
+                    <div style={{ fontSize:12.5, fontWeight:700, color:'#b45309', marginBottom:4 }}>Check before approving</div>
+                    {intake.reviewNotes.map((note, i) => (
+                      <div key={i} style={{ fontSize:12.5, color:Q.text }}>• {note}</div>
+                    ))}
                   </div>
                 )}
                 {intake.specialInstructions && (
@@ -1191,10 +1206,10 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
             The cap never drops below 560px but grows on tall screens so a
             20-row page fits without an inner scroll. */}
         <div style={{ overflowX:'auto', ...(scrollable ? { maxHeight:'max(560px, calc(100vh - 410px))', overflowY:'auto' } : {}) }}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:density.bodySize, lineHeight:density.lineHeight, minWidth:920 }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:density.bodySize, lineHeight:density.lineHeight, minWidth:990 }}>
           <thead>
             <tr style={{ background:'#F9FBFD', borderBottom:`1px solid ${Q.border}` }}>
-              {['Order','Client File #','Client','Location','Type','Status','Payment','Assignee','Completed','ETA / Done',''].map(h => (
+              {['Order','Client File #','Client','Location','Type','Source','Status','Payment','Assignee','Completed','ETA / Done',''].map(h => (
                 <th key={h} style={{
                   padding:CELL_PAD, textAlign:'left', fontSize:density.headSize,
                   fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em',
@@ -1230,6 +1245,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                   <td style={{ padding:CELL_PAD, fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o, user)}</td>
                   <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap' }}>{o.county}, {o.state}</td>
                   <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{o.type}</td>
+                  <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{orderSourceLabel(o)}</td>
                   <td style={{ padding:CELL_PAD, whiteSpace:'nowrap' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                       <span style={{
