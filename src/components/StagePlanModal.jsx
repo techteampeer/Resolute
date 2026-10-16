@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { X, Route, User, AlertTriangle, Info } from 'lucide-react'
 import {
   displayClient, nextRoleFor, activeCountForUser, workloadWeight,
-  stagePlanOf, isSingleSeatingPlan, ROLE_SEQUENCE,
+  stagePlanOf, isSingleSeatingPlan, ROLE_SEQUENCE, OPTIONAL_STAGES,
 } from '../data/mockData'
 import { useOrders } from '../context/OrderContext'
 import { useProfiles } from '../lib/useProfiles'
@@ -15,6 +15,7 @@ const STAGES = [
   { key:'screener', label:'Screener', hint:'Opens the title search' },
   { key:'examiner', label:'Examiner', hint:'Researches & examines' },
   { key:'typer',    label:'Typer',    hint:'Types the commitment' },
+  { key:'qc',       label:'Quality Check', hint:'Reviews before delivery · optional' },
   { key:'delivery', label:'Delivery', hint:'Delivers to the client' },
 ]
 
@@ -43,7 +44,7 @@ export default function StagePlanModal({ order, user, onClose }) {
     planWasSet && isSingleSeatingPlan(order) ? existing.screener : lightestId)
   const [perStage, setPerStage] = useState({
     screener: existing.screener || '', examiner: existing.examiner || '',
-    typer:    existing.typer    || '', delivery: existing.delivery || '',
+    typer:    existing.typer    || '', qc: existing.qc || '', delivery: existing.delivery || '',
   })
 
   const due = nextRoleFor(order)
@@ -51,11 +52,15 @@ export default function StagePlanModal({ order, user, onClose }) {
 
   // The plan to save, and whether the stage currently due even has an owner (if
   // not, the order parks with Admin rather than moving — flag that up front).
+  // QC is optional: single-seating assigns one person to the required stages and
+  // skips QC (an empty QC slot = no QC gate); stage-by-stage lets an admin add a
+  // QC reviewer. The completeness check therefore ignores optional stages.
+  const required = ROLE_SEQUENCE.filter(r => !OPTIONAL_STAGES.includes(r))
   const plan = single
-    ? Object.fromEntries(ROLE_SEQUENCE.map(r => [r, onePerson || null]))
+    ? Object.fromEntries(ROLE_SEQUENCE.map(r => [r, OPTIONAL_STAGES.includes(r) ? null : (onePerson || null)]))
     : Object.fromEntries(ROLE_SEQUENCE.map(r => [r, perStage[r] || null]))
   const dueHasOwner = due ? !!plan[due] : true
-  const complete = single ? !!onePerson : ROLE_SEQUENCE.every(r => !!perStage[r])
+  const complete = single ? !!onePerson : required.every(r => !!perStage[r])
 
   const nameFor = (id) => team.find(t => t.id === id)?.name || '—'
 
@@ -72,11 +77,11 @@ export default function StagePlanModal({ order, user, onClose }) {
     onClose()
   }
 
-  const personSelect = (value, onChange, { allowNone = false } = {}) => (
+  const personSelect = (value, onChange, { allowNone = false, noneLabel } = {}) => (
     <select value={value} onChange={e => onChange(e.target.value)}
       style={{ width:'100%', padding:'9px 11px', borderRadius:8, border:`1px solid ${Q.border}`,
         background:'#fff', color:value ? Q.text : Q.faint, fontSize:13, fontWeight:500, cursor:'pointer' }}>
-      <option value="">{allowNone ? '— leave for Admin to assign' : 'Select a person…'}</option>
+      <option value="">{noneLabel || (allowNone ? '— leave for Admin to assign' : 'Select a person…')}</option>
       {team.map(p => (
         <option key={p.id} value={p.id}>{p.name} · {p.load} active</option>
       ))}
@@ -166,7 +171,8 @@ export default function StagePlanModal({ order, user, onClose }) {
                     <span>{i + 1}. {s.label}{due === s.key && ' · due now'}</span>
                     <span style={{ textTransform:'none', letterSpacing:0, fontWeight:500, color:Q.faint }}>{s.hint}</span>
                   </label>
-                  {personSelect(perStage[s.key], v => setPerStage(p => ({ ...p, [s.key]: v })), { allowNone: true })}
+                  {personSelect(perStage[s.key], v => setPerStage(p => ({ ...p, [s.key]: v })),
+                    { allowNone: true, noneLabel: s.key === 'qc' ? '— none (skip Quality Check)' : undefined })}
                 </div>
               ))}
             </div>

@@ -6,9 +6,11 @@
 // the logic that used to live inside src/context/OrderContext.jsx and
 // src/data/mockData.js (see docs/ARCHITECTURE-ROADMAP.md, workstream B).
 
-// The four pipeline stages, in fixed order. Admin chooses WHO performs each
-// role; the order of the roles themselves never changes.
-export type StageRole = 'screener' | 'examiner' | 'typer' | 'delivery'
+// The pipeline stages, in fixed order. Admin chooses WHO performs each role; the
+// order of the roles themselves never changes. `qc` (Quality Check) is OPTIONAL
+// — see OPTIONAL_STAGES / stageSequence: an order includes it only when its plan
+// assigns a QC reviewer, otherwise it skips straight from typer to delivery.
+export type StageRole = 'screener' | 'examiner' | 'typer' | 'qc' | 'delivery'
 
 // Who an order can be assigned to: a pipeline stage, the Admin approval queue,
 // the consolidated end-to-end production desk ('user' — the generalized Single
@@ -17,7 +19,7 @@ export type Assignee = StageRole | 'admin' | 'user' | null
 
 export type Status =
   | 'received' | 'screening' | 'searching' | 'examining'
-  | 'typing' | 'delivery' | 'delivered' | 'onhold' | 'cancelled'
+  | 'typing' | 'qc' | 'delivery' | 'delivered' | 'onhold' | 'cancelled'
 
 // A single property covered by an order. An order may span several (the bulk
 // "combine into one order" import); a plain single-property order carries one
@@ -95,15 +97,41 @@ export interface Order {
   [k: string]: any
 }
 
-export const ROLE_SEQUENCE: StageRole[] = ['screener', 'examiner', 'typer', 'delivery']
+export const ROLE_SEQUENCE: StageRole[] = ['screener', 'examiner', 'typer', 'qc', 'delivery']
 
-// The next role that still needs to act on an order (null once all four done).
-export const nextRoleFor = (order: Pick<Order, 'completedDates'>): StageRole | null =>
-  ROLE_SEQUENCE.find(r => !(order.completedDates && order.completedDates[r])) || null
+// Stages an order includes ONLY when its stage plan assigns an owner to them.
+// QC is optional: with no QC reviewer the order skips it (Typer → Delivery)
+// rather than parking with Admin. A legacy order (no plan) has no QC owner, so
+// it keeps the original four-stage flow unchanged.
+export const OPTIONAL_STAGES: readonly StageRole[] = ['qc']
 
-// The role that FOLLOWS a just-completed stage (null after delivery). Distinct
-// from nextRoleFor: handoffs follow the fixed sequence, so they only ever move
-// forward — using the first-incomplete stage here would route an order backwards.
+// The stages that actually apply to a given plan: the fixed sequence minus any
+// optional stage left unassigned. This is the one place the "skip an empty
+// optional stage" rule lives on the client; the DB guard mirrors it exactly.
+export const stageSequence = (plan: StagePlan): StageRole[] =>
+  ROLE_SEQUENCE.filter(r => !OPTIONAL_STAGES.includes(r) || !!plan[r])
+
+// The effective sequence for a specific order (its plan's stageSequence).
+export const stageSequenceFor = (order?: Order | null): StageRole[] =>
+  stageSequence(stagePlanOf(order))
+
+// The next role that still needs to act on an order (null once all done). Skips
+// an optional stage the plan did not assign, so a QC-less order never sits at QC.
+export const nextRoleFor = (order?: Order | null): StageRole | null =>
+  stageSequenceFor(order).find(r => !(order?.completedDates && order.completedDates[r])) || null
+
+// The role that FOLLOWS a just-completed stage in the ORDER's effective sequence
+// (null after the final stage). Skips an unassigned optional stage, so completing
+// typer on a QC-less order routes to delivery, not QC. Only ever moves forward.
+export const roleAfterFor = (order: Order | null | undefined, role: StageRole): StageRole | null => {
+  const seq = stageSequenceFor(order)
+  const i = seq.indexOf(role)
+  return i === -1 || i === seq.length - 1 ? null : seq[i + 1]
+}
+
+// The raw next role in the FULL fixed sequence, ignoring the plan / optional
+// skipping. Kept for callers reasoning about the pipeline shape itself; routing
+// uses roleAfterFor so optional stages skip correctly.
 export const roleAfter = (role: StageRole): StageRole | null => {
   const i = ROLE_SEQUENCE.indexOf(role)
   return i === -1 || i === ROLE_SEQUENCE.length - 1 ? null : ROLE_SEQUENCE[i + 1]
@@ -141,8 +169,9 @@ export const nextOwnerFor = (order?: Order | null): string | null =>
 // all four). Used only for labelling — routing is driven by the plan itself.
 export const isSingleSeatingPlan = (order?: Order | null): boolean => {
   const plan = stagePlanOf(order)
-  const owners = ROLE_SEQUENCE.map(r => plan[r]).filter(Boolean)
-  return owners.length === ROLE_SEQUENCE.length && new Set(owners).size === 1
+  const seq = stageSequence(plan)           // effective stages (unassigned optional ones excluded)
+  const owners = seq.map(r => plan[r]).filter(Boolean)
+  return owners.length > 0 && owners.length === seq.length && new Set(owners).size === 1
 }
 
 // The single source of truth for status: it follows the owning role.
@@ -150,10 +179,10 @@ export const isSingleSeatingPlan = (order?: Order | null): boolean => {
 export const statusForRole = (role: StageRole | null): Status =>
   role === null
     ? 'delivered'
-    : (({ screener: 'screening', examiner: 'examining', typer: 'typing', delivery: 'delivery' } as const)[role] || 'received')
+    : (({ screener: 'screening', examiner: 'examining', typer: 'typing', qc: 'qc', delivery: 'delivery' } as const)[role] || 'received')
 
 // The 0-100 progress ramp. 'received' shows a token 5%.
-export const PIPELINE: string[] = ['received', 'screening', 'examining', 'typing', 'delivery', 'delivered']
+export const PIPELINE: string[] = ['received', 'screening', 'examining', 'typing', 'qc', 'delivery', 'delivered']
 export const progressFor = (status: string): number => {
   const i = PIPELINE.indexOf(status)
   return i <= 0 ? (status === 'received' ? 5 : 0) : Math.round((i / (PIPELINE.length - 1)) * 100)
@@ -162,7 +191,7 @@ export const progressFor = (status: string): number => {
 // Human stage label for the activity log (examiner -> 'examination', distinct
 // from the 'examining' status).
 export const STAGE_BY_ROLE: Record<StageRole, string> =
-  { screener: 'screening', examiner: 'examination', typer: 'typing', delivery: 'delivery' }
+  { screener: 'screening', examiner: 'examination', typer: 'typing', qc: 'quality check', delivery: 'delivery' }
 
 // Progress DERIVED from terminal state rather than trusting the stored column,
 // which can lag: a delivered order must never read "80% complete".

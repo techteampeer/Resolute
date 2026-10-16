@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest'
 import {
   ROLE_SEQUENCE, nextRoleFor, roleAfter, statusForRole, progressFor, orderProgress, isOrderComplete,
   activeCountForUser, workloadWeight, lineItemsOf, lineSubId,
-  stagePlanOf, hasStagePlan, ownerForStage, nextOwnerFor, isSingleSeatingPlan,
+  stagePlanOf, hasStagePlan, ownerForStage, nextOwnerFor, isSingleSeatingPlan, stageSequenceFor,
 } from './pipeline'
 import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
-  applySingleSeatStep, applyReassign, applyPartialHandoff, applyStagePlan, applyRoutedStep,
+  applySingleSeatStep, applyReassign, applyPartialHandoff, applyStagePlan, applyRoutedStep, applyQcReject,
 } from './orders'
 
 const order = (o: Record<string, any> = {}) => ({
@@ -15,10 +15,11 @@ const order = (o: Record<string, any> = {}) => ({
 })
 
 describe('pipeline primitives', () => {
-  it('roleAfter follows the fixed sequence, null after delivery', () => {
+  it('roleAfter follows the fixed sequence (incl. qc), null after delivery', () => {
     expect(roleAfter('screener')).toBe('examiner')
     expect(roleAfter('examiner')).toBe('typer')
-    expect(roleAfter('typer')).toBe('delivery')
+    expect(roleAfter('typer')).toBe('qc')
+    expect(roleAfter('qc')).toBe('delivery')
     expect(roleAfter('delivery')).toBeNull()
   })
   it('nextRoleFor returns the first incomplete stage', () => {
@@ -29,12 +30,13 @@ describe('pipeline primitives', () => {
   it('statusForRole maps role -> status; null -> delivered', () => {
     expect(statusForRole('screener')).toBe('screening')
     expect(statusForRole('examiner')).toBe('examining')
+    expect(statusForRole('qc')).toBe('qc')
     expect(statusForRole('delivery')).toBe('delivery')
     expect(statusForRole(null)).toBe('delivered')
   })
   it('progressFor: received=5, ramps to 100 at delivered', () => {
     expect(progressFor('received')).toBe(5)
-    expect(progressFor('screening')).toBe(20)
+    expect(progressFor('screening')).toBe(17)   // 1/6 of the 7-step ramp (qc added between typing and delivery)
     expect(progressFor('delivered')).toBe(100)
     expect(progressFor('unknown')).toBe(0)
   })
@@ -308,5 +310,57 @@ describe('applyRoutedStep', () => {
     expect(next.status).toBe('delivered')
     expect(next.completed).toBeTruthy()
     expect(next.progress).toBe(100)
+  })
+})
+
+// ── Optional QC stage (Quality Check between typer and delivery) ──────────────
+describe('optional QC stage', () => {
+  const qcPlan = { screener: 'A', examiner: 'B', typer: 'C', qc: 'Q', delivery: 'D' }
+  const qcPlanned = (o: Record<string, any> = {}) =>
+    order({ workflow: { stagePlan: qcPlan }, assignedTo: 'user', assignedUserId: 'A', status: 'screening', ...o })
+
+  it('effective sequence excludes an unassigned QC, includes an assigned one', () => {
+    expect(stageSequenceFor(order())).toEqual(['screener', 'examiner', 'typer', 'delivery'])
+    expect(stageSequenceFor(planned())).toEqual(['screener', 'examiner', 'typer', 'delivery']) // plan has no qc
+    expect(stageSequenceFor(qcPlanned())).toEqual(['screener', 'examiner', 'typer', 'qc', 'delivery'])
+  })
+  it('nextRoleFor skips an unassigned QC but stops at an assigned one', () => {
+    const done3 = { screener: 'x', examiner: 'x', typer: 'x' }
+    expect(nextRoleFor(planned({ completedDates: done3 }))).toBe('delivery')   // no qc owner → skip
+    expect(nextRoleFor(qcPlanned({ completedDates: done3 }))).toBe('qc')       // qc owner → stop at qc
+  })
+  it('a QC-less plan routes typer straight to delivery', () => {
+    const o = planned({ completedDates: { screener: 'x', examiner: 'x' }, assignedUserId: 'C', status: 'typing' })
+    const { advancedTo, nextOwnerId } = applyRoutedStep(o, 'typer', 'Cy')
+    expect(advancedTo).toBe('delivery')
+    expect(nextOwnerId).toBe('D')
+  })
+  it('a QC plan routes typer to the QC reviewer, then QC pass to delivery', () => {
+    const atTyper = qcPlanned({ completedDates: { screener: 'x', examiner: 'x' }, assignedUserId: 'C', status: 'typing' })
+    const afterTyper = applyRoutedStep(atTyper, 'typer', 'Cy')
+    expect(afterTyper.advancedTo).toBe('qc')
+    expect(afterTyper.nextOwnerId).toBe('Q')
+    const atQc = qcPlanned({ completedDates: { screener: 'x', examiner: 'x', typer: 'x' }, assignedUserId: 'Q', status: 'qc' })
+    const afterQc = applyRoutedStep(atQc, 'qc', 'Quinn')
+    expect(afterQc.advancedTo).toBe('delivery')
+    expect(afterQc.nextOwnerId).toBe('D')
+  })
+  it('applyQcReject returns the order to the plan typer, clearing typer+qc, keeping earlier stamps', () => {
+    const atQc = qcPlanned({ completedDates: { screener: 'x', examiner: 'y', typer: 'z' }, assignedUserId: 'Q', status: 'qc' })
+    const n = applyQcReject(atQc, 'fix the legal description', 'Quinn')
+    expect(n.status).toBe('typing')
+    expect(n.assignedTo).toBe('user')
+    expect(n.assignedUserId).toBe('C')                 // the plan's own typer — no free choice
+    expect(n.completedDates!.typer).toBeUndefined()    // cleared → typing is due again
+    expect(n.completedDates!.qc).toBeUndefined()
+    expect(n.completedDates!.screener).toBe('x')       // earlier stamps untouched
+    expect(n.completedDates!.examiner).toBe('y')
+    expect(n.completed).toBeNull()
+    expect(n.workflow!.qcReview).toMatchObject({ result: 'rejected', note: 'fix the legal description', by: 'Quinn' })
+  })
+  it('single-seating still excludes QC (it is a separate-reviewer gate)', () => {
+    const next = applyStagePlan(order(), { singleSeating: true, plan: { screener: 'Z', examiner: 'Z', typer: 'Z', delivery: 'Z' } })
+    expect(stageSequenceFor(next)).toEqual(['screener', 'examiner', 'typer', 'delivery'])
+    expect(isSingleSeatingPlan(next)).toBe(true)
   })
 })

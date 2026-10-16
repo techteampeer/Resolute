@@ -4,8 +4,8 @@ import { Search, MoreHorizontal } from 'lucide-react'
 import { displayClient } from '../data/mockData'
 import { useAuth } from '../context/AuthContext'
 
-const STEP_LABELS = ['Received','Screening','Searching','Examining','Typing','Delivered']
-const STEP_KEYS   = ['received','screening','searching','examining','typing','delivered']
+const STEP_LABELS = ['Received','Screening','Searching','Examining','Typing','Quality Check','Delivered']
+const STEP_KEYS   = ['received','screening','searching','examining','typing','qc','delivered']
 
 function ProgressBar({ status, progress }) {
   const idx = STEP_KEYS.indexOf(status)
@@ -39,6 +39,8 @@ const STATUS_STYLES = {
   searching: { bg: 'rgba(36,65,229,0.18)', text: '#2441E5', dot: '#2441E5' },
   examining: { bg: 'rgba(36,65,229,0.14)',   text: '#2441E5', dot: '#2441E5' },
   typing:    { bg: 'rgba(18,104,168,0.14)',  text: '#1268A8', dot: '#1268A8' },
+  qc:        { bg: 'rgba(124,58,237,0.16)',  text: '#7c3aed', dot: '#7c3aed' },
+  delivery:  { bg: 'rgba(180,83,9,0.16)',    text: '#b45309', dot: '#b45309' },
   delivered: { bg: 'rgba(80,180,100,0.18)',  text: '#15803d', dot: '#15803d' },
   onhold:    { bg: 'rgba(220,80,80,0.18)',   text: '#e07878', dot: '#e07878' },
 }
@@ -68,7 +70,7 @@ export default function OrdersTable({ orders, showAssignees = false, onOrderClic
             placeholder="Search orders…" className="input-field pl-9 py-2 text-sm" />
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
-          {['all','received','screening','searching','examining','typing','delivered'].map(s => (
+          {['all','received','screening','searching','examining','typing','qc','delivered'].map(s => (
             <button key={s} onClick={() => setFilter(s)}
               className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 capitalize"
               style={{
