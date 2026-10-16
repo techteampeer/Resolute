@@ -55,3 +55,10 @@ export const namesForRole = (profiles, role) =>
 
 /** Discard the cache so the next consumer refetches (after a roster edit). */
 export function invalidateProfiles() { cache = null; inflight = null }
+
+/** Invalidate AND immediately refetch, pushing the fresh roster to every mounted
+ *  consumer. Call this after creating/editing/activating a user so a newly-added
+ *  production user shows up in the assign picker WITHOUT a page reload (the
+ *  module-scoped cache otherwise serves the stale list until the tab is
+ *  reloaded). `load()` notifies all subscribers when the refetch completes. */
+export function refreshProfiles() { cache = null; inflight = null; return load() }

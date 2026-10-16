@@ -26,7 +26,8 @@ export default function SetPassword() {
     setLoading(true); setError('')
     try {
       const r = await setPassword(pw)
-      if (r.success) navigate('/', { replace: true })
+      if (r.success && r.role) navigate('/', { replace: true })
+      else if (r.success) setError('Your password is set, but this account has no role assigned yet. Ask an admin to set your role, then sign in.')
       else setError(toErrorMessage(r.error))
     } catch (err) { setError(toErrorMessage(err)) }
     finally { setLoading(false) }

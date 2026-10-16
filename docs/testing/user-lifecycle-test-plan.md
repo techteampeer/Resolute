@@ -109,11 +109,41 @@ admin page needs a reload.
 
 ---
 
-## Known risks to watch (from the code audit)
+## Known risks (from the lifecycle code audit)
 
-> _(filled in from the lifecycle code audit — see the chat summary)_
+### Fixed in this change (so your test won't hit them)
+- **Silent "production user created as a client."** The create endpoint didn't
+  check that the profile update succeeded, so a behind migration or missing
+  trigger could leave the account at the default `role='client'` while returning
+  200 + an invite. **Fixed:** the create now verifies the profile was set and
+  **rolls the account back with a clear error** if not (`api/admin/users.js`). →
+  If A1 now errors "Account provisioning failed… check migrations", a migration
+  (`permissions` / `can_confirm_payments` / `qc`) isn't applied — apply it.
+- **New user not selectable until a full page reload.** The assign-picker roster
+  was a module-scoped cache that was never refreshed. **Fixed:** creating/editing
+  a user now live-refreshes the roster (`refreshProfiles` in `useProfiles.js`),
+  so **C2 should now work without a reload** (reload is still a safe fallback).
+- **Role-less account bounced to `/login` after setting a password, with no
+  message.** **Fixed:** the set-password screen now says "this account has no
+  role assigned yet…" instead of a silent bounce (`SetPassword.jsx` /
+  `AuthContext.jsx`).
 
-- **P3 redirect URL** is the single most likely blocker for B1.
-- A brand-new user may need an **admin-page reload** before showing in the assign
-  picker (C2) if realtime isn't re-fetching the roster.
-- _(additional findings appended after the audit)_
+### You must verify (config, not code)
+- **P3 — Auth Site URL / Redirect URLs** is the single most likely blocker for
+  **B1**. If it's still `localhost`, the invite link can't reach the deployed
+  set-password screen. Set both to `https://resolute-kappa.vercel.app`.
+- **Service-role key** (`SUPABASE_SERVICE_ROLE_KEY`) on Vercel — already
+  confirmed present (the endpoint returns 401, not 500).
+- **Migrations applied** on live Supabase: `20260908010000` (can_confirm_payments),
+  `20261013000000` (permissions), `20261016000000` (qc). The create-user fix above
+  now surfaces a behind migration as a clear error instead of a silent downgrade.
+- **Client env** (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`) — if missing the
+  app runs in mock mode (amber banner), the user panel is read-only, and only demo
+  logins work. The amber banner must be **absent** on the live site.
+
+### Known limitation (NOT fixed — by design, flag for the team)
+- **Stage-scope is advisory only.** A "screener-only" trainee can still be
+  assigned to any stage (incl. QC) — the assign picker lists all active production
+  users and no DB rule enforces `permissions.stages`. For now, the admin must
+  assign stages appropriately; the system won't refuse a mis-scoped assignment.
+  (Enforcing this in the picker + a DB policy is a follow-up.)
