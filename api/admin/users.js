@@ -103,14 +103,27 @@ export default async function handler(req, res) {
       email, password, email_confirm: true, user_metadata: { name, role },
     })
     if (error) return send(res, 400, { error: error.message })
-    // The handle_new_user trigger created the profile; set the authoritative fields.
-    // super_admin / billing only apply to admins; grants apply to anyone.
-    await supabaseAdmin.from('profiles').update({
+    // The handle_new_user trigger created the profile (default role='client');
+    // set the authoritative fields. super_admin / billing only apply to admins;
+    // grants apply to anyone.
+    const { data: provisioned, error: profErr } = await supabaseAdmin.from('profiles').update({
       name, role, client_code: role === 'client' ? (clientCode || null) : null, status: 'active',
       super_admin: isAdmin ? !!superAdmin : false,
       can_confirm_payments: isAdmin ? !!canConfirmPayments : false,
       permissions: perms.value ?? [],
-    }).eq('id', data.user.id)
+    }).eq('id', data.user.id).select('id')
+    // CRITICAL: if this UPDATE fails or touches 0 rows, the account keeps the
+    // trigger's default role='client' — a "production user" silently created as a
+    // client, invisible in the assign picker. Causes: a behind migration (missing
+    // `permissions` / `can_confirm_payments` column rejects the whole statement) or
+    // an absent handle_new_user trigger. Roll the half-created account back and
+    // surface the error rather than return 200 on a mis-provisioned user.
+    if (profErr || !provisioned || provisioned.length === 0) {
+      await supabaseAdmin.auth.admin.deleteUser(data.user.id).catch(() => {})
+      await supabaseAdmin.from('profiles').delete().eq('id', data.user.id).catch(() => {})
+      return send(res, 400, { error: profErr?.message
+        || 'Account provisioning failed: the profile could not be set (check that all migrations are applied). No user was created.' })
+    }
     // No plaintext password is ever handed back. The random one above is a
     // throwaway the invitee immediately overrides via a secure set-password link.
     let inviteLink = null

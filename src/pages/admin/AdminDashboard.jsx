@@ -15,7 +15,7 @@ import AdminBilling from './AdminBilling'
 import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument, getAccessToken } from '../../lib/backend'
 import { isSupabaseConfigured } from '../../lib/backend'
-import { useProfiles } from '../../lib/useProfiles'
+import { useProfiles, refreshProfiles } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
 import { money } from '../../lib/billing'
 import { orderSourceOf, orderSourceLabel } from '../../lib/orderSource'
@@ -1696,7 +1696,11 @@ function AdminUsers() {
   }
   useEffect(() => { load() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  const run = async (fn) => { setErr(''); setBusy(true); try { await fn(); load() } catch (e) { setErr(e.message) } finally { setBusy(false) } }
+  // After any roster-changing action, refresh BOTH the admin user table (load, the
+  // /api/admin/users GET) and the shared profiles cache (refreshProfiles, used by
+  // the Stage-plan assign picker) so a newly-created production user is immediately
+  // selectable for assignment — no page reload required.
+  const run = async (fn) => { setErr(''); setBusy(true); try { await fn(); load(); refreshProfiles() } catch (e) { setErr(e.message) } finally { setBusy(false) } }
   const toggleActive = (u) => run(() => usersApi('POST', { action: 'setActive', id: u.id, active: !u.active }))
   const remove = (u) => { if (window.confirm(`Remove ${u.name || u.email}? This permanently deletes their account.`)) run(() => usersApi('POST', { action: 'remove', id: u.id })) }
   const reset = (u) => run(async () => { const j = await usersApi('POST', { action: 'resetPassword', email: u.email }); setNotice(`Password reset link for ${u.email}:\n\n${j.link || '(recovery email sent)'}`) })

@@ -68,8 +68,14 @@ export function AuthProvider({ children }) {
   // the app routes the (now signed-in) user to their dashboard.
   const setPassword = async (pw) => {
     const r = await backendUpdatePassword(pw)
-    if (r.success) { setRecovery(false); const u = await getCurrentUser(); setUser(u && u.role ? u : null) }
-    return r
+    if (!r.success) return r
+    const u = await getCurrentUser()
+    setUser(u && u.role ? u : null)
+    // Only leave the recovery screen once the account has a resolved role. A
+    // role-less profile (e.g. a mis-provisioned account) would otherwise land on
+    // /login with no explanation; keeping recovery up lets SetPassword say why.
+    if (u && u.role) setRecovery(false)
+    return { ...r, role: u?.role ?? null }
   }
 
   const login = async (email, password) => {
