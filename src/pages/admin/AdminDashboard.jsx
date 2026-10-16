@@ -44,7 +44,7 @@ const ROLE_HOVER  = '#1B34C4'
 // the plan editor. Read-only awareness here; editing happens in StagePlanModal.
 const PLAN_STAGES = [
   { key:'screener', label:'Screener' }, { key:'examiner', label:'Examiner' },
-  { key:'typer', label:'Typer' }, { key:'delivery', label:'Delivery' },
+  { key:'typer', label:'Typer' }, { key:'qc', label:'Quality Check' }, { key:'delivery', label:'Delivery' },
 ]
 function StagePlanPanel({ order, profiles, onEdit }) {
   const plan = stagePlanOf(order)
@@ -132,6 +132,7 @@ const STATUS_MAP = {
   searching: { label:'Searching', color:'#2441E5', bg:'#EEF1FE' },
   examining: { label:'Examining', color:'#2441E5', bg:'#EEF1FE' },
   typing:    { label:'Typing',    color:'#1268A8', bg:'#E8F4FB' },
+  qc:        { label:'Quality Check', color:'#7c3aed', bg:'#F3EEFE' },
   delivery:  { label:'Out for Delivery', color:'#0E7C90', bg:'#E4F7FB' },
   delivered: { label:'Delivered', color:'#15803d', bg:'#f0fdf4' },
   cancelled: { label:'Cancelled', color:'#dc2626', bg:'#fef2f2' },
@@ -220,6 +221,7 @@ const STAGE_FIELDS = [
   { key:'screener', label:'Screener' },
   { key:'examiner', label:'Examiner' },
   { key:'typer',    label:'Typer' },
+  { key:'qc',       label:'Quality Check' },
   { key:'delivery', label:'Delivery' },
 ]
 const DETAIL_TABS = [

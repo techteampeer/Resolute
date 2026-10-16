@@ -5,10 +5,10 @@
 // identical; the only change is that the logic now lives in one portable place.
 import {
   StageRole, Order, StagePlan,
-  roleAfter, nextRoleFor, statusForRole, progressFor, todayISO, stagePlanOf,
+  roleAfterFor, nextRoleFor, statusForRole, progressFor, todayISO, stagePlanOf, stageSequence,
 } from './pipeline'
 
-const STAGES: string[] = ['screener', 'examiner', 'typer', 'delivery']
+const STAGES: string[] = ['screener', 'examiner', 'typer', 'qc', 'delivery']
 
 export interface AssignParams { queue: string; personName?: string; userId?: string | null }
 
@@ -69,7 +69,9 @@ export interface StagePlanParams { singleSeating: boolean; plan: StagePlan }
 // handoff guard, so this sets the owner directly — which is exactly why a plan,
 // set here, is the only way an order's owner ever moves forward.
 export function applyStagePlan(order: Order, { singleSeating, plan }: StagePlanParams): Order {
-  const due = nextRoleFor(order)
+  // The due stage is derived from the NEW plan's effective sequence (so an
+  // unassigned optional QC slot is skipped here too), not the order's old plan.
+  const due = stageSequence(plan).find(r => !(order.completedDates && order.completedDates[r])) || null
   const owner = due ? (plan[due] ?? null) : null
   const status = statusForRole(due)
   return {
@@ -95,7 +97,7 @@ export function applyRoutedStep(
   order: Order, role: StageRole, userName: string, extra: Record<string, any> = {},
 ): RoutedResult {
   const newDates = { ...order.completedDates, [role]: todayISO() }
-  const nextRole = roleAfter(role)
+  const nextRole = roleAfterFor(order, role)
   const allDone = nextRole === null
   const nextStatus = statusForRole(nextRole)
   const nextOwner = nextRole ? (stagePlanOf(order)[nextRole] || null) : null
@@ -124,7 +126,7 @@ export function applyCompleteStep(
   order: Order, role: StageRole, userName: string, extra: Record<string, any> = {},
 ): StepResult {
   const newDates = { ...order.completedDates, [role]: todayISO() }
-  const nextRole = roleAfter(role)
+  const nextRole = roleAfterFor(order, role)
   const allDone = nextRole === null
   const nextStatus = statusForRole(nextRole)
   const next: Order = {
@@ -148,7 +150,7 @@ export function applySingleSeatStep(
   order: Order, role: StageRole, userName: string, extra: Record<string, any> = {},
 ): StepResult {
   const newDates = { ...order.completedDates, [role]: todayISO() }
-  const nextRole = roleAfter(role)
+  const nextRole = roleAfterFor(order, role)
   const allDone = nextRole === null
   const nextStatus = statusForRole(nextRole)
   const next: Order = {
@@ -172,7 +174,7 @@ export function applyReturnToAdmin(
   order: Order, role: StageRole, userName: string, extra: Record<string, any> = {},
 ): StepResult {
   const newDates = { ...order.completedDates, [role]: todayISO() }
-  const nextRole = roleAfter(role)
+  const nextRole = roleAfterFor(order, role)
   const nextStatus = statusForRole(nextRole)
   const next: Order = {
     ...order,
@@ -184,6 +186,29 @@ export function applyReturnToAdmin(
     workflow: { ...order.workflow, ...extra },
   }
   return { next, advancedTo: nextRole }
+}
+
+// QC REJECTION (corrections required). The QC reviewer sends the package back to
+// the plan's TYPER owner for re-work — the plan's own typer, never a free choice,
+// so the anti-bias rule holds. Clears the typer + qc completion stamps so the
+// order is due at typing again, records the QC note, and routes to the typer
+// owner (or Admin if the plan somehow has none). The DB guard permits exactly
+// this shape (see the qc-rejection allowance in the handoff guard).
+export function applyQcReject(order: Order, note: string, byName: string): Order {
+  const typerOwner = stagePlanOf(order).typer || null
+  const dates = { ...order.completedDates }
+  delete dates.qc
+  delete dates.typer
+  return {
+    ...order,
+    status: statusForRole('typer'),
+    assignedTo: typerOwner ? 'user' : 'admin',
+    assignedUserId: typerOwner,
+    progress: progressFor('typing'),
+    completed: null,
+    completedDates: dates,
+    workflow: { ...order.workflow, qcReview: { result: 'rejected', note: note || '', by: byName, at: todayISO() } },
+  }
 }
 
 export type CancelMode = 'cancelled' | 'requested'

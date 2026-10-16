@@ -1,8 +1,8 @@
 // Pipeline stages (typing inserted before delivery)
 // One status per role stage, strictly ordered. Status is DERIVED from the role
 // that owns the order (see statusForRole), so the two can never drift.
-export const STAGE_KEYS   = ['received','screening','examining','typing','delivery','delivered']
-export const STAGE_LABELS = ['Received','Screening','Examining','Typing','Out for Delivery','Delivered']
+export const STAGE_KEYS   = ['received','screening','examining','typing','qc','delivery','delivered']
+export const STAGE_LABELS = ['Received','Screening','Examining','Typing','Quality Check','Out for Delivery','Delivered']
 
 export const PAYMENT_METHODS = ['Check', 'ACH']
 
@@ -156,7 +156,8 @@ export const USERS = [
 // (packages/domain, imported via the '@domain' alias). Re-exported here so the
 // many existing `from '../data/mockData'` imports keep working unchanged.
 export {
-  ROLE_SEQUENCE, nextRoleFor, roleAfter, statusForRole, orderProgress, isOrderComplete,
+  ROLE_SEQUENCE, OPTIONAL_STAGES, nextRoleFor, roleAfter, roleAfterFor, stageSequenceFor,
+  statusForRole, orderProgress, isOrderComplete,
   activeCountForUser, workloadWeight, lineItemsOf, lineSubId,
   stagePlanOf, hasStagePlan, ownerForStage, nextOwnerFor, isSingleSeatingPlan,
   can, effectiveCapabilities, workableStages,
@@ -195,6 +196,7 @@ export const STATUS_COLORS = {
   searching: { bg: 'bg-purple-500/20', text: 'text-purple-300', dot: 'bg-purple-400' },
   examining: { bg: 'bg-orange-500/20', text: 'text-orange-300', dot: 'bg-orange-400' },
   typing:    { bg: 'bg-cyan-500/20',   text: 'text-cyan-300',   dot: 'bg-cyan-400'   },
+  qc:        { bg: 'bg-violet-500/20', text: 'text-violet-300', dot: 'bg-violet-400' },
   delivery:  { bg: 'bg-amber-500/20',  text: 'text-amber-300',  dot: 'bg-amber-400'  },
   delivered: { bg: 'bg-green-500/20',  text: 'text-green-300',  dot: 'bg-green-400'  },
   onhold:    { bg: 'bg-red-500/20',    text: 'text-red-300',    dot: 'bg-red-400'    },

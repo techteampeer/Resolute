@@ -5,7 +5,7 @@ import { ORDERS, ACTIVITY } from '../data/mockData'
 // delegates every state transition to these pure functions.
 import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
-  applySingleSeatStep, applyReassign, applyPartialHandoff, applyStagePlan, applyRoutedStep,
+  applySingleSeatStep, applyReassign, applyPartialHandoff, applyStagePlan, applyRoutedStep, applyQcReject,
   STAGE_BY_ROLE, todayISO,
 } from '@domain'
 import { isSupabaseConfigured, fetchOrders, fetchOrderById, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
@@ -187,6 +187,20 @@ export function OrderProvider({ children }) {
       time: 'Just now', type: advancedTo && routedTo !== 'admin' ? 'progress' : 'status',
       audience: advancedTo ? 'staff' : 'all',
     })
+  }
+
+  // QC rejects the package (corrections required): the reviewer sends the order
+  // back to the plan's TYPER owner for re-work, with a note. Clears the typer +
+  // qc stamps so the order is due at typing again. The typer is the plan's own,
+  // so the anti-bias rule holds and the DB guard permits exactly this move.
+  const rejectQc = (orderId, note, userName) => {
+    setOrders(os => os.map(o => {
+      if (o.id !== orderId) return o
+      const next = applyQcReject(o, note, userName)
+      persist(next)
+      return next
+    }))
+    log({ id: Date.now(), orderId, actor: userName, action: `${userName} rejected ${orderId} at Quality Check → returned to the Typer for corrections` + (note ? ` (${note})` : ''), time: 'Just now', type: 'status', audience: 'staff' })
   }
 
   // Admin reassigns an order to a different production user (cover an absence,
@@ -387,7 +401,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, writeError, clearWriteError, assignOrder, reassign, setStagePlan, routeStep, advanceInSeat, partialHandoff, completeStep, returnToAdmin, updateOrder, logAction, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, writeError, clearWriteError, assignOrder, reassign, setStagePlan, routeStep, rejectQc, advanceInSeat, partialHandoff, completeStep, returnToAdmin, updateOrder, logAction, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )
