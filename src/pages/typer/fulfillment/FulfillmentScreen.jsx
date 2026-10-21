@@ -588,7 +588,7 @@ function Finalize({ comp, order, f, user, navigate }) {
       console.error('[commitment]', e.message)
     }
     // E2: a PLANNED order routes the typer stage straight to the pre-assigned
-    // owner of the next stage — Quality Check if the plan assigns a QC reviewer,
+    // owner of the next stage — Typing QC if the plan assigns a QC reviewer,
     // otherwise Delivery — NOT back to Admin (the DB guard rejects an admin
     // hand-off for a planned order). Legacy orders keep the old behaviour. Mirrors the worker
     // desk's advance().
@@ -608,7 +608,7 @@ function Finalize({ comp, order, f, user, navigate }) {
           assignment — for an admin that is their own Orders list. */}
       <p className="text-[12.5px] mb-3" style={{ color: T.faint }}>
         {planned
-          ? 'When you submit, typing is recorded and the order moves straight to the next assigned stage — Quality Check if set, otherwise Delivery.'
+          ? 'When you submit, typing is recorded and the order moves straight to the next assigned stage — Typing QC if set, otherwise Delivery.'
           : isAdmin
           ? 'When you submit, typing is recorded as complete and the order returns to your Orders list, ready to assign to Delivery.'
           : 'When you submit, the order is sent to Admin for approval before delivery.'}

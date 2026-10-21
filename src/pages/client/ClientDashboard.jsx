@@ -85,7 +85,7 @@ function InvoiceCard({ order }) {
 const CLIENT_STEPS = ['Placed','Received','In Progress','Delivered']
 function clientStage(order) {
   const confirmed = !!order.workflow?.confirmed
-  const working = ['screening','searching','examining','typing','qc','delivery'].includes(order.status)
+  const working = ['screening','searching','searchqc','examining','typing','qc','delivery'].includes(order.status)
   if (order.status === 'cancelled')          return { idx: 0, label: 'Cancelled',               color: '#dc2626' }
   if (order.status === 'delivered')          return { idx: 3, label: 'Delivered',               color: '#15803d' }
   if (order.workflow?.onHold)                return { idx: working ? 2 : 1, label: 'On Hold',    color: '#a16207' }

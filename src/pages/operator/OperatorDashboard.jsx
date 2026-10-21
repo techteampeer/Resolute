@@ -6,7 +6,7 @@ import DocUpload from '../../components/DocUpload'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
-import { displayClient, nextRoleFor, lineItemsOf, hasStagePlan } from '../../data/mockData'
+import { displayClient, nextRoleFor, roleAfterFor, lineItemsOf, hasStagePlan } from '../../data/mockData'
 import SubOrders from '../../components/SubOrders'
 import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files, Bell, RotateCcw } from 'lucide-react'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
@@ -25,9 +25,10 @@ const NAV = [
 // Stage each order is currently waiting on (first uncompleted production role).
 const STAGE = {
   screener: { label: 'Screening',    color: '#2441E5', verb: 'Screen & assign' },
+  searchqc: { label: 'Search QC',    color: '#7c3aed', verb: 'Review' },
   examiner: { label: 'Examination',  color: '#a16207', verb: 'Examine & upload' },
   typer:    { label: 'Typing',       color: '#0e7490', verb: 'Type commitment' },
-  qc:       { label: 'Quality Check', color: '#7c3aed', verb: 'Review' },
+  qc:       { label: 'Typing QC',    color: '#9333ea', verb: 'Review' },
   delivery: { label: 'Delivery',     color: '#b45309', verb: 'Deliver to client' },
 }
 const ASSIGN = [['in_house', 'In-House'], ['abs', 'ABS (Abstract)'], ['both', 'Both']]
@@ -87,11 +88,12 @@ function OperatorOrderPage() {
     partialHandoff(order.id, notes.trim(), user?.name)
     navigate('/user')
   }
-  // QC: reject the package and send it back to the plan's typer for corrections.
-  // A note is required so the typer knows what to fix.
+  // QC: reject the package and send it back for corrections — Search QC to the
+  // plan's screener, Typing QC to the plan's typer (the stage is `role`). A note
+  // is required so the re-work owner knows what to fix.
   const reject = () => {
     if (!isActionable || !notes.trim()) return
-    rejectQc(order.id, notes.trim(), user?.name)
+    rejectQc(order.id, notes.trim(), user?.name, role)
     navigate('/user')
   }
   const canSubmit = isActionable && (role === 'screener' ? !!assignment
@@ -160,35 +162,44 @@ function OperatorOrderPage() {
             </p>
           </Panel>
         )}
-        {role === 'qc' && (
-          <>
-            <Panel title="Quality Check" hint="Review the typed commitment and source documents before delivery.">
-              <p className="text-sm" style={{ color: '#3D5171' }}>
-                Verify the search instructions, source documents and typed commitment. Pass the order on to Delivery,
-                or send it back to the Typer with the corrections required.
-              </p>
-            </Panel>
-            <Panel title="QC comments" hint="Required when sending back for corrections.">
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
-                placeholder="Corrections required, or notes on approval…" className="input-field text-sm resize-none" />
-            </Panel>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button disabled={!isActionable}
-                onClick={() => advance({ qcReview: { result: 'passed', note: notes || '', by: user?.name, at: new Date().toISOString().slice(0, 10) } })}
-                className="btn-primary text-sm py-2.5 flex items-center justify-center gap-2"
-                style={{ opacity: isActionable ? 1 : 0.5 }}>
-                <CheckCircle className="w-4 h-4" /> Pass → Delivery
-              </button>
-              <button type="button" disabled={!isActionable || !notes.trim()} onClick={reject}
-                className="text-sm py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2"
-                style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c',
-                  opacity: (isActionable && notes.trim()) ? 1 : 0.55, cursor: (isActionable && notes.trim()) ? 'pointer' : 'not-allowed' }}>
-                <RotateCcw className="w-4 h-4" /> Reject — Corrections Required
-              </button>
-            </div>
-          </>
-        )}
-        {role !== 'typer' && role !== 'qc' && (
+        {(role === 'qc' || role === 'searchqc') && (() => {
+          // Both QC gates share this panel. Pass routes to the plan's next stage
+          // (Search QC → Examiner, Typing QC → Delivery); Reject returns the order
+          // for re-work (Search QC → Screener, Typing QC → Typer).
+          const passLabel = STAGE[roleAfterFor(order, role)]?.label || 'the next stage'
+          const reworkLabel = role === 'searchqc' ? 'Screener' : 'Typer'
+          return (
+            <>
+              <Panel title={meta.label} hint={role === 'searchqc'
+                ? 'Review the search package before examination.'
+                : 'Review the typed commitment and source documents before delivery.'}>
+                <p className="text-sm" style={{ color: '#3D5171' }}>
+                  Verify the search instructions, source documents and work so far. Pass the order on to {passLabel},
+                  or send it back to the {reworkLabel} with the corrections required.
+                </p>
+              </Panel>
+              <Panel title="QC comments" hint="Required when sending back for corrections.">
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+                  placeholder="Corrections required, or notes on approval…" className="input-field text-sm resize-none" />
+              </Panel>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button disabled={!isActionable}
+                  onClick={() => advance({ qcReview: { result: 'passed', note: notes || '', by: user?.name, at: new Date().toISOString().slice(0, 10), stage: role } })}
+                  className="btn-primary text-sm py-2.5 flex items-center justify-center gap-2"
+                  style={{ opacity: isActionable ? 1 : 0.5 }}>
+                  <CheckCircle className="w-4 h-4" /> Pass → {passLabel}
+                </button>
+                <button type="button" disabled={!isActionable || !notes.trim()} onClick={reject}
+                  className="text-sm py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2"
+                  style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c',
+                    opacity: (isActionable && notes.trim()) ? 1 : 0.55, cursor: (isActionable && notes.trim()) ? 'pointer' : 'not-allowed' }}>
+                  <RotateCcw className="w-4 h-4" /> Reject — Corrections Required
+                </button>
+              </div>
+            </>
+          )
+        })()}
+        {role !== 'typer' && role !== 'qc' && role !== 'searchqc' && (
           <>
             <Panel title="Notes">
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}

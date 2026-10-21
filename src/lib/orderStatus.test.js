@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import { STATUS_META, AWAITING_META, HOLD_META, CLARIFY_META, statusMeta } from './orderStatus.js'
 
 // Every pipeline status the app can emit must have a badge. These are the values
-// `statusForRole` / the DB `order_status` enum produce today (pre-Phase-3, so one
-// 'qc'; Phase 3 adds 'searchqc' + renames to 'typingqc' and extends this map).
+// `statusForRole` / the DB `order_status` enum produce — including both optional
+// QC stages: 'searchqc' (Search QC) and 'qc' (the internal key for Typing QC).
 const PIPELINE_STATUSES = [
-  'received', 'screening', 'searching', 'examining', 'typing', 'qc',
+  'received', 'screening', 'searching', 'searchqc', 'examining', 'typing', 'qc',
   'delivery', 'delivered', 'cancelled',
 ]
 

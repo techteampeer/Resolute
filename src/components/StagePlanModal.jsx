@@ -12,11 +12,12 @@ const ROLE_COLOR = '#2441E5'
 const Q = { card:'#ffffff', border:'#DDE3EC', text:'#12284C', muted:'#5C6E8C', faint:'#9AA8BF', bg:'#F3F5F8' }
 
 const STAGES = [
-  { key:'screener', label:'Screener', hint:'Opens the title search' },
-  { key:'examiner', label:'Examiner', hint:'Researches & examines' },
-  { key:'typer',    label:'Typer',    hint:'Types the commitment' },
-  { key:'qc',       label:'Quality Check', hint:'Reviews before delivery · optional' },
-  { key:'delivery', label:'Delivery', hint:'Delivers to the client' },
+  { key:'screener', label:'Screener',  hint:'Opens the title search' },
+  { key:'searchqc', label:'Search QC', hint:'Reviews the search · optional' },
+  { key:'examiner', label:'Examiner',  hint:'Researches & examines' },
+  { key:'typer',    label:'Typer',     hint:'Types the commitment' },
+  { key:'qc',       label:'Typing QC', hint:'Reviews before delivery · optional' },
+  { key:'delivery', label:'Delivery',  hint:'Delivers to the client' },
 ]
 
 // Admin sets an order's COURSE OF FLOW once (E2): who works each stage. Pick one
@@ -43,7 +44,7 @@ export default function StagePlanModal({ order, user, onClose }) {
   const [onePerson, setOnePerson] = useState(
     planWasSet && isSingleSeatingPlan(order) ? existing.screener : lightestId)
   const [perStage, setPerStage] = useState({
-    screener: existing.screener || '', examiner: existing.examiner || '',
+    screener: existing.screener || '', searchqc: existing.searchqc || '', examiner: existing.examiner || '',
     typer:    existing.typer    || '', qc: existing.qc || '', delivery: existing.delivery || '',
   })
 
@@ -172,7 +173,7 @@ export default function StagePlanModal({ order, user, onClose }) {
                     <span style={{ textTransform:'none', letterSpacing:0, fontWeight:500, color:Q.faint }}>{s.hint}</span>
                   </label>
                   {personSelect(perStage[s.key], v => setPerStage(p => ({ ...p, [s.key]: v })),
-                    { allowNone: true, noneLabel: s.key === 'qc' ? '— none (skip Quality Check)' : undefined })}
+                    { allowNone: true, noneLabel: OPTIONAL_STAGES.includes(s.key) ? `— none (skip ${s.label})` : undefined })}
                 </div>
               ))}
             </div>

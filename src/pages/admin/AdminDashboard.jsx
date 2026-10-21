@@ -46,8 +46,8 @@ const ROLE_HOVER  = '#1B34C4'
 // which stage the order is with right now, and what's already done — and opens
 // the plan editor. Read-only awareness here; editing happens in StagePlanModal.
 const PLAN_STAGES = [
-  { key:'screener', label:'Screener' }, { key:'examiner', label:'Examiner' },
-  { key:'typer', label:'Typer' }, { key:'qc', label:'Quality Check' }, { key:'delivery', label:'Delivery' },
+  { key:'screener', label:'Screener' }, { key:'searchqc', label:'Search QC' }, { key:'examiner', label:'Examiner' },
+  { key:'typer', label:'Typer' }, { key:'qc', label:'Typing QC' }, { key:'delivery', label:'Delivery' },
 ]
 function StagePlanPanel({ order, profiles, onEdit }) {
   const plan = stagePlanOf(order)
@@ -210,9 +210,10 @@ const selectStyle = {
 
 const STAGE_FIELDS = [
   { key:'screener', label:'Screener' },
+  { key:'searchqc', label:'Search QC' },
   { key:'examiner', label:'Examiner' },
   { key:'typer',    label:'Typer' },
-  { key:'qc',       label:'Quality Check' },
+  { key:'qc',       label:'Typing QC' },
   { key:'delivery', label:'Delivery' },
 ]
 const DETAIL_TABS = [

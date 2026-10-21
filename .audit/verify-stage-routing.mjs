@@ -133,6 +133,30 @@ check('legacy non-single stamp without Admin refused', f2.status >= 400, `HTTP $
 const f3 = await P('screener', { completed_dates: { screener: '2026-06-01' }, assigned_to: 'admin', status: 'examining' })
 check('legacy non-single stamp + return-to-Admin allowed', f3.status < 400, `HTTP ${f3.status}`)
 
+// ── E2.G: the optional Search QC stage (screener → Search QC → examiner) ─────
+console.log('── E2.G: Search QC routes and rejects like the plan says ──')
+// A plan with a Search QC reviewer (the examiner login stands in as the reviewer).
+const sqcPlan = JSON.stringify({ singleSeating: false,
+  stagePlan: { screener: SCREENER, searchqc: EXAMINER, examiner: TYPER, typer: TYPER, delivery: DELIVERY } })
+// Screener completes → routes to the Search QC reviewer at status 'searchqc'.
+seed(sqcPlan)
+const g1 = await P('screener', { completed_dates: { screener: '2026-06-01' }, assigned_to: 'user', assigned_user_id: EXAMINER, status: 'searchqc' })
+check('screener → Search QC routing allowed', g1.status < 400, `HTTP ${g1.status}`)
+check('order now with the Search QC reviewer at searchqc', rowOf().u === EXAMINER && rowOf().s === 'searchqc', `u=${rowOf().u} s=${rowOf().s}`)
+// Search QC passes → routes to the examiner owner at 'examining'.
+const g2 = await P('examiner', { completed_dates: { screener: '2026-06-01', searchqc: '2026-06-02' }, assigned_to: 'user', assigned_user_id: TYPER, status: 'examining' })
+check('Search QC pass → examiner routing allowed', g2.status < 400, `HTTP ${g2.status}`)
+check('order now with the examiner at examining', rowOf().u === TYPER && rowOf().s === 'examining', `u=${rowOf().u} s=${rowOf().s}`)
+// Search QC REJECT → returns to the plan's screener at 'screening', clearing stamps.
+seed(sqcPlan, { status: 'searchqc', owner: EXAMINER, dates: '{"screener":"2026-06-01"}' })
+const g3 = await P('examiner', { completed_dates: {}, assigned_to: 'user', assigned_user_id: SCREENER, status: 'screening', completed: null })
+check('Search QC reject → screener allowed', g3.status < 400, `HTTP ${g3.status}`)
+check('order back with the screener at screening', rowOf().u === SCREENER && rowOf().s === 'screening', `u=${rowOf().u} s=${rowOf().s}`)
+// A Search QC reject can NOT redirect to an off-plan user (anti-bias holds).
+seed(sqcPlan, { status: 'searchqc', owner: EXAMINER, dates: '{"screener":"2026-06-01"}' })
+const g4 = await P('examiner', { completed_dates: {}, assigned_to: 'user', assigned_user_id: OUTSIDER, status: 'screening' })
+check('Search QC reject to an off-plan user refused', g4.status >= 400, `HTTP ${g4.status}`)
+
 sql(`delete from orders where id = '${OID}'`)
 
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed')
