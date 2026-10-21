@@ -5,6 +5,7 @@ import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
 import StagePlanModal from '../../components/StagePlanModal'
 import NotificationSettings from '../../components/NotificationSettings'
+import StatusBadge from '../../components/StatusBadge'
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
   Package, CheckCircle, Clock, Search, Plus, Filter, Eye, DollarSign,
@@ -19,6 +20,7 @@ import { useProfiles, refreshProfiles } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
 import { money } from '../../lib/billing'
 import { orderSourceOf, orderSourceLabel } from '../../lib/orderSource'
+import { STATUS_META as STATUS_MAP } from '../../lib/orderStatus'
 import { ROLE_COLOR, density } from '../../lib/ui'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
@@ -124,18 +126,6 @@ const Q = {
   faint:   '#9AA8BF',
   shadow:  '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
   rowHover:'#F9FBFD',
-}
-
-const STATUS_MAP = {
-  received:  { label:'Received',  color:'#12284C', bg:'#EDF0F5' },
-  screening: { label:'Screening', color:'#1B3A8C', bg:'#EAEEF8' },
-  searching: { label:'Searching', color:'#2441E5', bg:'#EEF1FE' },
-  examining: { label:'Examining', color:'#2441E5', bg:'#EEF1FE' },
-  typing:    { label:'Typing',    color:'#1268A8', bg:'#E8F4FB' },
-  qc:        { label:'Quality Check', color:'#7c3aed', bg:'#F3EEFE' },
-  delivery:  { label:'Out for Delivery', color:'#0E7C90', bg:'#E4F7FB' },
-  delivered: { label:'Delivered', color:'#15803d', bg:'#f0fdf4' },
-  cancelled: { label:'Cancelled', color:'#dc2626', bg:'#fef2f2' },
 }
 
 // Export the full order list to CSV (used on Dashboard + Orders — moved here
@@ -1223,9 +1213,6 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
           </thead>
           <tbody>
             {paged.map((o, i) => {
-              const s = awaitingApproval(o)
-                ? { label: 'Awaiting Approval', bg: '#fffbeb', color: '#b45309' }
-                : (STATUS_MAP[o.status] || STATUS_MAP.received)
               const r = routingState(o)
               return (
                 <motion.tr key={o.id}
@@ -1248,39 +1235,13 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                   <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap' }}>{o.county}, {o.state}</td>
                   <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{o.type}</td>
                   <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{orderSourceLabel(o)}</td>
+                  {/* ONE status badge (O3): the current stage, colour-coded, with
+                      On-Hold / Clarification as modifiers. The routing noise that
+                      used to stack here (New / Ready / Assigned / Awaiting-confirm)
+                      lives in the Assignee column, which names who holds the order. */}
                   <td style={{ padding:CELL_PAD, whiteSpace:'nowrap' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                      <span style={{
-                        padding:'3px 10px', borderRadius:99, fontSize:12, fontWeight:600,
-                        background:s.bg, color:s.color,
-                      }}>{s.label}</span>
-                      {r.kind === 'new' && (
-                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#EEF1FE', color:'#2441E5', border:'1px solid #C6CFFA' }}>New</span>
-                      )}
-                      {r.kind === 'ready' && (
-                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#fffbeb', color:'#d97706', border:'1px solid #fde68a' }}>
-                          Ready · {cap(r.next)} next
-                        </span>
-                      )}
-                      {r.kind === 'inprogress' && (
-                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0' }}>Assigned</span>
-                      )}
-                      {!o.workflow?.confirmed && o.status === 'received' && !isPortalOrder(o) && (
-                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#EEF1FE', color:'#2441E5', border:'1px solid #C6CFFA' }}>Awaiting confirm</span>
-                      )}
-                      {o.workflow?.onHold && (
-                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#fffbeb', color:'#a16207', border:'1px solid #fde68a' }}>On Hold</span>
-                      )}
-                      {o.clarification === 'pending' && (
-                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#fef2f2', color:'#dc2626', border:'1px solid #fecaca' }}>Clarification</span>
-                      )}
-                    </div>
+                    <StatusBadge status={o.status} awaiting={awaitingApproval(o)}
+                      onHold={!!o.workflow?.onHold} clarification={o.clarification === 'pending'} />
                   </td>
                   <td style={{ padding:CELL_PAD, color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{o.payment}</td>
                   {/* Assignee — the real current owner (assigned_user_id → name)

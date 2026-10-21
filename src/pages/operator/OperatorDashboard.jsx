@@ -6,7 +6,7 @@ import DocUpload from '../../components/DocUpload'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
-import { displayClient, nextRoleFor, roleAfterFor, lineItemsOf, hasStagePlan, ownerForStage } from '../../data/mockData'
+import { displayClient, nextRoleFor, lineItemsOf, hasStagePlan } from '../../data/mockData'
 import SubOrders from '../../components/SubOrders'
 import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files, Bell, RotateCcw } from 'lucide-react'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
@@ -67,9 +67,6 @@ function OperatorOrderPage() {
   // every-stage Admin gate), so nothing in flight breaks.
   const planned = hasStagePlan(order)
   const single = order.workflow?.singleSeating
-  const nextRole = role ? roleAfterFor(order, role) : null
-  const nextOwnerId = planned ? ownerForStage(order, nextRole) : null
-  const routesToSelf = !!nextOwnerId && nextOwnerId === user?.id
   const advance = (workflowPatch) => {
     if (!isActionable) return   // never write a view-only order, even if called directly
     if (planned) {
@@ -138,7 +135,7 @@ function OperatorOrderPage() {
           <div className="p-4 rounded-xl" style={{ background: 'rgba(0,184,217,0.10)', border: '1px solid rgba(0,184,217,0.25)' }}>
             <div className="flex items-center gap-2 mb-1"><Keyboard className="w-4 h-4" style={{ color: '#0e7490' }} />
               <span className="font-semibold text-sm" style={{ color: '#12284C' }}>Type the commitment</span></div>
-            <p className="text-xs mb-3" style={{ color: '#3D5171' }}>Opens the full sectioned fulfillment form. Submitting there sends the order to Admin for approval.</p>
+            <p className="text-xs mb-3" style={{ color: '#3D5171' }}>Opens the full sectioned fulfillment form. Submit there to record typing complete.</p>
             <button onClick={() => navigate(`/user/order/${order.id}`)}
               className="btn-primary text-sm py-2.5 w-full flex items-center justify-center gap-2">
               <FileText className="w-4 h-4" /> Open Fulfillment Form
@@ -205,12 +202,7 @@ function OperatorOrderPage() {
                 : null)}
               className="btn-primary w-full text-sm py-2.5 flex items-center justify-center gap-2"
               style={{ opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
-              <Send className="w-4 h-4" /> {
-                role === 'delivery' ? `${meta.verb} & Complete`
-                : planned ? (!nextOwnerId ? `${meta.verb} & Send to Admin` : routesToSelf ? `${meta.verb} & Continue` : `${meta.verb} & Hand to next stage`)
-                : single ? `${meta.verb} & Continue`
-                : `${meta.verb} & Send to Admin`
-              }
+              <Send className="w-4 h-4" /> Submit
             </button>
             {/* Stuck on a disruption or query? Escalate to Admin with a note — the
                 only way a production user reaches Admin mid-order (the order never

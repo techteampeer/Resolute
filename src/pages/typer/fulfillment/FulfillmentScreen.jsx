@@ -651,7 +651,7 @@ function Finalize({ comp, order, f, user, navigate }) {
       <div className="flex items-center gap-2 flex-wrap">
         <GhostButton icon={FileText} onClick={() => setShowDoc(true)}>Generate Commitment Document</GhostButton>
         <AccentButton icon={Send} disabled={!ready || submitting} onClick={submit}>
-          {submitting ? 'Generating…' : isAdmin ? 'Mark typing complete' : 'Submit for Admin Approval'}
+          {submitting ? 'Generating…' : isAdmin ? 'Mark typing complete' : 'Submit'}
         </AccentButton>
       </div>
     </div>
