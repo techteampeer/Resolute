@@ -52,5 +52,28 @@ const adm = await as('admin', 'client_contacts?select=*&name=like.AUDIT*')
 check('admin reads all contacts', adm.status < 300 && n(adm) >= 1, `n=${n(adm)}`)
 
 sql(`delete from public.client_contacts where name like 'AUDIT %'`)
+
+// ── client_profiles RLS (the editable half of Company Settings) ──────────────
+console.log('── client_profiles RLS ──')
+sql(`delete from public.client_profiles where client_code in ('${MINE}', '${OTHER}')`)
+// 1. Client saves their own company profile.
+const pIns = await as('client', 'client_profiles', { method: 'POST',
+  body: JSON.stringify({ client_code: MINE, address: '1 Audit Way', city: 'Testville' }) })
+check('client can save their own company profile', pIns.status < 300, `HTTP ${pIns.status}`)
+// 2. Client reads their own profile.
+const pMine = await as('client', `client_profiles?select=*&client_code=eq.${MINE}`)
+check('client reads their own profile', pMine.status < 300 && n(pMine) === 1, `n=${n(pMine)}`)
+// 3. Client cannot write another company's profile.
+const pSpoof = await as('client', 'client_profiles', { method: 'POST',
+  body: JSON.stringify({ client_code: OTHER, address: 'nope' }) })
+check('client cannot write another company profile', pSpoof.status >= 400, `HTTP ${pSpoof.status}`)
+// 4. A production user sees no company profiles.
+const pProd = await as('user', `client_profiles?select=*&client_code=eq.${MINE}`)
+check('production user sees no company profiles', pProd.status < 300 && n(pProd) === 0, `n=${n(pProd)}`)
+// 5. An admin reads it.
+const pAdm = await as('admin', `client_profiles?select=*&client_code=eq.${MINE}`)
+check('admin reads company profiles', pAdm.status < 300 && n(pAdm) >= 1, `n=${n(pAdm)}`)
+sql(`delete from public.client_profiles where client_code in ('${MINE}', '${OTHER}')`)
+
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed')
 process.exit(failures ? 1 : 0)
