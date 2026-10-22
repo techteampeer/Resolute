@@ -34,6 +34,7 @@ export default function Layout({ children, navItems, role, roleColor = ROLE_COLO
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showNotif, setShowNotif]       = useState(false)
   const [seen, setSeen]                 = useState(() => readSeen(user))
+  const [notifView, setNotifView]       = useState('unread')   // 'unread' | 'all' (A2)
 
   // Notifications visible to this user. Staff/admin see the whole feed; a client
   // sees only entries about their own orders (mirrors My Orders/RLS scoping).
@@ -59,30 +60,36 @@ export default function Layout({ children, navItems, role, roleColor = ROLE_COLO
     return id && ORDER_ROUTE[role] && orderIds.has(id) ? `${ORDER_ROUTE[role]}/${id}` : null
   }
 
-  const unreadCount = notifications.reduce((c, n, i) => c + (seen.has(notifKey(n, i)) ? 0 : 1), 0)
+  const unreadCount = notifications.reduce((c, n) => c + (seen.has(notifKey(n)) ? 0 : 1), 0)
+  // The list the dropdown shows: Unread filters out what's been read; All keeps
+  // the whole history (read ones dimmed). Nothing is ever lost (A2).
+  const shownList = (notifView === 'unread'
+    ? notifications.filter(n => !seen.has(notifKey(n)))
+    : notifications).slice(0, 40)
 
-  const openNotif = () => {
-    setShowUserMenu(false)
-    const next = !showNotif
-    setShowNotif(next)
-    if (next && unreadCount) {                 // mark everything currently shown as read
-      const merged = new Set(seen)
-      notifications.forEach((n, i) => merged.add(notifKey(n, i)))
-      setSeen(merged)
-      try { localStorage.setItem(seenStoreKey(user), JSON.stringify([...merged])) } catch { /* ignore */ }
-    }
+  // A2: reading a notification moves it OUT of Unread into All. Opening the bell
+  // no longer marks everything read — the user reads items, or "Mark all read",
+  // deliberately, so the unread list is a real inbox, not cleared on a glance.
+  const persistSeen = (s) => {
+    try { localStorage.setItem(seenStoreKey(user), JSON.stringify([...s])) } catch { /* ignore */ }
   }
-
-  // Opening a notification's order. Opening the dropdown already marked it read;
-  // this also covers one that arrived while the dropdown was open, using the
-  // same seen-set and storage, before closing the dropdown and navigating.
-  const openNotifOrder = (n, to) => {
+  const markRead = (n) => {
     const key = notifKey(n)
-    if (!seen.has(key)) {
-      const merged = new Set(seen).add(key)
-      setSeen(merged)
-      try { localStorage.setItem(seenStoreKey(user), JSON.stringify([...merged])) } catch { /* ignore */ }
-    }
+    if (seen.has(key)) return
+    const merged = new Set(seen).add(key)
+    setSeen(merged); persistSeen(merged)
+  }
+  const markAllRead = () => {
+    if (!unreadCount) return
+    const merged = new Set(seen)
+    notifications.forEach(n => merged.add(notifKey(n)))
+    setSeen(merged); persistSeen(merged)
+  }
+  const openNotif = () => { setShowUserMenu(false); setShowNotif(v => !v) }
+
+  // Reading a notification: mark it read, then open its order when it has one.
+  const openNotifOrder = (n, to) => {
+    markRead(n)
     setShowNotif(false)
     navigate(to)
   }
@@ -291,28 +298,50 @@ export default function Layout({ children, navItems, role, roleColor = ROLE_COLO
                     style={{ width: 340, maxWidth: '90vw', background: T.menuBg, borderColor: T.menuBdr }}>
                     <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: T.menuBdr }}>
                       <span className="text-sm font-semibold" style={{ color: T.topbarText }}>Notifications</span>
-                      <span className="text-[11px]" style={{ color: T.topbarSub }}>{notifications.length} recent</span>
+                      {unreadCount > 0 && (
+                        <button onClick={markAllRead}
+                          className="text-[11px] font-semibold"
+                          style={{ color: T.badgePing, background: 'none', border: 'none', cursor: 'pointer' }}>
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+                    {/* Unread / All (A2): read items leave Unread but stay in All */}
+                    <div className="flex items-center gap-1 px-3 pt-2 pb-1 border-b" style={{ borderColor: T.menuBdr }}>
+                      {[['unread', `Unread${unreadCount ? ` (${unreadCount})` : ''}`], ['all', 'All']].map(([key, label]) => (
+                        <button key={key} onClick={() => setNotifView(key)}
+                          className="text-[12px] font-semibold px-2.5 py-1 rounded-md"
+                          style={notifView === key
+                            ? { background: T.menuHover, color: T.topbarText, cursor: 'pointer', border: 'none' }
+                            : { background: 'transparent', color: T.topbarSub, cursor: 'pointer', border: 'none' }}>
+                          {label}
+                        </button>
+                      ))}
                     </div>
                     <div className="max-h-80 overflow-y-auto">
-                      {notifications.length === 0 ? (
+                      {shownList.length === 0 ? (
                         <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
                           <Bell className="w-6 h-6" style={{ color: T.topbarSub, opacity: 0.6 }} />
-                          <span className="text-sm" style={{ color: T.topbarSub }}>You're all caught up</span>
+                          <span className="text-sm" style={{ color: T.topbarSub }}>
+                            {notifView === 'unread' ? "You're all caught up" : 'No notifications yet'}
+                          </span>
                         </div>
-                      ) : notifications.slice(0, 30).map((n, i) => {
+                      ) : shownList.map((n, i) => {
                         const to = notifRoute(n)
+                        const unread = !seen.has(notifKey(n))
+                        const handle = to ? () => openNotifOrder(n, to) : () => markRead(n)
                         return (
-                        <div key={notifKey(n, i)} className="flex gap-2.5 px-4 py-3 border-b last:border-b-0"
-                          style={{ borderColor: T.menuBdr, ...(to && { cursor: 'pointer' }) }}
-                          {...(to ? {
-                            role: 'button', tabIndex: 0,
-                            onClick: () => openNotifOrder(n, to),
-                            onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openNotifOrder(n, to) } },
-                            onMouseOver: e => { e.currentTarget.style.background = T.menuHover },
-                            onMouseOut: e => { e.currentTarget.style.background = 'transparent' },
-                          } : {})}>
+                        <div key={notifKey(n, i)} role="button" tabIndex={0}
+                          className="flex gap-2.5 px-4 py-3 border-b last:border-b-0"
+                          style={{ borderColor: T.menuBdr, cursor: 'pointer', opacity: unread ? 1 : 0.6 }}
+                          onClick={handle}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handle() } }}
+                          onMouseOver={e => { e.currentTarget.style.background = T.menuHover }}
+                          onMouseOut={e => { e.currentTarget.style.background = 'transparent' }}>
                           <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"
-                            style={{ background: NOTIF_DOT[n.type] || T.topbarSub }} />
+                            style={unread
+                              ? { background: NOTIF_DOT[n.type] || T.topbarSub }
+                              : { background: 'transparent', border: `1.5px solid ${T.topbarSub}` }} />
                           <div className="min-w-0">
                             <p className="text-[13px] leading-snug" style={{ color: T.menuText }}>{n.action}</p>
                             {n.time && <p className="text-[11px] mt-0.5" style={{ color: T.topbarSub }}>{n.time}</p>}
