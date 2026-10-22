@@ -32,6 +32,8 @@ export const {
   fetchNotificationTypes, fetchNotificationPreferences, saveNotificationPreference, clearNotificationPreference,
   // clients
   fetchClients, fetchClientTerms, saveClientTerms,
+  // client contacts (per-company people directory)
+  fetchContacts, saveContact,
   // vendors & payouts
   fetchVendors, saveVendorCycle, savePayoutLedger,
   // subscriptions

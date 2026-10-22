@@ -61,6 +61,10 @@ export async function fetchClients() { return null }
 export async function fetchClientTerms() { return null }
 export async function saveClientTerms() { /* side-effect write; no-op until B2 */ }
 
+// ── Client contacts ───────────────────────────────────────────────────────────
+export async function fetchContacts() { return null }
+export async function saveContact() { return writeErr('B2') }
+
 // ── Vendors & payouts ─────────────────────────────────────────────────────────
 export async function fetchVendors() { return null }
 export async function saveVendorCycle() { /* side-effect write; no-op until B2 */ }
