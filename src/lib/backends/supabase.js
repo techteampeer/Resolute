@@ -426,6 +426,37 @@ export async function saveContact(contact) {
   return { ok: true, contact: data ? fromContactRow(data) : null }
 }
 
+export async function deleteContact(id) {
+  const { error } = await supabase.from('client_contacts').delete().eq('id', id)
+  if (error) { console.error('[deleteContact]', error.message); return { ok: false, error: error.message } }
+  return { ok: true }
+}
+
+// ── Client company profile (client-editable half of Company Settings) ─────────
+const fromProfileRow = (r) => r && ({
+  clientCode: r.client_code, address: r.address || '', city: r.city || '', state: r.state || '',
+  zip: r.zip || '', phone: r.phone || '', website: r.website || '', logoUrl: r.logo_url || '',
+  updatedAt: r.updated_at,
+})
+// One row per company, or null when the client hasn't filled it in yet.
+export async function fetchClientProfile(clientCode) {
+  if (!clientCode) return null
+  const { data, error } = await supabase.from('client_profiles').select('*').eq('client_code', clientCode).maybeSingle()
+  if (error) { console.error('[clientProfile]', error.message); return null }
+  return fromProfileRow(data)
+}
+export async function saveClientProfile(clientCode, profile) {
+  const row = {
+    client_code: clientCode, address: profile.address || null, city: profile.city || null,
+    state: profile.state || null, zip: profile.zip || null, phone: profile.phone || null,
+    website: profile.website || null, logo_url: profile.logoUrl || null,
+    updated_by: profile.updatedBy || null, updated_at: new Date().toISOString(),
+  }
+  const { data, error } = await supabase.from('client_profiles').upsert(row, { onConflict: 'client_code' }).select('*').maybeSingle()
+  if (error) { console.error('[saveClientProfile]', error.message); return { ok: false, error: error.message } }
+  return { ok: true, profile: fromProfileRow(data) }
+}
+
 // ── Vendors & payout ledger ───────────────────────────────────────────────────
 export async function fetchVendors() {
   const { data, error } = await supabase.from('vendors').select('*').order('code')

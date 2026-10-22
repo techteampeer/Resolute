@@ -6,7 +6,7 @@ import OrderThread from '../../components/OrderThread'
 import NotificationSettings from '../../components/NotificationSettings'
 import { clientStats } from '../../lib/deskStats'
 import {
-  LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox,
+  LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox, Building2,
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye, Download
 } from 'lucide-react'
@@ -26,6 +26,7 @@ import { ROLE_COLOR } from '../../lib/ui'
 import OrdersTableView from '../../components/OrdersTableView'
 import { propertyOf } from '../../lib/ordersView'
 import { useContacts } from '../../lib/useContacts'
+import CompanySettings from './CompanySettings'
 
 const NAV = [
   { path: '/client',         label: 'Dashboard',   icon: LayoutDashboard },
@@ -33,6 +34,7 @@ const NAV = [
   { path: '/client/orders',  label: 'My Orders',   icon: ClipboardList },
   { path: '/client/messages',label: 'Messages',    icon: Inbox },
   { path: '/client/billing', label: 'Billing',     icon: DollarSign },
+  { path: '/client/settings',label: 'Company',     icon: Building2 },
   { path: '/client/support', label: 'Support',     icon: MessageSquare },
 ]
 // This client's orders, scoped by their client code — mirrors the Supabase RLS
@@ -1323,6 +1325,7 @@ export default function ClientDashboard() {
         <Route path="notifications" element={<NotificationSettings />} />
         <Route path="messages" element={<MessagesPage />} />
         <Route path="billing" element={<BillingPage />} />
+        <Route path="settings" element={<CompanySettings />} />
         <Route path="support" element={<SupportPage />} />
       </Routes>
     </Layout>

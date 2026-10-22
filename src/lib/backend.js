@@ -33,7 +33,9 @@ export const {
   // clients
   fetchClients, fetchClientTerms, saveClientTerms,
   // client contacts (per-company people directory)
-  fetchContacts, saveContact,
+  fetchContacts, saveContact, deleteContact,
+  // client company profile (client-editable half of Company Settings)
+  fetchClientProfile, saveClientProfile,
   // vendors & payouts
   fetchVendors, saveVendorCycle, savePayoutLedger,
   // subscriptions

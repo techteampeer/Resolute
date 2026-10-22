@@ -64,6 +64,11 @@ export async function saveClientTerms() { /* side-effect write; no-op until B2 *
 // ── Client contacts ───────────────────────────────────────────────────────────
 export async function fetchContacts() { return null }
 export async function saveContact() { return writeErr('B2') }
+export async function deleteContact() { return writeErr('B2') }
+
+// ── Client company profile ────────────────────────────────────────────────────
+export async function fetchClientProfile() { return null }
+export async function saveClientProfile() { return writeErr('B2') }
 
 // ── Vendors & payouts ─────────────────────────────────────────────────────────
 export async function fetchVendors() { return null }

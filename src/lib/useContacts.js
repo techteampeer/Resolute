@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { isSupabaseConfigured, fetchContacts, saveContact } from './backend'
+import { isSupabaseConfigured, fetchContacts, saveContact, deleteContact } from './backend'
 
 // Per-company people directory, scoped to one client_code. Backs the intake
 // "Placed by" selector (and, later, Company Settings). RLS already limits what a
@@ -44,5 +44,17 @@ export function useContacts(clientCode) {
     return null
   }, [clientCode, load])
 
-  return { contacts, loading, save, reload: load }
+  // Remove a contact from the directory (manage People in Company Settings).
+  const remove = useCallback(async (id) => {
+    if (!id) return false
+    if (!isSupabaseConfigured) {
+      const list = (mockStore.get(clientCode) || []).filter(x => x.id !== id)
+      mockStore.set(clientCode, list); setContacts(list); return true
+    }
+    const r = await deleteContact(id)
+    if (r && r.ok) { await load(); return true }
+    return false
+  }, [clientCode, load])
+
+  return { contacts, loading, save, remove, reload: load }
 }
