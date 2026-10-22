@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { FileText, CheckCircle, Upload, AlertTriangle, Landmark, Mail, Clock } from 'lucide-react'
+import { FileText, CheckCircle, Upload, AlertTriangle, Landmark, Mail, Clock, Download } from 'lucide-react'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
 import { isSupabaseConfigured, uploadDocument, openDocument } from '../../lib/backend'
+import StatusBadge from '../../components/StatusBadge'
+import { tabOf, propertyOf } from '../../lib/ordersView'
+import { downloadInvoicePdf } from '../../lib/invoicePdf'
 import {
   REMITTANCE, hasRemittanceDetails, termByKey, getClientTerms, hydrateClientTerms,
   invoiceAmount, invoiceNumber, money, clientCodeOf, paymentOf, payStatusOf,
@@ -23,6 +26,36 @@ const OverdueBadge = () => (
     <AlertTriangle className="w-3 h-3" /> Overdue
   </span>
 )
+
+// A single at-a-glance billing figure (Outstanding / Paid / In progress).
+const Tile = ({ label, value, sub, color }) => (
+  <div className="glass-card p-4">
+    <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#5C6E8C' }}>{label}</div>
+    <div className="text-2xl font-bold tabular-nums mt-1" style={{ color }}>{value}</div>
+    {sub && <div className="text-[11px] mt-0.5" style={{ color: '#8A99B3' }}>{sub}</div>}
+  </div>
+)
+
+// Branded invoice PDF for one order — generated client-side on demand (pdfmake is
+// loaded lazily inside downloadInvoicePdf). Works in the demo too: it's a document,
+// never a payment.
+function DownloadInvoiceBtn({ order, termKey, label = 'PDF' }) {
+  const [busy, setBusy] = useState(false)
+  return (
+    <button onClick={async () => {
+        if (busy) return
+        setBusy(true)
+        try { await downloadInvoicePdf(order, { company: order.client, termKey }) }
+        finally { setBusy(false) }
+      }}
+      disabled={busy}
+      title="Download invoice PDF"
+      className="btn-secondary text-xs px-3 py-2 inline-flex items-center gap-1.5"
+      style={{ opacity: busy ? 0.6 : 1 }}>
+      <Download className="w-3.5 h-3.5" /> {busy ? '…' : label}
+    </button>
+  )
+}
 
 // Remittance instructions — placeholders until real details are configured.
 function Remittance({ method }) {
@@ -167,6 +200,7 @@ function InvoiceRow({ order, termKey, onPaid, demo }) {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-lg font-bold tabular-nums" style={{ color: '#12284C' }}>{money(invoiceAmount(order))}</span>
+          <DownloadInvoiceBtn order={order} termKey={termKey} />
           {!demo && (status === 'unpaid' || status === 'bounced') && (
             <button onClick={() => setOpen(!open)} className="btn-secondary text-xs px-3 py-2">{open ? 'Close' : 'Pay'}</button>
           )}
@@ -205,6 +239,14 @@ export default function ClientBilling({ myOrders }) {
 
   const unconfirmed = billable.filter(o => payStatusOf(o) !== 'confirmed')
   const paid = billable.filter(o => payStatusOf(o) === 'confirmed')
+  // In progress = orders still in the pipeline (not yet delivered, so no invoice
+  // is issued), excluding cancelled. The amount is a catalog ESTIMATE until the
+  // Typer finalises the real total at delivery.
+  const inProgress = myOrders.filter(o => !isBillable(o) && tabOf(o) !== 'cancelled')
+  const sum = (list) => list.reduce((a, o) => a + invoiceAmount(o), 0)
+  const outstanding = sum(unconfirmed)
+  const paidTotal = sum(paid)
+  const inProgressTotal = sum(inProgress)
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -221,6 +263,17 @@ export default function ClientBilling({ myOrders }) {
           Payments are disabled in the demo — the invoices below are sample data.
         </div>
       )}
+
+      {/* At-a-glance totals */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Tile label="Outstanding" value={money(outstanding)}
+          sub={`${unconfirmed.length} invoice${unconfirmed.length === 1 ? '' : 's'} awaiting payment`}
+          color={outstanding > 0 ? '#dc2626' : '#15803d'} />
+        <Tile label="Paid" value={money(paidTotal)}
+          sub={`${paid.length} confirmed`} color="#15803d" />
+        <Tile label="In progress" value={money(inProgressTotal)}
+          sub={`${inProgress.length} order${inProgress.length === 1 ? '' : 's'} · estimated`} color={ROLE_COLOR} />
+      </div>
 
       {/* Consolidated statement (termed clients) */}
       {stmt && (
@@ -272,12 +325,40 @@ export default function ClientBilling({ myOrders }) {
               <div className="text-sm" style={{ color: '#3D5171' }}>
                 <span className="font-semibold" style={{ color: '#12284C' }}>{invoiceNumber(o)}</span> · {o.type} · included in {stmt.id}
               </div>
-              <span className="tabular-nums font-bold text-sm" style={{ color: '#12284C' }}>{money(invoiceAmount(o))}</span>
+              <div className="flex items-center gap-3">
+                <span className="tabular-nums font-bold text-sm" style={{ color: '#12284C' }}>{money(invoiceAmount(o))}</span>
+                <DownloadInvoiceBtn order={o} termKey={termKey} />
+              </div>
             </div>
           )
           : <InvoiceRow key={o.id} order={o} termKey={termKey} onPaid={payOne} demo={isDemo} />
         )}
       </div>
+
+      {/* In progress — still in the pipeline, estimated, not yet invoiced */}
+      {inProgress.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="font-semibold text-sm" style={{ color: '#12284C' }}>
+            In Progress <span className="font-normal" style={{ color: '#8A99B3' }}>· estimated, not yet invoiced</span>
+          </h2>
+          {inProgress.map(o => (
+            <div key={o.id} className="glass-card p-4 flex items-center justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Clock className="w-4 h-4 flex-shrink-0" style={{ color: '#8A99B3' }} />
+                  <span className="font-semibold text-sm" style={{ color: '#12284C' }}>{o.id}</span>
+                  <StatusBadge status={o.status} awaiting={o.assignedTo === 'admin' || o.assignedTo == null} size="sm" />
+                </div>
+                <div className="text-xs mt-1" style={{ color: '#5C6E8C' }}>{o.type} · {propertyOf(o)}</div>
+              </div>
+              <span className="tabular-nums font-bold text-sm" style={{ color: '#3D5171' }}>~{money(invoiceAmount(o))}</span>
+            </div>
+          ))}
+          <p className="text-[11px]" style={{ color: '#8A99B3' }}>
+            Estimated from catalog pricing. The final invoice is issued when the order is delivered.
+          </p>
+        </div>
+      )}
 
       {/* Payment history */}
       {paid.length > 0 && (
@@ -295,6 +376,7 @@ export default function ClientBilling({ myOrders }) {
                 <span className="flex items-center gap-2">
                   <Chip status="confirmed" />
                   <span className="tabular-nums font-bold text-sm" style={{ color: '#12284C' }}>{money(invoiceAmount(o))}</span>
+                  <DownloadInvoiceBtn order={o} termKey={termKey} />
                 </span>
               </div>
             )
