@@ -25,6 +25,7 @@ import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '..
 import { ROLE_COLOR } from '../../lib/ui'
 import OrdersTableView from '../../components/OrdersTableView'
 import { propertyOf } from '../../lib/ordersView'
+import { useContacts } from '../../lib/useContacts'
 
 const NAV = [
   { path: '/client',         label: 'Dashboard',   icon: LayoutDashboard },
@@ -531,14 +532,25 @@ function PlaceOrderPage() {
     priority:'normal',
     contactName: user?.name || '',
     email: user?.email || '',
+    phone:'',
     company: clientName(user?.clientCode) || '',
-    role:'', notes:''
+    role:'', notes:'', marketingOptIn:false, placedById:'',
   })
   const [form, setForm] = useState(makeInitialForm)
   const [submitted, setSubmitted] = useState(false)
   const [stepErr, setStepErr] = useState(false)
   const [submitErr, setSubmitErr] = useState('')
   const set = (k,v) => setForm(f => ({ ...f, [k]:v }))
+  // Per-company people directory (#12): pick WHO is placing the order, or add a
+  // new person inline. Selecting a saved person fills their details; a new person
+  // is saved to the directory on submit (for re-select + marketing).
+  const { contacts, save: savePlacer } = useContacts(user?.clientCode)
+  const pickContact = (id) => {
+    const c = contacts.find(x => x.id === id)
+    if (!c) { setForm(f => ({ ...f, placedById: '' })); return }
+    setForm(f => ({ ...f, placedById: id, contactName: c.name, email: c.email || f.email,
+      phone: c.phone || '', role: c.title || '', marketingOptIn: !!c.marketingOptIn }))
+  }
   // Party list helpers (single name field + role; add/remove rows).
   const addParty = (role = 'Buyer') => setForm(f => ({ ...f, parties: [...f.parties, { id: uid(), role, name:'' }] }))
   const setParty = (id, patch) => setForm(f => ({ ...f, parties: f.parties.map(p => p.id === id ? { ...p, ...patch } : p) }))
@@ -571,6 +583,18 @@ function PlaceOrderPage() {
       const customSearch = form.customSearch.trim()
       // A custom (non-catalogue) search becomes the order type when no product is picked.
       const type = form.searchType || customSearch || 'Full Search'
+      // Record WHO placed the order in the company directory (best-effort — never
+      // block an order on it) and attach a snapshot to the intake.
+      let placedBy = null
+      try {
+        const saved = await savePlacer({
+          id: form.placedById || undefined,
+          name: form.contactName.trim(), email: form.email.trim(),
+          phone: form.phone.trim(), title: form.role.trim(),
+          marketingOptIn: !!form.marketingOptIn, createdBy: 'client',
+        })
+        if (saved) placedBy = { id: saved.id, name: saved.name, email: saved.email, title: saved.title }
+      } catch { /* directory is best-effort */ }
       const order = await createOrder({
         state: form.state, county: form.county, type,
         priority: form.priority,
@@ -587,6 +611,7 @@ function PlaceOrderPage() {
           parties, propertyType: propertyType || null, customSearch: customSearch || null,
           orderType: type, from: `${form.contactName} <${form.email}>`.trim(),
           company: form.company, role: form.role, specialInstructions: form.notes,
+          placedBy, contactPhone: form.phone.trim() || null,
         },
       })
       // BUG_004: only now do we have an order id to key Storage uploads on.
@@ -851,18 +876,44 @@ function PlaceOrderPage() {
             {step===3 && (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Contact Information</h2>
+                {contacts.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Placed by</label>
+                    <select value={form.placedById || 'new'} onChange={e=>pickContact(e.target.value === 'new' ? '' : e.target.value)} className="input-field text-sm">
+                      {contacts.map(c => <option key={c.id} value={c.id}>{c.name}{c.title ? ` — ${c.title}` : ''}</option>)}
+                      <option value="new">＋ Someone new…</option>
+                    </select>
+                    <p className="text-[11px] mt-1.5" style={{ color:'#5C6E8C' }}>Pick who’s placing this order, or add a new person below — we’ll remember them for next time.</p>
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Business Name *</label>
                   <input value={form.company} onChange={e=>set('company',e.target.value)} placeholder="Business name" className="input-field text-sm" required/>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Contact Name *</label>
-                  <input value={form.contactName} onChange={e=>set('contactName',e.target.value)} placeholder="Full name" className="input-field text-sm" required/>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Contact Name *</label>
+                    <input value={form.contactName} onChange={e=>set('contactName',e.target.value)} placeholder="Full name" className="input-field text-sm" required/>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Title / Role <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
+                    <input value={form.role} onChange={e=>set('role',e.target.value)} placeholder="e.g. Processor" className="input-field text-sm"/>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Work Email *</label>
-                  <input type="email" value={form.email} onChange={e=>set('email',e.target.value)} placeholder="you@company.com" className="input-field text-sm" required/>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Work Email *</label>
+                    <input type="email" value={form.email} onChange={e=>set('email',e.target.value)} placeholder="you@company.com" className="input-field text-sm" required/>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Phone <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
+                    <input value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="(555) 123-4567" className="input-field text-sm"/>
+                  </div>
                 </div>
+                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input type="checkbox" checked={!!form.marketingOptIn} onChange={e=>set('marketingOptIn',e.target.checked)} style={{ marginTop:2 }} />
+                  <span className="text-[12.5px]" style={{ color:'#5C6E8C' }}>Okay to send this person occasional product news and updates.</span>
+                </label>
               </div>
             )}
             {step===4 && (
@@ -887,8 +938,10 @@ function PlaceOrderPage() {
                     ['Parties', form.parties.filter(p => p.name.trim()).map(p => [p.role, p.name])],
                     ['Contact', [
                       ['Business name', form.company],
-                      ['Contact name', form.contactName],
+                      ['Placed by', form.contactName],
+                      ['Title / role', form.role],
                       ['Work email', form.email],
+                      ['Phone', form.phone],
                     ]],
                   ].map(([title, pairs]) => (
                     <div key={title} className="glass p-4 rounded-xl">

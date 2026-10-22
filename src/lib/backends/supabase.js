@@ -393,6 +393,39 @@ export async function saveClientTerms(code, termKey) {
   if (error) console.error('[terms]', error.message)
 }
 
+// ── Client contacts (per-company people directory) ────────────────────────────
+const fromContactRow = (r) => ({
+  id: r.id, clientCode: r.client_code, name: r.name, email: r.email || '',
+  phone: r.phone || '', title: r.title || '', marketingOptIn: !!r.marketing_opt_in,
+  createdBy: r.created_by || null, createdAt: r.created_at,
+})
+const toContactRow = (c) => ({
+  client_code: c.clientCode, name: c.name, email: c.email || null, phone: c.phone || null,
+  title: c.title || null, marketing_opt_in: !!c.marketingOptIn, created_by: c.createdBy || null,
+})
+
+// A company's people, or every company's for an admin (clientCode omitted). RLS
+// returns only what the caller may see — own company, or all for an admin; a
+// production user gets nothing.
+export async function fetchContacts(clientCode = null) {
+  let q = supabase.from('client_contacts').select('*').order('name')
+  if (clientCode) q = q.eq('client_code', clientCode)
+  const { data, error } = await q
+  if (error) { console.error('[contacts]', error.message); return null }
+  return (data || []).map(fromContactRow)
+}
+
+// Insert a new contact or update an existing one (by id). Returns the saved row.
+export async function saveContact(contact) {
+  const row = toContactRow(contact)
+  const q = contact.id
+    ? supabase.from('client_contacts').update({ ...row, updated_at: new Date().toISOString() }).eq('id', contact.id)
+    : supabase.from('client_contacts').insert(row)
+  const { data, error } = await q.select('*').maybeSingle()
+  if (error) { console.error('[saveContact]', error.message); return { ok: false, error: error.message } }
+  return { ok: true, contact: data ? fromContactRow(data) : null }
+}
+
 // ── Vendors & payout ledger ───────────────────────────────────────────────────
 export async function fetchVendors() {
   const { data, error } = await supabase.from('vendors').select('*').order('code')

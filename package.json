@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint . --max-warnings=0",
-    "test:integrity": "node .audit/verify-order-integrity.mjs && node .audit/verify-stage-routing.mjs && node .audit/verify-amounts.mjs"
+    "test:integrity": "node .audit/verify-order-integrity.mjs && node .audit/verify-stage-routing.mjs && node .audit/verify-amounts.mjs && node .audit/verify-contacts-rls.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
