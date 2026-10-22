@@ -13,6 +13,7 @@ import {
   MessageSquare, Send, StickyNote, Bell, Workflow,
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
+import AdminPlaceOrder from './AdminPlaceOrder'
 import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument, getAccessToken } from '../../lib/backend'
 import { isSupabaseConfigured } from '../../lib/backend'
@@ -108,6 +109,7 @@ function StagePlanPanel({ order, profiles, onEdit }) {
 const NAV = [
   { path: '/admin',          label: 'Dashboard',    icon: LayoutDashboard },
   { path: '/admin/orders',   label: 'Orders',       icon: ClipboardList },
+  { path: '/admin/place-order', label: 'Place Order', icon: Plus },
   { path: '/admin/users',    label: 'Users',        icon: Users },
   { path: '/admin/billing',  label: 'Billing',      icon: DollarSign },
   { path: '/admin/support',  label: 'Support',      icon: MessageSquare },
@@ -2066,6 +2068,7 @@ export default function AdminDashboard() {
       <Routes>
         <Route index            element={<AdminHome />} />
         <Route path="orders"     element={<AdminOrders />} />
+        <Route path="place-order" element={<AdminPlaceOrder />} />
         <Route path="orders/:id" element={<AdminOrderPage />} />
         {/* Admin can open and fill the commitment itself, not just approve the
             generated PDF. Same screen the typer and the Single Seating desk use. */}
