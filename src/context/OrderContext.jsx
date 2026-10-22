@@ -193,14 +193,15 @@ export function OrderProvider({ children }) {
   // back to the plan's TYPER owner for re-work, with a note. Clears the typer +
   // qc stamps so the order is due at typing again. The typer is the plan's own,
   // so the anti-bias rule holds and the DB guard permits exactly this move.
-  const rejectQc = (orderId, note, userName) => {
+  const rejectQc = (orderId, note, userName, stage = 'qc') => {
     setOrders(os => os.map(o => {
       if (o.id !== orderId) return o
-      const next = applyQcReject(o, note, userName)
+      const next = applyQcReject(o, note, userName, stage)
       persist(next)
       return next
     }))
-    log({ id: Date.now(), orderId, actor: userName, action: `${userName} rejected ${orderId} at Quality Check → returned to the Typer for corrections` + (note ? ` (${note})` : ''), time: 'Just now', type: 'status', audience: 'staff' })
+    const back = stage === 'searchqc' ? 'Search QC → returned to the Screener' : 'Typing QC → returned to the Typer'
+    log({ id: Date.now(), orderId, actor: userName, action: `${userName} rejected ${orderId} at ${back} for corrections` + (note ? ` (${note})` : ''), time: 'Just now', type: 'status', audience: 'staff' })
   }
 
   // Admin reassigns an order to a different production user (cover an absence,

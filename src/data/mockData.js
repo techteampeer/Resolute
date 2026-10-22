@@ -1,8 +1,8 @@
 // Pipeline stages (typing inserted before delivery)
 // One status per role stage, strictly ordered. Status is DERIVED from the role
 // that owns the order (see statusForRole), so the two can never drift.
-export const STAGE_KEYS   = ['received','screening','examining','typing','qc','delivery','delivered']
-export const STAGE_LABELS = ['Received','Screening','Examining','Typing','Quality Check','Out for Delivery','Delivered']
+export const STAGE_KEYS   = ['received','screening','searchqc','examining','typing','qc','delivery','delivered']
+export const STAGE_LABELS = ['Received','Screening','Search QC','Examining','Typing','Typing QC','Out for Delivery','Delivered']
 
 export const PAYMENT_METHODS = ['Check', 'ACH']
 

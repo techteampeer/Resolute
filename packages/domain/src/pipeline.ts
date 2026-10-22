@@ -7,10 +7,13 @@
 // src/data/mockData.js (see docs/ARCHITECTURE-ROADMAP.md, workstream B).
 
 // The pipeline stages, in fixed order. Admin chooses WHO performs each role; the
-// order of the roles themselves never changes. `qc` (Quality Check) is OPTIONAL
-// — see OPTIONAL_STAGES / stageSequence: an order includes it only when its plan
-// assigns a QC reviewer, otherwise it skips straight from typer to delivery.
-export type StageRole = 'screener' | 'examiner' | 'typer' | 'qc' | 'delivery'
+// order of the roles themselves never changes. TWO QC stages are OPTIONAL — see
+// OPTIONAL_STAGES / stageSequence: `searchqc` (Search QC, right after the
+// screener) and `qc` (Typing QC, right after the typer). An order includes a QC
+// stage only when its plan assigns a reviewer to it, otherwise that stage is
+// skipped. `qc` stays the internal key for the (original) Typing QC so no
+// existing order/status/migration has to change — only its label is "Typing QC".
+export type StageRole = 'screener' | 'searchqc' | 'examiner' | 'typer' | 'qc' | 'delivery'
 
 // Who an order can be assigned to: a pipeline stage, the Admin approval queue,
 // the consolidated end-to-end production desk ('user' — the generalized Single
@@ -18,7 +21,7 @@ export type StageRole = 'screener' | 'examiner' | 'typer' | 'qc' | 'delivery'
 export type Assignee = StageRole | 'admin' | 'user' | null
 
 export type Status =
-  | 'received' | 'screening' | 'searching' | 'examining'
+  | 'received' | 'screening' | 'searchqc' | 'searching' | 'examining'
   | 'typing' | 'qc' | 'delivery' | 'delivered' | 'onhold' | 'cancelled'
 
 // A single property covered by an order. An order may span several (the bulk
@@ -97,13 +100,14 @@ export interface Order {
   [k: string]: any
 }
 
-export const ROLE_SEQUENCE: StageRole[] = ['screener', 'examiner', 'typer', 'qc', 'delivery']
+export const ROLE_SEQUENCE: StageRole[] = ['screener', 'searchqc', 'examiner', 'typer', 'qc', 'delivery']
 
 // Stages an order includes ONLY when its stage plan assigns an owner to them.
-// QC is optional: with no QC reviewer the order skips it (Typer → Delivery)
-// rather than parking with Admin. A legacy order (no plan) has no QC owner, so
-// it keeps the original four-stage flow unchanged.
-export const OPTIONAL_STAGES: readonly StageRole[] = ['qc']
+// Both QC stages are optional: with no reviewer the order skips that stage
+// (Screener → Examiner for Search QC, Typer → Delivery for Typing QC) rather than
+// parking with Admin. A legacy order (no plan) has no QC owner, so it keeps the
+// original four-stage flow unchanged.
+export const OPTIONAL_STAGES: readonly StageRole[] = ['searchqc', 'qc']
 
 // The stages that actually apply to a given plan: the fixed sequence minus any
 // optional stage left unassigned. This is the one place the "skip an empty
@@ -179,10 +183,10 @@ export const isSingleSeatingPlan = (order?: Order | null): boolean => {
 export const statusForRole = (role: StageRole | null): Status =>
   role === null
     ? 'delivered'
-    : (({ screener: 'screening', examiner: 'examining', typer: 'typing', qc: 'qc', delivery: 'delivery' } as const)[role] || 'received')
+    : (({ screener: 'screening', searchqc: 'searchqc', examiner: 'examining', typer: 'typing', qc: 'qc', delivery: 'delivery' } as const)[role] || 'received')
 
 // The 0-100 progress ramp. 'received' shows a token 5%.
-export const PIPELINE: string[] = ['received', 'screening', 'examining', 'typing', 'qc', 'delivery', 'delivered']
+export const PIPELINE: string[] = ['received', 'screening', 'searchqc', 'examining', 'typing', 'qc', 'delivery', 'delivered']
 export const progressFor = (status: string): number => {
   const i = PIPELINE.indexOf(status)
   return i <= 0 ? (status === 'received' ? 5 : 0) : Math.round((i / (PIPELINE.length - 1)) * 100)
@@ -191,7 +195,7 @@ export const progressFor = (status: string): number => {
 // Human stage label for the activity log (examiner -> 'examination', distinct
 // from the 'examining' status).
 export const STAGE_BY_ROLE: Record<StageRole, string> =
-  { screener: 'screening', examiner: 'examination', typer: 'typing', qc: 'quality check', delivery: 'delivery' }
+  { screener: 'screening', searchqc: 'search QC', examiner: 'examination', typer: 'typing', qc: 'typing QC', delivery: 'delivery' }
 
 // Progress DERIVED from terminal state rather than trusting the stored column,
 // which can lag: a delivered order must never read "80% complete".

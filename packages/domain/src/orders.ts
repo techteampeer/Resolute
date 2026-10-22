@@ -8,7 +8,12 @@ import {
   roleAfterFor, nextRoleFor, statusForRole, progressFor, todayISO, stagePlanOf, stageSequence,
 } from './pipeline'
 
-const STAGES: string[] = ['screener', 'examiner', 'typer', 'qc', 'delivery']
+const STAGES: string[] = ['screener', 'searchqc', 'examiner', 'typer', 'qc', 'delivery']
+
+// Where each QC stage sends a rejected order for re-work: Search QC back to the
+// screener, Typing QC back to the typer — always the plan's OWN owner of that
+// stage (never a free choice), so the anti-bias rule holds.
+const QC_REWORK: Record<string, StageRole> = { searchqc: 'screener', qc: 'typer' }
 
 export interface AssignParams { queue: string; personName?: string; userId?: string | null }
 
@@ -188,26 +193,30 @@ export function applyReturnToAdmin(
   return { next, advancedTo: nextRole }
 }
 
-// QC REJECTION (corrections required). The QC reviewer sends the package back to
-// the plan's TYPER owner for re-work — the plan's own typer, never a free choice,
-// so the anti-bias rule holds. Clears the typer + qc completion stamps so the
-// order is due at typing again, records the QC note, and routes to the typer
-// owner (or Admin if the plan somehow has none). The DB guard permits exactly
-// this shape (see the qc-rejection allowance in the handoff guard).
-export function applyQcReject(order: Order, note: string, byName: string): Order {
-  const typerOwner = stagePlanOf(order).typer || null
+// QC REJECTION (corrections required). The QC reviewer sends the package back for
+// re-work to the owner of the stage it checks: Search QC → the plan's SCREENER,
+// Typing QC → the plan's TYPER (QC_REWORK). Always the plan's own owner, never a
+// free choice, so the anti-bias rule holds. Clears that stage's stamp AND the QC
+// stamp so the order is due at the re-work stage again, records the note (with the
+// QC stage), and routes to the re-work owner (or Admin if the plan has none). The
+// DB guard permits exactly these two shapes (see the qc-rejection allowance).
+// `stage` defaults to 'qc' (Typing QC) so existing callers keep their behaviour.
+export function applyQcReject(order: Order, note: string, byName: string, stage: StageRole = 'qc'): Order {
+  const reworkRole = QC_REWORK[stage] || 'typer'
+  const reworkOwner = stagePlanOf(order)[reworkRole] || null
   const dates = { ...order.completedDates }
-  delete dates.qc
-  delete dates.typer
+  delete dates[stage]
+  delete dates[reworkRole]
+  const reworkStatus = statusForRole(reworkRole)
   return {
     ...order,
-    status: statusForRole('typer'),
-    assignedTo: typerOwner ? 'user' : 'admin',
-    assignedUserId: typerOwner,
-    progress: progressFor('typing'),
+    status: reworkStatus,
+    assignedTo: reworkOwner ? 'user' : 'admin',
+    assignedUserId: reworkOwner,
+    progress: progressFor(reworkStatus as string),
     completed: null,
     completedDates: dates,
-    workflow: { ...order.workflow, qcReview: { result: 'rejected', note: note || '', by: byName, at: todayISO() } },
+    workflow: { ...order.workflow, qcReview: { result: 'rejected', note: note || '', by: byName, at: todayISO(), stage } },
   }
 }
 

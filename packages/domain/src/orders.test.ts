@@ -15,8 +15,9 @@ const order = (o: Record<string, any> = {}) => ({
 })
 
 describe('pipeline primitives', () => {
-  it('roleAfter follows the fixed sequence (incl. qc), null after delivery', () => {
-    expect(roleAfter('screener')).toBe('examiner')
+  it('roleAfter follows the fixed sequence (incl. both QC stages), null after delivery', () => {
+    expect(roleAfter('screener')).toBe('searchqc')
+    expect(roleAfter('searchqc')).toBe('examiner')
     expect(roleAfter('examiner')).toBe('typer')
     expect(roleAfter('typer')).toBe('qc')
     expect(roleAfter('qc')).toBe('delivery')
@@ -36,7 +37,7 @@ describe('pipeline primitives', () => {
   })
   it('progressFor: received=5, ramps to 100 at delivered', () => {
     expect(progressFor('received')).toBe(5)
-    expect(progressFor('screening')).toBe(17)   // 1/6 of the 7-step ramp (qc added between typing and delivery)
+    expect(progressFor('screening')).toBe(14)   // 1/7 of the 8-step ramp (searchqc + qc optional stages)
     expect(progressFor('delivered')).toBe(100)
     expect(progressFor('unknown')).toBe(0)
   })
@@ -362,5 +363,38 @@ describe('optional QC stage', () => {
     const next = applyStagePlan(order(), { singleSeating: true, plan: { screener: 'Z', examiner: 'Z', typer: 'Z', delivery: 'Z' } })
     expect(stageSequenceFor(next)).toEqual(['screener', 'examiner', 'typer', 'delivery'])
     expect(isSingleSeatingPlan(next)).toBe(true)
+  })
+})
+
+// ── Optional Search QC stage (Quality Check between screener and examiner) ────
+describe('optional Search QC stage', () => {
+  const sqcPlan = { screener: 'A', searchqc: 'S', examiner: 'B', typer: 'C', delivery: 'D' }
+  const sqcPlanned = (o: Record<string, any> = {}) =>
+    order({ workflow: { stagePlan: sqcPlan }, assignedTo: 'user', assignedUserId: 'A', status: 'screening', ...o })
+
+  it('an assigned Search QC falls right after the screener; both QCs run all six', () => {
+    expect(stageSequenceFor(sqcPlanned())).toEqual(['screener', 'searchqc', 'examiner', 'typer', 'delivery'])
+    const both = order({ workflow: { stagePlan: { screener: 'A', searchqc: 'S', examiner: 'B', typer: 'C', qc: 'Q', delivery: 'D' } } })
+    expect(stageSequenceFor(both)).toEqual(['screener', 'searchqc', 'examiner', 'typer', 'qc', 'delivery'])
+  })
+  it('screener routes to the Search QC reviewer, then a pass routes to the examiner', () => {
+    const afterScreener = applyRoutedStep(sqcPlanned({ completedDates: {} }), 'screener', 'Al')
+    expect(afterScreener.advancedTo).toBe('searchqc')
+    expect(afterScreener.nextOwnerId).toBe('S')
+    const atSqc = sqcPlanned({ completedDates: { screener: 'x' }, assignedUserId: 'S', status: 'searchqc' })
+    const afterSqc = applyRoutedStep(atSqc, 'searchqc', 'Sam')
+    expect(afterSqc.advancedTo).toBe('examiner')
+    expect(afterSqc.nextOwnerId).toBe('B')
+  })
+  it('applyQcReject(stage=searchqc) returns the order to the plan screener, clearing screener+searchqc', () => {
+    const atSqc = sqcPlanned({ completedDates: { screener: 'x' }, assignedUserId: 'S', status: 'searchqc' })
+    const n = applyQcReject(atSqc, 'missing a legal', 'Sam', 'searchqc')
+    expect(n.status).toBe('screening')
+    expect(n.assignedTo).toBe('user')
+    expect(n.assignedUserId).toBe('A')                   // the plan's own screener — no free choice
+    expect(n.completedDates!.screener).toBeUndefined()   // cleared → screening is due again
+    expect(n.completedDates!.searchqc).toBeUndefined()
+    expect(n.completed).toBeNull()
+    expect(n.workflow!.qcReview).toMatchObject({ result: 'rejected', note: 'missing a legal', by: 'Sam', stage: 'searchqc' })
   })
 })

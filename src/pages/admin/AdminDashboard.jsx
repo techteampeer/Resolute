@@ -5,6 +5,7 @@ import Layout from '../../components/Layout'
 import USAMap from '../../components/USAMap'
 import StagePlanModal from '../../components/StagePlanModal'
 import NotificationSettings from '../../components/NotificationSettings'
+import StatusBadge from '../../components/StatusBadge'
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, Settings, MapPin,
   Package, CheckCircle, Clock, Search, Plus, Filter, Eye, DollarSign,
@@ -17,8 +18,10 @@ import { openDocument, getAccessToken } from '../../lib/backend'
 import { isSupabaseConfigured } from '../../lib/backend'
 import { useProfiles, refreshProfiles } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
-import { money } from '../../lib/billing'
+import { money, invoiceAmount, payStatusOf, PAY_STATUS } from '../../lib/billing'
 import { orderSourceOf, orderSourceLabel } from '../../lib/orderSource'
+import { STATUS_META as STATUS_MAP } from '../../lib/orderStatus'
+import { ORDER_TABS, tabOf, tabCounts, withinRange, propertyOf, DATE_RANGES } from '../../lib/ordersView'
 import { ROLE_COLOR, density } from '../../lib/ui'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
@@ -43,8 +46,8 @@ const ROLE_HOVER  = '#1B34C4'
 // which stage the order is with right now, and what's already done — and opens
 // the plan editor. Read-only awareness here; editing happens in StagePlanModal.
 const PLAN_STAGES = [
-  { key:'screener', label:'Screener' }, { key:'examiner', label:'Examiner' },
-  { key:'typer', label:'Typer' }, { key:'qc', label:'Quality Check' }, { key:'delivery', label:'Delivery' },
+  { key:'screener', label:'Screener' }, { key:'searchqc', label:'Search QC' }, { key:'examiner', label:'Examiner' },
+  { key:'typer', label:'Typer' }, { key:'qc', label:'Typing QC' }, { key:'delivery', label:'Delivery' },
 ]
 function StagePlanPanel({ order, profiles, onEdit }) {
   const plan = stagePlanOf(order)
@@ -124,18 +127,6 @@ const Q = {
   faint:   '#9AA8BF',
   shadow:  '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
   rowHover:'#F9FBFD',
-}
-
-const STATUS_MAP = {
-  received:  { label:'Received',  color:'#12284C', bg:'#EDF0F5' },
-  screening: { label:'Screening', color:'#1B3A8C', bg:'#EAEEF8' },
-  searching: { label:'Searching', color:'#2441E5', bg:'#EEF1FE' },
-  examining: { label:'Examining', color:'#2441E5', bg:'#EEF1FE' },
-  typing:    { label:'Typing',    color:'#1268A8', bg:'#E8F4FB' },
-  qc:        { label:'Quality Check', color:'#7c3aed', bg:'#F3EEFE' },
-  delivery:  { label:'Out for Delivery', color:'#0E7C90', bg:'#E4F7FB' },
-  delivered: { label:'Delivered', color:'#15803d', bg:'#f0fdf4' },
-  cancelled: { label:'Cancelled', color:'#dc2626', bg:'#fef2f2' },
 }
 
 // Export the full order list to CSV (used on Dashboard + Orders — moved here
@@ -219,9 +210,10 @@ const selectStyle = {
 
 const STAGE_FIELDS = [
   { key:'screener', label:'Screener' },
+  { key:'searchqc', label:'Search QC' },
   { key:'examiner', label:'Examiner' },
   { key:'typer',    label:'Typer' },
-  { key:'qc',       label:'Quality Check' },
+  { key:'qc',       label:'Typing QC' },
   { key:'delivery', label:'Delivery' },
 ]
 const DETAIL_TABS = [
@@ -886,12 +878,6 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
   )
 }
 
-// Most recent non-null per-stage completion date, for the Completed column.
-const lastCompleted = (o) => {
-  const dates = Object.values(o.completedDates || {}).filter(Boolean)
-  return dates.length ? dates.sort().slice(-1)[0] : null
-}
-
 const cap = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s
 
 // Derive the order's routing state for the admin view:
@@ -1052,44 +1038,27 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const resetGeo   = () => { setRegion('all'); setStateF('all'); setCountyF('all') }
   const geoActive  = region !== 'all' || stateF !== 'all' || countyF !== 'all'
 
-  // Lifecycle status (Qualia-style) derived from our pipeline + routing state.
-  const lifecycleOf = (o) => {
-    if (o.status === 'cancelled') return 'cancelled'
-    if (o.status === 'delivered') return 'complete'
-    // Parked with Admin (between stages, or never routed) — Admin's own queue.
-    if (o.assignedTo === 'admin' || o.assignedTo == null) return 'awaiting'
-    return 'open'
-  }
-  const tabs = [
-    { key: 'all',       label: 'All' },
-    { key: 'awaiting',  label: 'Awaiting Approval' },
-    { key: 'open',      label: 'In Progress' },
-    { key: 'complete',  label: 'Complete' },
-    { key: 'cancelled', label: 'Cancelled' },
-  ].map(t => ({ ...t, count: t.key === 'all' ? orders.length : orders.filter(o => lifecycleOf(o) === t.key).length }))
-
-  const DATE_RANGES = [
-    { key: '30',  label: 'Last 30 Days' },
-    { key: '90',  label: 'Last 3 Months' },
-    { key: '365', label: 'Last 12 Months' },
-    { key: 'all', label: 'All Time' },
-  ]
-  const cutoff = dateRange === 'all' ? null
-    : new Date(Date.now() - Number(dateRange) * 24 * 60 * 60 * 1000)
+  // Lifecycle tabs come from the shared orders-view model (tabOf), so Admin and
+  // the client portal classify every order identically. Counts are over all
+  // orders, not the filtered subset, so each tab always shows its true total.
+  const counts = tabCounts(orders)
+  const tabs = ORDER_TABS.map(t => ({ ...t, count: counts[t.key] }))
 
   const filtered = orders.filter(o => {
     const q = search.toLowerCase()
-    // Include the client's own file number: it is the reference they quote on
-    // the phone and in email subjects, so it has to be searchable here.
+    // Search across the columns on screen: order #, client, their own file number
+    // (quoted on the phone / in email subjects), product and property.
     const matchSearch = !q || displayClient(o, user).toLowerCase().includes(q)
       || o.id.toLowerCase().includes(q)
       || (o.clientFileNo || '').toLowerCase().includes(q)
-    const matchTab    = activeTab === 'all' || lifecycleOf(o) === activeTab
+      || (o.type || '').toLowerCase().includes(q)
+      || propertyOf(o).toLowerCase().includes(q)
+    const matchTab    = activeTab === 'all' || tabOf(o) === activeTab
     const matchRegion = region === 'all'  || regionOf(o.state) === region
     const matchState  = stateF === 'all'  || stateCode(o.state) === stateCode(stateF)
     const matchCounty = countyF === 'all' || o.county === countyF
     const matchRush   = !rushOnly || o.priority === 'rush'
-    const matchDate   = !cutoff || new Date(o.created) >= cutoff
+    const matchDate   = withinRange(o, dateRange)
     return matchSearch && matchTab && matchRegion && matchState && matchCounty && matchRush && matchDate
   })
 
@@ -1121,7 +1090,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
           <Search style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', width:15, height:15, color:Q.faint }} />
           <input
             value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by client or file #..."
+            placeholder="Search order #, client, file #, product, property…"
             style={{
               width:'100%', height:38, paddingLeft:34, paddingRight:12,
               background:Q.card, border:`1px solid ${Q.border}`, borderRadius:8,
@@ -1211,7 +1180,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:density.bodySize, lineHeight:density.lineHeight, minWidth:990 }}>
           <thead>
             <tr style={{ background:'#F9FBFD', borderBottom:`1px solid ${Q.border}` }}>
-              {['Order','Client File #','Client','Location','Type','Source','Status','Payment','Assignee','Completed','ETA / Done',''].map(h => (
+              {['Order','Status','Customer','Customer File','Product','Property','Total Price','Ordered On','Due By','Assignee',''].map(h => (
                 <th key={h} style={{
                   padding:CELL_PAD, textAlign:'left', fontSize:density.headSize,
                   fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em',
@@ -1223,9 +1192,6 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
           </thead>
           <tbody>
             {paged.map((o, i) => {
-              const s = awaitingApproval(o)
-                ? { label: 'Awaiting Approval', bg: '#fffbeb', color: '#b45309' }
-                : (STATUS_MAP[o.status] || STATUS_MAP.received)
               const r = routingState(o)
               return (
                 <motion.tr key={o.id}
@@ -1243,46 +1209,32 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       )}
                     </div>
                   </td>
-                  <td style={{ padding:CELL_PAD, fontFamily:'monospace', fontSize:11.5, color:Q.muted, whiteSpace:'nowrap' }}>{o.clientFileNo || '—'}</td>
-                  <td style={{ padding:CELL_PAD, fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o, user)}</td>
-                  <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap' }}>{o.county}, {o.state}</td>
-                  <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{o.type}</td>
-                  <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{orderSourceLabel(o)}</td>
+                  {/* ONE status badge (O3): the current stage, colour-coded, with
+                      On-Hold / Clarification as modifiers. The routing noise that
+                      used to stack here (New / Ready / Assigned / Awaiting-confirm)
+                      lives in the Assignee column, which names who holds the order. */}
                   <td style={{ padding:CELL_PAD, whiteSpace:'nowrap' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                      <span style={{
-                        padding:'3px 10px', borderRadius:99, fontSize:12, fontWeight:600,
-                        background:s.bg, color:s.color,
-                      }}>{s.label}</span>
-                      {r.kind === 'new' && (
-                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#EEF1FE', color:'#2441E5', border:'1px solid #C6CFFA' }}>New</span>
-                      )}
-                      {r.kind === 'ready' && (
-                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#fffbeb', color:'#d97706', border:'1px solid #fde68a' }}>
-                          Ready · {cap(r.next)} next
-                        </span>
-                      )}
-                      {r.kind === 'inprogress' && (
-                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0' }}>Assigned</span>
-                      )}
-                      {!o.workflow?.confirmed && o.status === 'received' && !isPortalOrder(o) && (
-                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#EEF1FE', color:'#2441E5', border:'1px solid #C6CFFA' }}>Awaiting confirm</span>
-                      )}
-                      {o.workflow?.onHold && (
-                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#fffbeb', color:'#a16207', border:'1px solid #fde68a' }}>On Hold</span>
-                      )}
-                      {o.clarification === 'pending' && (
-                        <span style={{ padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700,
-                          background:'#fef2f2', color:'#dc2626', border:'1px solid #fecaca' }}>Clarification</span>
-                      )}
+                    <StatusBadge status={o.status} awaiting={awaitingApproval(o)}
+                      onHold={!!o.workflow?.onHold} clarification={o.clarification === 'pending'} />
+                  </td>
+                  <td style={{ padding:CELL_PAD, fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o, user)}</td>
+                  <td style={{ padding:CELL_PAD, fontFamily:'monospace', fontSize:11.5, color:Q.muted, whiteSpace:'nowrap' }}>{o.clientFileNo || '—'}</td>
+                  <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{o.type}</td>
+                  <td style={{ padding:CELL_PAD, color:Q.muted, fontSize:12, maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={propertyOf(o)}>{propertyOf(o)}</td>
+                  {/* Total Price — the order's amount (catalogue estimate until the
+                      Typer stamps the final invoice), with the payment status beneath
+                      so money lives in its own column, never mixed into Status. */}
+                  <td style={{ padding:CELL_PAD, whiteSpace:'nowrap' }}>
+                    <div style={{ fontSize:12.5, fontWeight:600, color:Q.text }}>{money(invoiceAmount(o))}</div>
+                    <div style={{ fontSize:10.5, fontWeight:600, color:(PAY_STATUS[payStatusOf(o)] || PAY_STATUS.unpaid).color }}>
+                      {(PAY_STATUS[payStatusOf(o)] || PAY_STATUS.unpaid).label}
                     </div>
                   </td>
-                  <td style={{ padding:CELL_PAD, color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{o.payment}</td>
+                  <td style={{ padding:CELL_PAD, color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{o.created || '—'}</td>
+                  <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',
+                    color: o.completed ? '#16a34a' : Q.muted }}>
+                    {o.completed ? `Done ${o.completed}` : (o.eta || '—')}
+                  </td>
                   {/* Assignee — the real current owner (assigned_user_id → name)
                       and which stage they hold, not the empty o[assignedTo]. */}
                   <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',
@@ -1294,14 +1246,6 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                             ? <>{ownerName(o)}{nextRoleFor(o) ? <span style={{ color:Q.faint }}> · {cap(nextRoleFor(o))}</span> : null}</>
                             : 'Production (unassigned)')
                         : '—'}
-                  </td>
-                  <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',
-                    color: lastCompleted(o) ? '#16a34a' : Q.faint }}>
-                    {lastCompleted(o) || '—'}
-                  </td>
-                  <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',
-                    color: o.completed ? '#16a34a' : Q.faint }}>
-                    {o.completed ? `Done ${o.completed}` : o.eta}
                   </td>
                   <td style={{ padding:CELL_PAD }}>
                     <div style={{ display:'flex', alignItems:'center', gap:6 }}>

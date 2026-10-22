@@ -7,7 +7,7 @@ import NotificationSettings from '../../components/NotificationSettings'
 import { clientStats } from '../../lib/deskStats'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox,
-  Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign, Search,
+  Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye, Download
 } from 'lucide-react'
 import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, US_STATES, stateName, lineItemsOf } from '../../data/mockData'
@@ -23,6 +23,8 @@ import ClientBilling from './ClientBilling'
 import BulkImport from './BulkImport'
 import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '../../lib/billing'
 import { ROLE_COLOR } from '../../lib/ui'
+import OrdersTableView from '../../components/OrdersTableView'
+import { propertyOf } from '../../lib/ordersView'
 
 const NAV = [
   { path: '/client',         label: 'Dashboard',   icon: LayoutDashboard },
@@ -83,7 +85,7 @@ function InvoiceCard({ order }) {
 const CLIENT_STEPS = ['Placed','Received','In Progress','Delivered']
 function clientStage(order) {
   const confirmed = !!order.workflow?.confirmed
-  const working = ['screening','searching','examining','typing','qc','delivery'].includes(order.status)
+  const working = ['screening','searching','searchqc','examining','typing','qc','delivery'].includes(order.status)
   if (order.status === 'cancelled')          return { idx: 0, label: 'Cancelled',               color: '#dc2626' }
   if (order.status === 'delivered')          return { idx: 3, label: 'Delivered',               color: '#15803d' }
   if (order.workflow?.onHold)                return { idx: working ? 2 : 1, label: 'On Hold',    color: '#a16207' }
@@ -92,6 +94,20 @@ function clientStage(order) {
   if (working)                               return { idx: 2, label: 'In Progress',              color: '#b45309' }
   if (confirmed)                             return { idx: 1, label: 'Received',                 color: '#2441E5' }
   return { idx: 0, label: 'Placed', color: '#2441E5' }
+}
+
+// The client's status pill — the CLIENT-FACING stage (clientStage), never an
+// internal production stage (screening/typing/QC). Mirrors the admin StatusBadge.
+function ClientStatusBadge({ order }) {
+  const s = clientStage(order)
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:6, whiteSpace:'nowrap',
+      padding:'3px 10px', borderRadius:99, fontSize:12, fontWeight:600,
+      background:`${s.color}14`, color:s.color }}>
+      <span style={{ width:6, height:6, borderRadius:99, background:s.color }} />
+      {s.label}
+    </span>
+  )
 }
 
 // BUG_007: clicking an order opens its detail view (see OrderDetailPage).
@@ -1148,13 +1164,48 @@ const exportRow = (o) => {
   return Object.fromEntries(EXPORT_COLUMNS.map(([label, get]) => [label, cell(get(o, intake))]))
 }
 
+// Client columns = the Qualia set MINUS Customer and Assignee. C1: the client's
+// own company name never appears on their own orders list. Status is the
+// client-facing stage (ClientStatusBadge), never an internal production stage.
+const clientOrderColumns = [
+  { header: 'Order', render: o => (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:6 }}>
+      <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:12, color:ROLE_COLOR }}>{o.id}</span>
+      {o.priority === 'rush' && (
+        <span style={{ fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:4, background:'#fef2f2', color:'#dc2626' }}>RUSH</span>
+      )}
+    </span>
+  ) },
+  { header: 'Status', render: o => <ClientStatusBadge order={o} /> },
+  { header: 'File #', render: o => <span style={{ fontFamily:'monospace', fontSize:11.5 }}>{o.clientFileNo || '—'}</span> },
+  { header: 'Product', render: o => o.type },
+  { header: 'Property', render: o => (
+    <span title={propertyOf(o)} style={{ display:'inline-block', maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', verticalAlign:'bottom' }}>{propertyOf(o)}</span>
+  ) },
+  { header: 'Total Price', render: o => (
+    <span>
+      <span style={{ fontWeight:600, color:'#12284C' }}>{money(invoiceAmount(o))}</span>
+      <span style={{ marginLeft:6, fontSize:11, fontWeight:600, color:(PAY_STATUS[payStatusOf(o)] || PAY_STATUS.unpaid).color }}>
+        {(PAY_STATUS[payStatusOf(o)] || PAY_STATUS.unpaid).label}
+      </span>
+    </span>
+  ) },
+  { header: 'Ordered On', render: o => o.created || '—' },
+  { header: 'Due By', render: o => o.completed ? `Done ${o.completed}` : (o.eta || '—') },
+]
+
+// Search across order #, product, client-facing status and property details.
+const clientOrderSearch = (o) => [
+  o.id, o.type, clientStage(o).label, o.state, o.county,
+  o.workflow?.intake?.propertyAddress, o.workflow?.intake?.parcelNumberAPN, o.clientFileNo,
+].filter(Boolean).join(' ')
+
 function MyOrdersPage() {
   const myOrders = useMyOrders()
   const navigate = useNavigate()
-  const [q, setQ] = useState('')
   const [exporting, setExporting] = useState(false)
   const [exportErr, setExportErr] = useState('')
-  // Exports exactly this client's orders (useMyOrders) — not the search subset,
+  // Exports exactly this client's orders (useMyOrders) — not the filtered subset,
   // and never anything outside the client's own scope.
   const exportOrders = async () => {
     if (exporting || !myOrders.length) return
@@ -1172,49 +1223,22 @@ function MyOrdersPage() {
       setExporting(false)
     }
   }
-  // BUG_006: search across order #, type, status/stage, and property details —
-  // works for both active and completed orders so users don't page-hunt.
-  const query = q.trim().toLowerCase()
-  const shown = !query ? myOrders : myOrders.filter(o => {
-    const hay = [
-      o.id, o.type, o.status, clientStage(o).label, o.state, o.county,
-      o.workflow?.intake?.propertyAddress, o.workflow?.intake?.parcelNumberAPN,
-    ].filter(Boolean).join(' ').toLowerCase()
-    return hay.includes(query)
-  })
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>My Orders</h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative" style={{ minWidth: 260 }}>
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#9AA8BF' }} />
-            <input value={q} onChange={e => setQ(e.target.value)}
-              placeholder="Search order #, property, status…"
-              className="input-field text-sm pl-9 w-full" />
-          </div>
-          <button type="button" onClick={exportOrders} disabled={exporting || !myOrders.length}
-            title={myOrders.length ? 'Download all your orders as an Excel file' : 'No orders to export yet'}
-            className="btn-secondary text-sm px-4 py-2.5 flex items-center gap-2"
-            style={exporting || !myOrders.length ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}>
-            <Download className="w-4 h-4" /> {exporting ? 'Exporting…' : 'Export my orders'}
-          </button>
-        </div>
+        <button type="button" onClick={exportOrders} disabled={exporting || !myOrders.length}
+          title={myOrders.length ? 'Download all your orders as an Excel file' : 'No orders to export yet'}
+          className="btn-secondary text-sm px-4 py-2.5 flex items-center gap-2"
+          style={exporting || !myOrders.length ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}>
+          <Download className="w-4 h-4" /> {exporting ? 'Exporting…' : 'Export my orders'}
+        </button>
       </div>
       {exportErr && <div className="text-xs" style={{ color: '#dc2626' }}>{exportErr}</div>}
-      <div className="space-y-4">
-        {shown.map(o => (
-          <React.Fragment key={o.id}>
-            <TrackOrder order={o} onOpen={() => navigate(`/client/orders/${o.id}`)} />
-            {o.workflow?.invoiceVisibleToClient && <InvoiceCard order={o} />}
-          </React.Fragment>
-        ))}
-        {shown.length === 0 && (
-          <div className="glass-card p-8 text-center text-sm" style={{ color: '#5C6E8C' }}>
-            {myOrders.length === 0 ? 'No orders yet.' : `No orders match “${q}”.`}
-          </div>
-        )}
-      </div>
+      <OrdersTableView
+        orders={myOrders} columns={clientOrderColumns} search={clientOrderSearch}
+        onRowClick={o => navigate(`/client/orders/${o.id}`)} accent={ROLE_COLOR}
+        emptyText={myOrders.length ? 'No orders match your filters.' : 'No orders yet.'} />
     </div>
   )
 }
