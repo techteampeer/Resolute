@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import AdminBilling from './AdminBilling'
 import AdminPlaceOrder from './AdminPlaceOrder'
+import AdminSettings from './AdminSettings'
 import { downloadCsv } from '../../lib/exportCsv'
 import { openDocument, getAccessToken } from '../../lib/backend'
 import { isSupabaseConfigured } from '../../lib/backend'
@@ -2079,11 +2080,7 @@ export default function AdminDashboard() {
         <Route path="map"      element={<AdminMap />} />
         <Route path="reports"  element={<AdminReports />} />
         <Route path="notifications" element={<NotificationSettings accent={ROLE_COLOR} />} />
-        <Route path="settings" element={
-          <div style={{ padding:48, textAlign:'center', color:Q.faint, fontSize:14 }}>
-            Nothing here yet. Email notification preferences live under <b>Notifications</b>.
-          </div>
-        } />
+        <Route path="settings" element={<AdminSettings />} />
       </Routes>
     </Layout>
   )
