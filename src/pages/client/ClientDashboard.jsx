@@ -564,7 +564,9 @@ function PlaceOrderPage() {
     if (s === 1) return !!(form.state.trim() && form.county.trim())
     // A product or a custom search must be chosen (the "Titled Products *" gate).
     if (s === 2) return !!(form.searchType.trim() || form.customSearch.trim())
-    if (s === 3) return !!(form.company.trim() && form.contactName.trim() && /\S+@\S+\.\S+/.test(form.email))
+    // Company is the signed-in client's own company (auto-filled, no longer typed
+    // per order) — gate only on who's placing it and a valid work email.
+    if (s === 3) return !!(form.contactName.trim() && /\S+@\S+\.\S+/.test(form.email))
     return true
   }
   const goNext = () => { if (!stepValid(step)) { setStepErr(true); return } setStepErr(false); setStep(s => s + 1) }
@@ -888,10 +890,6 @@ function PlaceOrderPage() {
                     <p className="text-[11px] mt-1.5" style={{ color:'#5C6E8C' }}>Pick who’s placing this order, or add a new person below — we’ll remember them for next time.</p>
                   </div>
                 )}
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Business Name *</label>
-                  <input value={form.company} onChange={e=>set('company',e.target.value)} placeholder="Business name" className="input-field text-sm" required/>
-                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Contact Name *</label>
