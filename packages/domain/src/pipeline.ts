@@ -9,7 +9,7 @@
 // The pipeline stages, in fixed order. Admin chooses WHO performs each role; the
 // order of the roles themselves never changes. TWO QC stages are OPTIONAL — see
 // OPTIONAL_STAGES / stageSequence: `searchqc` (Search QC, right after the
-// screener) and `qc` (Typing QC, right after the typer). An order includes a QC
+// examiner) and `qc` (Typing QC, right after the typer). An order includes a QC
 // stage only when its plan assigns a reviewer to it, otherwise that stage is
 // skipped. `qc` stays the internal key for the (original) Typing QC so no
 // existing order/status/migration has to change — only its label is "Typing QC".
@@ -100,11 +100,11 @@ export interface Order {
   [k: string]: any
 }
 
-export const ROLE_SEQUENCE: StageRole[] = ['screener', 'searchqc', 'examiner', 'typer', 'qc', 'delivery']
+export const ROLE_SEQUENCE: StageRole[] = ['screener', 'examiner', 'searchqc', 'typer', 'qc', 'delivery']
 
 // Stages an order includes ONLY when its stage plan assigns an owner to them.
 // Both QC stages are optional: with no reviewer the order skips that stage
-// (Screener → Examiner for Search QC, Typer → Delivery for Typing QC) rather than
+// (Examiner → Typer for Search QC, Typer → Delivery for Typing QC) rather than
 // parking with Admin. A legacy order (no plan) has no QC owner, so it keeps the
 // original four-stage flow unchanged.
 export const OPTIONAL_STAGES: readonly StageRole[] = ['searchqc', 'qc']
@@ -186,7 +186,7 @@ export const statusForRole = (role: StageRole | null): Status =>
     : (({ screener: 'screening', searchqc: 'searchqc', examiner: 'examining', typer: 'typing', qc: 'qc', delivery: 'delivery' } as const)[role] || 'received')
 
 // The 0-100 progress ramp. 'received' shows a token 5%.
-export const PIPELINE: string[] = ['received', 'screening', 'searchqc', 'examining', 'typing', 'qc', 'delivery', 'delivered']
+export const PIPELINE: string[] = ['received', 'screening', 'examining', 'searchqc', 'typing', 'qc', 'delivery', 'delivered']
 export const progressFor = (status: string): number => {
   const i = PIPELINE.indexOf(status)
   return i <= 0 ? (status === 'received' ? 5 : 0) : Math.round((i / (PIPELINE.length - 1)) * 100)
