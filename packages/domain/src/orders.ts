@@ -8,12 +8,13 @@ import {
   roleAfterFor, nextRoleFor, statusForRole, progressFor, todayISO, stagePlanOf, stageSequence,
 } from './pipeline'
 
-const STAGES: string[] = ['screener', 'searchqc', 'examiner', 'typer', 'qc', 'delivery']
+const STAGES: string[] = ['screener', 'examiner', 'searchqc', 'typer', 'qc', 'delivery']
 
 // Where each QC stage sends a rejected order for re-work: Search QC back to the
-// screener, Typing QC back to the typer — always the plan's OWN owner of that
-// stage (never a free choice), so the anti-bias rule holds.
-const QC_REWORK: Record<string, StageRole> = { searchqc: 'screener', qc: 'typer' }
+// examiner, Typing QC back to the typer — always the plan's OWN owner of the
+// stage immediately before the QC (never a free choice), so the anti-bias rule
+// holds.
+const QC_REWORK: Record<string, StageRole> = { searchqc: 'examiner', qc: 'typer' }
 
 export interface AssignParams { queue: string; personName?: string; userId?: string | null }
 
@@ -194,8 +195,8 @@ export function applyReturnToAdmin(
 }
 
 // QC REJECTION (corrections required). The QC reviewer sends the package back for
-// re-work to the owner of the stage it checks: Search QC → the plan's SCREENER,
-// Typing QC → the plan's TYPER (QC_REWORK). Always the plan's own owner, never a
+// re-work to the owner of the stage right before it: Search QC → the plan's
+// EXAMINER, Typing QC → the plan's TYPER (QC_REWORK). Always the plan's own owner, never a
 // free choice, so the anti-bias rule holds. Clears that stage's stamp AND the QC
 // stamp so the order is due at the re-work stage again, records the note (with the
 // QC stage), and routes to the re-work owner (or Admin if the plan has none). The

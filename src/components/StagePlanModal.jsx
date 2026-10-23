@@ -13,8 +13,8 @@ const Q = { card:'#ffffff', border:'#DDE3EC', text:'#12284C', muted:'#5C6E8C', f
 
 const STAGES = [
   { key:'screener', label:'Screener',  hint:'Opens the title search' },
-  { key:'searchqc', label:'Search QC', hint:'Reviews the search · optional' },
   { key:'examiner', label:'Examiner',  hint:'Researches & examines' },
+  { key:'searchqc', label:'Search QC', hint:'Reviews before typing · optional' },
   { key:'typer',    label:'Typer',     hint:'Types the commitment' },
   { key:'qc',       label:'Typing QC', hint:'Reviews before delivery · optional' },
   { key:'delivery', label:'Delivery',  hint:'Delivers to the client' },
@@ -44,7 +44,7 @@ export default function StagePlanModal({ order, user, onClose }) {
   const [onePerson, setOnePerson] = useState(
     planWasSet && isSingleSeatingPlan(order) ? existing.screener : lightestId)
   const [perStage, setPerStage] = useState({
-    screener: existing.screener || '', searchqc: existing.searchqc || '', examiner: existing.examiner || '',
+    screener: existing.screener || '', examiner: existing.examiner || '', searchqc: existing.searchqc || '',
     typer:    existing.typer    || '', qc: existing.qc || '', delivery: existing.delivery || '',
   })
 

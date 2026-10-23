@@ -10,8 +10,8 @@ export const STATUS_META = {
   received:  { label: 'Received',         color: '#475569', bg: '#F1F5F9' }, // slate
   screening: { label: 'Screening',        color: '#2563EB', bg: '#EFF6FF' }, // blue
   searching: { label: 'Searching',        color: '#0369A1', bg: '#F0F9FF' }, // sky
-  searchqc:  { label: 'Search QC',        color: '#7C3AED', bg: '#F5F3FF' }, // violet
   examining: { label: 'Examining',        color: '#4338CA', bg: '#EEF2FF' }, // indigo
+  searchqc:  { label: 'Search QC',        color: '#7C3AED', bg: '#F5F3FF' }, // violet
   typing:    { label: 'Typing',           color: '#0891B2', bg: '#ECFEFF' }, // cyan
   qc:        { label: 'Typing QC',         color: '#9333EA', bg: '#FAF5FF' }, // purple
   delivery:  { label: 'Out for Delivery', color: '#0E7C90', bg: '#E4F7FB' }, // teal

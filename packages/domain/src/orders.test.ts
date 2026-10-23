@@ -16,9 +16,9 @@ const order = (o: Record<string, any> = {}) => ({
 
 describe('pipeline primitives', () => {
   it('roleAfter follows the fixed sequence (incl. both QC stages), null after delivery', () => {
-    expect(roleAfter('screener')).toBe('searchqc')
-    expect(roleAfter('searchqc')).toBe('examiner')
-    expect(roleAfter('examiner')).toBe('typer')
+    expect(roleAfter('screener')).toBe('examiner')
+    expect(roleAfter('examiner')).toBe('searchqc')
+    expect(roleAfter('searchqc')).toBe('typer')
     expect(roleAfter('typer')).toBe('qc')
     expect(roleAfter('qc')).toBe('delivery')
     expect(roleAfter('delivery')).toBeNull()
@@ -366,34 +366,39 @@ describe('optional QC stage', () => {
   })
 })
 
-// ── Optional Search QC stage (Quality Check between screener and examiner) ────
+// ── Optional Search QC stage (Quality Check between examiner and typer) ───────
 describe('optional Search QC stage', () => {
   const sqcPlan = { screener: 'A', searchqc: 'S', examiner: 'B', typer: 'C', delivery: 'D' }
   const sqcPlanned = (o: Record<string, any> = {}) =>
     order({ workflow: { stagePlan: sqcPlan }, assignedTo: 'user', assignedUserId: 'A', status: 'screening', ...o })
 
-  it('an assigned Search QC falls right after the screener; both QCs run all six', () => {
-    expect(stageSequenceFor(sqcPlanned())).toEqual(['screener', 'searchqc', 'examiner', 'typer', 'delivery'])
+  it('an assigned Search QC falls right after the examiner; both QCs run all six', () => {
+    expect(stageSequenceFor(sqcPlanned())).toEqual(['screener', 'examiner', 'searchqc', 'typer', 'delivery'])
     const both = order({ workflow: { stagePlan: { screener: 'A', searchqc: 'S', examiner: 'B', typer: 'C', qc: 'Q', delivery: 'D' } } })
-    expect(stageSequenceFor(both)).toEqual(['screener', 'searchqc', 'examiner', 'typer', 'qc', 'delivery'])
+    expect(stageSequenceFor(both)).toEqual(['screener', 'examiner', 'searchqc', 'typer', 'qc', 'delivery'])
   })
-  it('screener routes to the Search QC reviewer, then a pass routes to the examiner', () => {
+  it('examiner routes to the Search QC reviewer, then a pass routes to the typer', () => {
     const afterScreener = applyRoutedStep(sqcPlanned({ completedDates: {} }), 'screener', 'Al')
-    expect(afterScreener.advancedTo).toBe('searchqc')
-    expect(afterScreener.nextOwnerId).toBe('S')
-    const atSqc = sqcPlanned({ completedDates: { screener: 'x' }, assignedUserId: 'S', status: 'searchqc' })
+    expect(afterScreener.advancedTo).toBe('examiner')
+    expect(afterScreener.nextOwnerId).toBe('B')
+    const atExaminer = sqcPlanned({ completedDates: { screener: 'x' }, assignedUserId: 'B', status: 'examining' })
+    const afterExaminer = applyRoutedStep(atExaminer, 'examiner', 'Bo')
+    expect(afterExaminer.advancedTo).toBe('searchqc')
+    expect(afterExaminer.nextOwnerId).toBe('S')
+    const atSqc = sqcPlanned({ completedDates: { screener: 'x', examiner: 'x' }, assignedUserId: 'S', status: 'searchqc' })
     const afterSqc = applyRoutedStep(atSqc, 'searchqc', 'Sam')
-    expect(afterSqc.advancedTo).toBe('examiner')
-    expect(afterSqc.nextOwnerId).toBe('B')
+    expect(afterSqc.advancedTo).toBe('typer')
+    expect(afterSqc.nextOwnerId).toBe('C')
   })
-  it('applyQcReject(stage=searchqc) returns the order to the plan screener, clearing screener+searchqc', () => {
-    const atSqc = sqcPlanned({ completedDates: { screener: 'x' }, assignedUserId: 'S', status: 'searchqc' })
+  it('applyQcReject(stage=searchqc) returns the order to the plan examiner, clearing examiner+searchqc', () => {
+    const atSqc = sqcPlanned({ completedDates: { screener: 'x', examiner: 'y' }, assignedUserId: 'S', status: 'searchqc' })
     const n = applyQcReject(atSqc, 'missing a legal', 'Sam', 'searchqc')
-    expect(n.status).toBe('screening')
+    expect(n.status).toBe('examining')
     expect(n.assignedTo).toBe('user')
-    expect(n.assignedUserId).toBe('A')                   // the plan's own screener — no free choice
-    expect(n.completedDates!.screener).toBeUndefined()   // cleared → screening is due again
+    expect(n.assignedUserId).toBe('B')                   // the plan's own examiner — no free choice
+    expect(n.completedDates!.examiner).toBeUndefined()   // cleared → examining is due again
     expect(n.completedDates!.searchqc).toBeUndefined()
+    expect(n.completedDates!.screener).toBe('x')         // earlier stamp untouched
     expect(n.completed).toBeNull()
     expect(n.workflow!.qcReview).toMatchObject({ result: 'rejected', note: 'missing a legal', by: 'Sam', stage: 'searchqc' })
   })
