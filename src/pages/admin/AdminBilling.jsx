@@ -8,7 +8,7 @@ import { isSupabaseConfigured, savePayoutLedger, openDocument } from '../../lib/
 import {
   TERMS, termByKey, getClientTerms, setClientTerms, hydrateClientTerms, canConfirmPayments,
   invoiceAmount, invoiceNumber, money, clientCodeOf, paymentOf, payStatusOf,
-  PAY_STATUS, isBillable, dueDate, isOverdue, openStatement,
+  PAY_STATUS, payStatusMeta, isBillable, dueDate, isOverdue, openStatement,
   confirmPayment, bouncePayment,
 } from '../../lib/billing'
 import {
@@ -25,8 +25,11 @@ const Q = {
 }
 const ACCENT = '#2441E5'
 
-const Chip = ({ status }) => {
-  const s = PAY_STATUS[status] || PAY_STATUS.unpaid
+// Pass `order` (+ termKey) to fold Overdue into the pill; `status` is the plain
+// fallback. Standardized wording: Outstanding · Overdue · Awaiting confirmation ·
+// Paid · Bounced.
+const Chip = ({ order, termKey, status }) => {
+  const s = order ? payStatusMeta(order, termKey) : (PAY_STATUS[status] || PAY_STATUS.unpaid)
   return <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap"
     style={{ background: `${s.color}1a`, color: s.color }}>{s.label}</span>
 }
@@ -113,7 +116,7 @@ export default function AdminBilling() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Outstanding', value: totals.outstanding, color: '#b45309' },
-          { label: 'Marked Paid (to confirm)', value: totals.marked, color: '#2441E5' },
+          { label: 'Awaiting confirmation', value: totals.marked, color: '#2441E5' },
           { label: 'Collected', value: totals.collected, color: '#15803d' },
           { label: 'Overdue', value: totals.overdue, color: '#dc2626' },
         ].map(k => (
@@ -126,7 +129,7 @@ export default function AdminBilling() {
 
       {/* Status filter */}
       <div className="flex items-center gap-2 flex-wrap">
-        {[['all', 'All'], ['unpaid', 'Unpaid'], ['marked', 'Marked Paid'], ['confirmed', 'Paid'], ['bounced', 'Bounced'], ['overdue', 'Overdue']].map(([k, l]) => (
+        {[['all', 'All'], ['unpaid', 'Outstanding'], ['marked', 'Awaiting confirmation'], ['confirmed', 'Paid'], ['bounced', 'Bounced'], ['overdue', 'Overdue']].map(([k, l]) => (
           <button key={k} onClick={() => setFilter(k)}
             className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
             style={filter === k
@@ -218,7 +221,7 @@ export default function AdminBilling() {
                           ) : '—'}
                         </td>
                         <td className="px-4 py-3 font-semibold tabular-nums whitespace-nowrap" style={{ color: Q.text }}>{money(invoiceAmount(o))}</td>
-                        <td className="px-4 py-3"><Chip status={status} /></td>
+                        <td className="px-4 py-3"><Chip order={o} termKey={termKey} /></td>
                         {vivek && (
                           <td className="px-4 py-3 whitespace-nowrap">
                             {status === 'marked' && (

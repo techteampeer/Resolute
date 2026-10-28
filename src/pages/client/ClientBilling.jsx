@@ -10,13 +10,15 @@ import { downloadInvoicePdf } from '../../lib/invoicePdf'
 import {
   REMITTANCE, hasRemittanceDetails, termByKey, getClientTerms, hydrateClientTerms,
   invoiceAmount, invoiceNumber, money, clientCodeOf, paymentOf, payStatusOf,
-  PAY_STATUS, isBillable, dueDate, isOverdue, openStatement, buildPayment,
+  PAY_STATUS, payStatusMeta, isBillable, dueDate, openStatement, buildPayment,
 } from '../../lib/billing'
 
 const ROLE_COLOR = '#2441E5'
 
-const Chip = ({ status }) => {
-  const s = PAY_STATUS[status] || PAY_STATUS.unpaid
+// One payment-status pill, in the standardized wording. Pass `order` (+ termKey)
+// to fold Overdue in; `status` is the plain fallback (e.g. a fixed 'confirmed').
+const Chip = ({ order, termKey, status }) => {
+  const s = order ? payStatusMeta(order, termKey) : (PAY_STATUS[status] || PAY_STATUS.unpaid)
   return <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap"
     style={{ background: `${s.color}1a`, color: s.color }}>{s.label}</span>
 }
@@ -175,7 +177,6 @@ function InvoiceRow({ order, termKey, onPaid, demo }) {
   const [open, setOpen] = useState(false)
   const status = payStatusOf(order)
   const p = paymentOf(order)
-  const overdue = isOverdue(order, termKey)
   return (
     <div className="glass-card p-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -183,8 +184,7 @@ function InvoiceRow({ order, termKey, onPaid, demo }) {
           <div className="flex items-center gap-2">
             <FileText className="w-4 h-4 flex-shrink-0" style={{ color: ROLE_COLOR }} />
             <span className="font-semibold text-sm" style={{ color: '#12284C' }}>{invoiceNumber(order)}</span>
-            <Chip status={status} />
-            {overdue && <OverdueBadge />}
+            <Chip order={order} termKey={termKey} />
           </div>
           <div className="text-xs mt-1" style={{ color: '#5C6E8C' }}>
             {order.type} · {order.id} · delivered {order.completed || '—'} · due {dueDate(order, termKey) || '—'}
@@ -302,7 +302,7 @@ export default function ClientBilling({ myOrders }) {
             {stmt.items.map(o => (
               <div key={o.id} className="flex items-center justify-between text-xs" style={{ color: '#3D5171' }}>
                 <span>{invoiceNumber(o)} · {o.type}</span>
-                <span className="flex items-center gap-2"><Chip status={payStatusOf(o)} /><span className="tabular-nums font-medium">{money(invoiceAmount(o))}</span></span>
+                <span className="flex items-center gap-2"><Chip order={o} termKey={termKey} /><span className="tabular-nums font-medium">{money(invoiceAmount(o))}</span></span>
               </div>
             ))}
           </div>
@@ -374,7 +374,7 @@ export default function ClientBilling({ myOrders }) {
                   <span> · confirmed {p?.confirmedAt} by {p?.confirmedBy}</span>
                 </div>
                 <span className="flex items-center gap-2">
-                  <Chip status="confirmed" />
+                  <Chip order={o} termKey={termKey} />
                   <span className="tabular-nums font-bold text-sm" style={{ color: '#12284C' }}>{money(invoiceAmount(o))}</span>
                   <DownloadInvoiceBtn order={o} termKey={termKey} />
                 </span>
