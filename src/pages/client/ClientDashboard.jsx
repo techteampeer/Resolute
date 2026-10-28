@@ -11,9 +11,8 @@ import {
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye, Download
 } from 'lucide-react'
-import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, US_STATES, lineItemsOf } from '../../data/mockData'
+import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, lineItemsOf } from '../../data/mockData'
 import SubOrders from '../../components/SubOrders'
-import { PRODUCTS } from '../../data/products'
 import { openDocument } from '../../lib/backend'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
