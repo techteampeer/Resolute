@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import { Routes, Route, useNavigate, useSearchParams, useParams } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Layout from '../../components/Layout'
 import OrderThread from '../../components/OrderThread'
 import NotificationSettings from '../../components/NotificationSettings'
 import { clientStats } from '../../lib/deskStats'
 import {
-  LayoutDashboard, PlusCircle, ClipboardList, MessageSquare, Inbox, Building2,
+  LayoutDashboard, PlusCircle, MessageSquare, Inbox, Building2,
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye, Download
 } from 'lucide-react'
@@ -21,7 +21,7 @@ import { useSupport } from '../../context/SupportContext'
 import { DEMO_ORDERS } from '../../data/demoData'
 import ClientBilling from './ClientBilling'
 import BulkImport from './BulkImport'
-import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '../../lib/billing'
+import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS, isBillable } from '../../lib/billing'
 import { ROLE_COLOR } from '../../lib/ui'
 import OrdersTableView from '../../components/OrdersTableView'
 import { propertyOf, statusRank, dueByValue, orderedOnValue } from '../../lib/ordersView'
@@ -31,7 +31,6 @@ import CompanySettings from './CompanySettings'
 const NAV = [
   { path: '/client',         label: 'Dashboard',   icon: LayoutDashboard },
   { path: '/client/order',   label: 'Place Order', icon: PlusCircle },
-  { path: '/client/orders',  label: 'My Orders',   icon: ClipboardList },
   { path: '/client/messages',label: 'Messages',    icon: Inbox },
   { path: '/client/billing', label: 'Billing',     icon: DollarSign },
   { path: '/client/settings',label: 'Company',     icon: Building2 },
@@ -116,32 +115,6 @@ function ClientStatusBadge({ order }) {
 // BUG_007: clicking an order opens its detail view (see OrderDetailPage).
 // List cards stay compact — ID, client, type/state and the status pill only;
 // stage-by-stage progress belongs on the order's detail page.
-function TrackOrder({ order, onOpen }) {
-  const stage = clientStage(order)
-  const sc = stage.color
-  return (
-    <div className={`glass-card p-4 ${onOpen ? 'cursor-pointer transition-shadow hover:shadow-lg' : ''}`}
-      role={onOpen ? 'button' : undefined} tabIndex={onOpen ? 0 : undefined}
-      onClick={onOpen} onKeyDown={e => onOpen && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}>
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="font-mono font-semibold text-sm" style={{ color: ROLE_COLOR }}>{order.id}</div>
-            {lineItemsOf(order).length > 1 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                style={{ background:`${ROLE_COLOR}14`, color:ROLE_COLOR }}>{lineItemsOf(order).length} sub-orders</span>
-            )}
-          </div>
-          <div className="font-bold" style={{ color:'#12284C' }}>{order.client}</div>
-          <div className="text-xs" style={{ color:'#5C6E8C' }}>{order.type} · {order.state}</div>
-        </div>
-        <span className="text-xs font-semibold px-3 py-1.5 rounded-full"
-          style={{ background:`${sc}1e`, color:sc }}>{stage.label}</span>
-      </div>
-    </div>
-  )
-}
-
 // BUG_004: client-facing multi-file attach (light theme). Clients attach
 // reference material (deed scans, prior policies, payoff letters, etc.).
 // `value` is an array of doc refs { id, name, type, status, file?, url?, path? }.
@@ -380,7 +353,6 @@ function OrderDetailPage() {
             <Row k="Property type" v={intake?.propertyType} />
             <Row k="Parcel / APN" v={intake?.parcelNumberAPN} />
             <Row k="Your file #" v={order.clientFileNo} />
-            <Row k="Business" v={intake?.company} />
             <Row k="Buyer" v={intake?.buyer} />
             <Row k="Borrower" v={intake?.borrowerName} />
             <Row k="Seller" v={intake?.seller} />
@@ -937,7 +909,6 @@ function PlaceOrderPage() {
                     ]],
                     ['Parties', form.parties.filter(p => p.name.trim()).map(p => [p.role, p.name])],
                     ['Contact', [
-                      ['Business name', form.company],
                       ['Placed by', form.contactName],
                       ['Title / role', form.role],
                       ['Work email', form.email],
@@ -1006,17 +977,59 @@ function PlaceOrderPage() {
   )
 }
 
+// The client's landing page IS the orders hub: at-a-glance tiles + a recent-
+// activity panel over the same filterable/sortable orders table used everywhere
+// (OrdersTableView). It replaced the old tracking-card list and the separate
+// My Orders page, so a client has one place to see and organize their orders.
 function ClientHome() {
   const myOrders = useMyOrders()
   const { user } = useAuth()
+  const { getOrderThread } = useSupport()
   const navigate = useNavigate()
   const stats = clientStats(myOrders)
+  // Outstanding $ — billable orders not yet confirmed paid (the money still owed).
+  const outstanding = myOrders.filter(isBillable)
+    .filter(o => payStatusOf(o) !== 'confirmed')
+    .reduce((a, o) => a + invoiceAmount(o), 0)
+
+  // Recent activity — the client's most recent orders with their latest message
+  // (a reply from Resolute is flagged with a dot), or the order's placement line.
+  const recent = [...myOrders]
+    .sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')))
+    .slice(0, 5)
+    .map(o => ({ o, last: getOrderThread(o.id).slice(-1)[0] || null }))
+
+  // Export every one of this client's orders to Excel (moved from My Orders).
+  const [exporting, setExporting] = useState(false)
+  const [exportErr, setExportErr] = useState('')
+  const exportOrders = async () => {
+    if (exporting || !myOrders.length) return
+    setExporting(true); setExportErr('')
+    try {
+      const XLSX = await import('xlsx')
+      const ws = XLSX.utils.json_to_sheet(myOrders.map(exportRow), { header: EXPORT_COLUMNS.map(([label]) => label) })
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Orders')
+      XLSX.writeFile(wb, 'resolute-my-orders.xlsx')
+    } catch (e) {
+      console.error('[exportOrders]', e?.message || e)
+      setExportErr('We couldn’t create the export just now. Please try again.')
+    } finally { setExporting(false) }
+  }
+
+  const tiles = [
+    { icon:Package,     label:'Active orders',      value:stats.active,       color:ROLE_COLOR },
+    { icon:CheckCircle, label:'Completed this year', value:stats.completedYtd, color:'#15803d' },
+    { icon:Zap,         label:'Rush in progress',    value:stats.rush,         color:'#b45309' },
+    { icon:DollarSign,  label:'Outstanding',         value:money(outstanding), color:'#b45309' },
+  ]
+
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold" style={{ color:'#12284C' }}>Client Portal</h1>
-          {/* The signed-in person, not whoever happened to be in the fixture. */}
           <p className="text-sm" style={{ color:'#3D5171' }}>Welcome back{user?.name ? `, ${user.name}` : ''}</p>
         </div>
         <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }} onClick={() => navigate('/client/order')}
@@ -1024,13 +1037,10 @@ function ClientHome() {
           <PlusCircle className="w-4 h-4" /> New Order
         </motion.button>
       </div>
+
+      {/* At-a-glance tiles */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { icon:Package,     label:'Active orders',    value:stats.active,       color:ROLE_COLOR },
-          { icon:CheckCircle, label:'Completed this year', value:stats.completedYtd, color:'#15803d' },
-          { icon:Clock,       label:'Avg turnaround',   value:stats.turnaround,   color:'#a16207' },
-          { icon:Zap,         label:'Rush in progress', value:stats.rush,         color:'#b45309' },
-        ].map(s => (
+        {tiles.map(s => (
           <motion.div key={s.label} initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} className="stat-card">
             <div className="w-9 h-9 rounded-xl mb-3 flex items-center justify-center" style={{ background:`${s.color}22` }}>
               <s.icon className="w-4 h-4" style={{ color:s.color }} />
@@ -1040,14 +1050,48 @@ function ClientHome() {
           </motion.div>
         ))}
       </div>
-      <div className="space-y-4">
-        <h2 className="font-semibold" style={{ color:'#12284C' }}>Order Tracking</h2>
-        {myOrders.map(o => (
-          <React.Fragment key={o.id}>
-            <TrackOrder order={o} onOpen={() => navigate(`/client/orders/${o.id}`)} />
-            {o.workflow?.invoiceVisibleToClient && <InvoiceCard order={o} />}
-          </React.Fragment>
-        ))}
+
+      {/* Recent activity */}
+      {recent.length > 0 && (
+        <div className="glass-card p-5">
+          <h2 className="font-semibold mb-3" style={{ color:'#12284C' }}>Recent activity</h2>
+          <div className="space-y-1">
+            {recent.map(({ o, last }) => (
+              <button key={o.id} onClick={() => navigate(last ? `/client/messages?order=${o.id}` : `/client/orders/${o.id}`)}
+                className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl transition-colors"
+                onMouseOver={e => e.currentTarget.style.background = 'rgba(18,40,76,0.03)'}
+                onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                <span className="font-mono text-xs font-semibold flex-shrink-0" style={{ color:ROLE_COLOR }}>{o.id}</span>
+                <ClientStatusBadge order={o} />
+                <span className="text-xs flex-1 truncate" style={{ color:'#5C6E8C' }}>
+                  {last
+                    ? `${last.from === 'support' ? 'Reply from Resolute' : 'You'}: ${(last.text || (last.attachment ? `📎 ${last.attachment.name}` : '')).slice(0, 72)}`
+                    : `${o.type} · placed ${o.created || '—'}`}
+                </span>
+                {last?.from === 'support' && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background:'#dc2626' }} title="New reply" />}
+                <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color:'rgba(18,40,76,0.18)' }} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Orders hub — the same filters + column sorting used across the portal */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <h2 className="font-semibold" style={{ color:'#12284C' }}>Your Orders</h2>
+          <button type="button" onClick={exportOrders} disabled={exporting || !myOrders.length}
+            title={myOrders.length ? 'Download all your orders as an Excel file' : 'No orders to export yet'}
+            className="btn-secondary text-sm px-4 py-2.5 flex items-center gap-2"
+            style={exporting || !myOrders.length ? { opacity:0.6, cursor:'not-allowed' } : undefined}>
+            <Download className="w-4 h-4" /> {exporting ? 'Exporting…' : 'Export'}
+          </button>
+        </div>
+        {exportErr && <div className="text-xs" style={{ color:'#dc2626' }}>{exportErr}</div>}
+        <OrdersTableView
+          orders={myOrders} columns={clientOrderColumns} search={clientOrderSearch}
+          onRowClick={o => navigate(`/client/orders/${o.id}`)} accent={ROLE_COLOR}
+          emptyText={myOrders.length ? 'No orders match your filters.' : 'No orders yet.'} />
       </div>
     </div>
   )
@@ -1253,49 +1297,6 @@ const clientOrderSearch = (o) => [
   o.workflow?.intake?.propertyAddress, o.workflow?.intake?.parcelNumberAPN, o.clientFileNo,
 ].filter(Boolean).join(' ')
 
-function MyOrdersPage() {
-  const myOrders = useMyOrders()
-  const navigate = useNavigate()
-  const [exporting, setExporting] = useState(false)
-  const [exportErr, setExportErr] = useState('')
-  // Exports exactly this client's orders (useMyOrders) — not the filtered subset,
-  // and never anything outside the client's own scope.
-  const exportOrders = async () => {
-    if (exporting || !myOrders.length) return
-    setExporting(true); setExportErr('')
-    try {
-      const XLSX = await import('xlsx')     // lazy, as in BulkImport
-      const ws = XLSX.utils.json_to_sheet(myOrders.map(exportRow), { header: EXPORT_COLUMNS.map(([label]) => label) })
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Orders')
-      XLSX.writeFile(wb, 'resolute-my-orders.xlsx')
-    } catch (e) {
-      console.error('[exportOrders]', e?.message || e)
-      setExportErr('We couldn’t create the export just now. Please try again.')
-    } finally {
-      setExporting(false)
-    }
-  }
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold" style={{ color: '#12284C' }}>My Orders</h1>
-        <button type="button" onClick={exportOrders} disabled={exporting || !myOrders.length}
-          title={myOrders.length ? 'Download all your orders as an Excel file' : 'No orders to export yet'}
-          className="btn-secondary text-sm px-4 py-2.5 flex items-center gap-2"
-          style={exporting || !myOrders.length ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}>
-          <Download className="w-4 h-4" /> {exporting ? 'Exporting…' : 'Export my orders'}
-        </button>
-      </div>
-      {exportErr && <div className="text-xs" style={{ color: '#dc2626' }}>{exportErr}</div>}
-      <OrdersTableView
-        orders={myOrders} columns={clientOrderColumns} search={clientOrderSearch}
-        onRowClick={o => navigate(`/client/orders/${o.id}`)} accent={ROLE_COLOR}
-        emptyText={myOrders.length ? 'No orders match your filters.' : 'No orders yet.'} />
-    </div>
-  )
-}
-
 function BillingPage() {
   const myOrders = useMyOrders()
   return <ClientBilling myOrders={myOrders} />
@@ -1315,7 +1316,9 @@ export default function ClientDashboard() {
       <Routes>
         <Route index         element={<ClientHome />} />
         <Route path="order"  element={<PlaceOrderPage />} />
-        <Route path="orders" element={<MyOrdersPage />} />
+        {/* My Orders was folded into the Dashboard (orders hub); keep the path as
+            a redirect so old links/bookmarks still land somewhere sensible. */}
+        <Route path="orders" element={<Navigate to="/client" replace />} />
         <Route path="orders/:id" element={<OrderDetailPage />} />
         {/* No nav entry and no email ever links here — client contact is
             portal-only, so a client is never a notification recipient. The route
