@@ -10,6 +10,22 @@ export const PRODUCTS = [
   { name:'Two Owner Search',     price:100, tat:'16–24 hr', desc:'Current vesting deed and all deeds back to the deed prior to the out-of-family deed. Includes copies of open mortgages and assignments, any judgments and liens against those owners, and tax assessment and current tax info including delinquencies.' },
   { name:'Full Search',          price:150, tat:'24–48 hr', desc:'Current vesting deed and all deeds back to state statute or a developer. Includes open mortgages and assignments, judgments and liens, and tax assessment and current tax information including delinquencies.' },
   { name:'Update / Bringdown',   price:45,  tat:'8–16 hr',  desc:'An extension of a title search to verify no liens have been filed between the original search and the recording of the deed or mortgage. Update on tax info from last effective date; any newly recorded instruments.' },
+
+  // Plus / Non-Plus packaging variants (Qualia parity). Same underlying search,
+  // two delivery packages: Plus = the full eight-section fulfillment; Non-Plus =
+  // a short three-section report (parcel ID, effective date, search package).
+  // Quote-only for now — pricing is TBD, so Admin prices each at Confirm & price;
+  // `tier` is what the Phase-2 fulfillment section formatting keys on. `base`
+  // ties each variant back to its standard search.
+  { name:'Current Owner Search — Plus',     tier:'plus',    base:'Current Owner Search', desc:'Current owner search delivered as a Plus package — the full eight-section fulfillment (parcel, vesting, chain of title, legal, mortgages, liens & judgments, taxes, requirements & exceptions).' },
+  { name:'Current Owner Search — Non-Plus', tier:'nonplus', base:'Current Owner Search', desc:'Current owner search delivered as a Non-Plus short report — parcel ID, effective date, and search package only.' },
+  { name:'Two Owner Search — Plus',         tier:'plus',    base:'Two Owner Search',     desc:'Two owner search delivered as a Plus package — the full eight-section fulfillment.' },
+  { name:'Two Owner Search — Non-Plus',     tier:'nonplus', base:'Two Owner Search',     desc:'Two owner search delivered as a Non-Plus short report — parcel ID, effective date, and search package only.' },
+  { name:'Full Search — Plus',              tier:'plus',    base:'Full Search',          desc:'Full search delivered as a Plus package — the full eight-section fulfillment.' },
+  { name:'Full Search — Non-Plus',          tier:'nonplus', base:'Full Search',          desc:'Full search delivered as a Non-Plus short report — parcel ID, effective date, and search package only.' },
+  { name:'Update / Bringdown — Plus',       tier:'plus',    base:'Update / Bringdown',   desc:'Update / bringdown delivered as a Plus package — the full eight-section fulfillment.' },
+  { name:'Update / Bringdown — Non-Plus',   tier:'nonplus', base:'Update / Bringdown',   desc:'Update / bringdown delivered as a Non-Plus short report — parcel ID, effective date, and search package only.' },
+
   { name:'Commercial Search',    price:250, desc:'Commitment-ready report for commercial properties.' },
   { name:'Energy / Infrastructure', price:350, desc:'Solar, wind, pipelines, cell towers, EV infrastructure.' },
   { name:'Tax Search',           desc:'Property tax assessment, current tax status, and delinquency information.' },
@@ -17,6 +33,12 @@ export const PRODUCTS = [
   { name:'Bankruptcy Name Search', desc:'Federal bankruptcy court name search for all parties in the transaction.' },
   { name:'Document Retrieval',   desc:'Retrieval of specific recorded documents from county and municipal records.' },
 ]
+
+// The Plus / Non-Plus search tiers, in catalog order — handy for grouping in UI
+// and for the Phase-2 fulfillment formatting that differs by tier.
+export const PRODUCT_TIERS = { plus: 'Plus', nonplus: 'Non-Plus' }
+// tier lookup by product name (undefined for the standard, non-tiered products).
+export const tierOf = (name) => PRODUCTS.find(p => p.name === name)?.tier || null
 
 // Legacy / internal short type names carried by mock + seed data and set from
 // the admin edit modal. Aligned to their catalog equivalents so their invoices
@@ -26,7 +48,8 @@ const LEGACY_TYPE_PRICE = {
   'Tax Certificate': 95, 'HOA Estoppel': 120,
 }
 
-// type/name → fixed price (undefined for quote-only products, e.g. Tax Search).
+// type/name → fixed price (undefined for quote-only products, e.g. Tax Search
+// and every Plus / Non-Plus variant — those are priced by Admin at confirm).
 export const PRODUCT_PRICE = {
   ...Object.fromEntries(PRODUCTS.filter(p => p.price != null).map(p => [p.name, p.price])),
   ...LEGACY_TYPE_PRICE,
