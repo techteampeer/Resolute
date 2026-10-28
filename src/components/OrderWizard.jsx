@@ -493,7 +493,9 @@ export default function OrderWizard({ mode = 'client' }) {
                             : { border:'1px solid #DDE3EC', background:'#fff' }}>
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-semibold text-sm" style={{ color:'#12284C' }}>{p.name}</span>
-                            {p.price != null && <span className="font-bold text-sm" style={{ color:'#b45309' }}>${p.price}</span>}
+                            {p.price != null
+                              ? <span className="font-bold text-sm" style={{ color:'#b45309' }}>${p.price}</span>
+                              : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0" style={{ background:'#EEF1FE', color:ROLE_COLOR }}>Quote</span>}
                           </div>
                           <p className="text-[11px] mt-1 leading-snug" style={{ color:'#5C6E8C' }}>{p.desc}</p>
                           {p.tat && <span className="inline-block mt-2 text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ background:'#EDF0F5', color:'#3D5171' }}>⏱ {p.tat}</span>}
