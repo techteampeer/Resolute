@@ -4,6 +4,7 @@
 // date ranges, and the property accessor. Status COLOURS live in orderStatus.js;
 // Total Price lives in lib/billing (invoiceAmount) — both imported by the views.
 import { lineItemsOf } from '../data/mockData'
+import { progressFor } from '@domain'
 
 // The Qualia filter tabs, in order. Mapping (confirmed):
 //   Pending   = Awaiting Approval  (parked with Admin, nothing to work yet)
@@ -62,4 +63,48 @@ export function propertyOf(o) {
   const items = lineItemsOf(o)
   if (items.length > 1) return `${items.length} properties`
   return o?.workflow?.intake?.propertyAddress || '—'
+}
+
+// ── Column sorting ────────────────────────────────────────────────────────────
+// Shared so every order table (client, admin, production) sorts identically.
+// A column that can be sorted supplies a `sortValue(order)` accessor returning a
+// comparable (number, date string 'YYYY-MM-DD', or plain string). The pure
+// accessors below cover the columns the portals share; `total` lives with the
+// caller because it needs the billing estimate (lib/billing), which this module
+// deliberately does not depend on.
+
+// Status progression rank: follows the pipeline (received → … → delivered) via
+// the domain's progressFor, so it never drifts from the stage order. Cancelled
+// has no pipeline position, so it sorts to the end ascending.
+export const statusRank = (o) =>
+  o?.status === 'cancelled' ? Number.MAX_SAFE_INTEGER : progressFor(o?.status || '')
+
+// The "Due By" column value: the delivered date once done, else the committed /
+// estimated delivery date. Date strings sort chronologically as plain strings.
+export const dueByValue = (o) => o?.completed || o?.eta || null
+
+// The "Ordered On" column value.
+export const orderedOnValue = (o) => o?.created || null
+
+// Compare two accessor values for sorting. Empty values (null/undefined/'') sort
+// LAST regardless of direction, so blank due dates never crowd the top.
+export function compareValues(a, b, dir = 'asc') {
+  const s = dir === 'desc' ? -1 : 1
+  const aEmpty = a == null || a === ''
+  const bEmpty = b == null || b === ''
+  if (aEmpty && bEmpty) return 0
+  if (aEmpty) return 1
+  if (bEmpty) return -1
+  if (typeof a === 'number' && typeof b === 'number') return (a - b) * s
+  return String(a).localeCompare(String(b)) * s
+}
+
+// Stable sort of `list` by a column accessor + direction. A falsy accessor or
+// direction returns the list unchanged (no active sort). Ties keep input order.
+export function sortByAccessor(list, accessor, dir) {
+  if (!accessor || !dir) return list
+  return list
+    .map((o, i) => [o, i])
+    .sort((x, y) => compareValues(accessor(x[0]), accessor(y[0]), dir) || (x[1] - y[1]))
+    .map(([o]) => o)
 }

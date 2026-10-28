@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { Search } from 'lucide-react'
-import { ORDER_TABS, tabOf, tabCounts, DATE_RANGES, withinRange } from '../lib/ordersView'
+import { ORDER_TABS, tabOf, tabCounts, DATE_RANGES, withinRange, sortByAccessor } from '../lib/ordersView'
 import { density } from '../lib/ui'
 
 // Qualia-style orders list, shared so every portal filters and reads the same:
@@ -28,6 +28,9 @@ export default function OrdersTableView({ orders, columns, search, onRowClick, a
   const [tab, setTab] = useState('all')
   const [dateRange, setDateRange] = useState('all')
   const [page, setPage] = useState(1)
+  // Column sort: the active column's header + direction (asc | desc | null).
+  const [sortKey, setSortKey] = useState(null)
+  const [sortDir, setSortDir] = useState(null)
   const CELL_PAD = `${density.rowPadY}px ${density.rowPadX}px`
 
   const counts = useMemo(() => tabCounts(orders), [orders])
@@ -40,10 +43,23 @@ export default function OrdersTableView({ orders, columns, search, onRowClick, a
     && (!query || !search || search(o).toLowerCase().includes(query))
   ), [orders, tab, dateRange, query, search])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  // A column is sortable when it supplies a sortValue accessor. Clicking its
+  // header cycles ascending → descending → off.
+  const activeCol = columns.find(c => c.header === sortKey && c.sortValue)
+  const sorted = useMemo(
+    () => (activeCol ? sortByAccessor(filtered, activeCol.sortValue, sortDir) : filtered),
+    [filtered, activeCol, sortDir])
+  const onSort = (col) => {
+    if (!col.sortValue) return
+    if (sortKey !== col.header) { setSortKey(col.header); setSortDir('asc'); return }
+    if (sortDir === 'asc') { setSortDir('desc'); return }
+    setSortKey(null); setSortDir(null)           // was descending → clear the sort
+  }
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize))
   const safePage = Math.min(page, totalPages)
-  const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
-  useEffect(() => { setPage(1) }, [tab, q, dateRange])
+  const paged = sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
+  useEffect(() => { setPage(1) }, [tab, q, dateRange, sortKey, sortDir])
 
   const CHEVRON = "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>\")"
   const selectStyle = {
@@ -99,12 +115,22 @@ export default function OrdersTableView({ orders, columns, search, onRowClick, a
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:density.bodySize, lineHeight:density.lineHeight, minWidth:820 }}>
             <thead>
               <tr style={{ background:'#F9FBFD', borderBottom:`1px solid ${Q.border}` }}>
-                {columns.map(c => (
-                  <th key={c.header} style={{ padding:CELL_PAD, textAlign:c.align || 'left', fontSize:density.headSize,
-                    fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', color:Q.faint, whiteSpace:'nowrap' }}>
-                    {c.header}
-                  </th>
-                ))}
+                {columns.map(c => {
+                  const sortable = !!c.sortValue
+                  const active = sortable && activeCol?.header === c.header
+                  const caret = active ? (sortDir === 'asc' ? '▲' : '▼') : (sortable ? '↕' : '')
+                  return (
+                    <th key={c.header} onClick={sortable ? () => onSort(c) : undefined}
+                      title={sortable ? `Sort by ${c.header}` : undefined}
+                      style={{ padding:CELL_PAD, textAlign:c.align || 'left', fontSize:density.headSize,
+                        fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em',
+                        color: active ? accent : Q.faint, whiteSpace:'nowrap',
+                        cursor: sortable ? 'pointer' : 'default', userSelect:'none' }}>
+                      {c.header}
+                      {sortable && <span style={{ marginLeft:5, fontSize:9, color: active ? accent : Q.faint, opacity: active ? 1 : 0.5 }}>{caret}</span>}
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>

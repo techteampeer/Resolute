@@ -23,7 +23,7 @@ import { PRODUCT_PRICE } from '../../data/products'
 import { money, invoiceAmount, payStatusOf, PAY_STATUS } from '../../lib/billing'
 import { orderSourceOf, orderSourceLabel } from '../../lib/orderSource'
 import { STATUS_META as STATUS_MAP } from '../../lib/orderStatus'
-import { ORDER_TABS, tabOf, tabCounts, withinRange, propertyOf, DATE_RANGES } from '../../lib/ordersView'
+import { ORDER_TABS, tabOf, tabCounts, withinRange, propertyOf, DATE_RANGES, statusRank, dueByValue, orderedOnValue, sortByAccessor } from '../../lib/ordersView'
 import { ROLE_COLOR, density } from '../../lib/ui'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
@@ -1006,6 +1006,16 @@ function TeamWorkload() {
   )
 }
 
+// Which header labels are sortable, and the value each sorts on. Shared accessors
+// (ordersView) keep Admin's sort identical to the client's; Total uses the billing
+// estimate. Headers not listed here are not sortable.
+const PIPELINE_SORT = {
+  'Status': statusRank,
+  'Total Price': o => invoiceAmount(o),
+  'Ordered On': orderedOnValue,
+  'Due By': dueByValue,
+}
+
 function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const { user } = useAuth()
   const { orders } = useOrders()
@@ -1026,6 +1036,8 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const [dateRange, setDateRange] = useState('365')   // "Ordered within" (days)
   const [rushOnly, setRushOnly] = useState(false)
   const [page, setPage]         = useState(1)
+  const [sortKey, setSortKey]   = useState(null)   // header label of the active sort
+  const [sortDir, setSortDir]   = useState(null)   // 'asc' | 'desc' | null
   const PAGE_SIZE = pageSize
   // Compact, Qualia-style rows: one padding for every header and body cell.
   const CELL_PAD = `${density.rowPadY}px ${density.rowPadX}px`
@@ -1065,12 +1077,22 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
     return matchSearch && matchTab && matchRegion && matchState && matchCounty && matchRush && matchDate
   })
 
+  // Column sort (applied before paging). Clicking a header cycles asc → desc → off.
+  const sortAcc = sortKey ? PIPELINE_SORT[sortKey] : null
+  const sorted = sortAcc ? sortByAccessor(filtered, sortAcc, sortDir) : filtered
+  const onSort = (h) => {
+    if (!PIPELINE_SORT[h]) return
+    if (sortKey !== h) { setSortKey(h); setSortDir('asc'); return }
+    if (sortDir === 'asc') { setSortDir('desc'); return }
+    setSortKey(null); setSortDir(null)
+  }
+
   // Pagination
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
   const safePage   = Math.min(page, totalPages)
-  const paged      = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
-  // Reset to first page whenever the filter set changes.
-  useEffect(() => { setPage(1) }, [activeTab, search, region, stateF, countyF, dateRange, rushOnly])
+  const paged      = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+  // Reset to first page whenever the filter set or sort changes.
+  useEffect(() => { setPage(1) }, [activeTab, search, region, stateF, countyF, dateRange, rushOnly, sortKey, sortDir])
 
   const CHEVRON = "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>\")"
   const filterSelectStyle = {
@@ -1183,14 +1205,25 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:density.bodySize, lineHeight:density.lineHeight, minWidth:990 }}>
           <thead>
             <tr style={{ background:'#F9FBFD', borderBottom:`1px solid ${Q.border}` }}>
-              {['Order','Status','Customer','Customer File','Product','Property','Total Price','Ordered On','Due By','Assignee',''].map(h => (
-                <th key={h} style={{
-                  padding:CELL_PAD, textAlign:'left', fontSize:density.headSize,
-                  fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em',
-                  color:Q.faint, whiteSpace:'nowrap',
-                  ...(scrollable ? { position:'sticky', top:0, background:'#F9FBFD', zIndex:1 } : {}),
-                }}>{h}</th>
-              ))}
+              {['Order','Status','Customer','Customer File','Product','Property','Total Price','Ordered On','Due By','Assignee',''].map(h => {
+                const sortable = !!PIPELINE_SORT[h]
+                const active = sortable && sortKey === h
+                const caret = active ? (sortDir === 'asc' ? '▲' : '▼') : (sortable ? '↕' : '')
+                return (
+                  <th key={h} onClick={sortable ? () => onSort(h) : undefined}
+                    title={sortable ? `Sort by ${h}` : undefined}
+                    style={{
+                      padding:CELL_PAD, textAlign:'left', fontSize:density.headSize,
+                      fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em',
+                      color: active ? ROLE_COLOR : Q.faint, whiteSpace:'nowrap',
+                      cursor: sortable ? 'pointer' : 'default', userSelect:'none',
+                      ...(scrollable ? { position:'sticky', top:0, background:'#F9FBFD', zIndex:1 } : {}),
+                    }}>
+                    {h}
+                    {sortable && <span style={{ marginLeft:5, fontSize:9, color: active ? ROLE_COLOR : Q.faint, opacity: active ? 1 : 0.5 }}>{caret}</span>}
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody>
