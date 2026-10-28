@@ -13,12 +13,14 @@ import { isSupabaseConfigured, fetchClientTerms, saveClientTerms } from './backe
 import {
   money, invoiceNumber, TERMS, termByKey, PAY_STATUS, paymentOf, payStatusOf,
   isBillable, dueDate, isOverdue, buildPayment, confirmPayment, bouncePayment,
+  payStatusMeta, payStatusLabel, OVERDUE_META,
   invoiceTotal, addDays,
 } from '@domain'
 
 export {
   money, invoiceNumber, TERMS, termByKey, PAY_STATUS, paymentOf, payStatusOf,
   isBillable, dueDate, isOverdue, buildPayment, confirmPayment, bouncePayment,
+  payStatusMeta, payStatusLabel, OVERDUE_META,
 }
 
 // ── Remittance details (PLACEHOLDERS — fill in real values here later) ──────

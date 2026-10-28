@@ -4,7 +4,7 @@
 // document records the amount, dates, payment status and where to remit; it does
 // not take payment.
 import {
-  invoiceNumber, invoiceAmount, money, payStatusOf, PAY_STATUS,
+  invoiceNumber, invoiceAmount, money, payStatusOf, payStatusMeta,
   dueDate, paymentOf, REMITTANCE, termByKey,
 } from './billing'
 
@@ -62,7 +62,7 @@ export function invoiceDocDefinition(order, { company, termKey, logo }) {
   const invoiceNo = invoiceNumber(order)
   const amount = invoiceAmount(order)
   const status = payStatusOf(order)
-  const statusMeta = PAY_STATUS[status] || PAY_STATUS.unpaid
+  const statusMeta = payStatusMeta(order, termKey)
   const term = termByKey(termKey)
   const due = dueDate(order, termKey)
   const p = paymentOf(order)
@@ -118,7 +118,7 @@ export function invoiceDocDefinition(order, { company, termKey, logo }) {
       },
 
       { text: 'STATUS', style: 'k', margin: [0, 12, 0, 2] },
-      { text: statusMeta.label + (status === 'confirmed' && p?.confirmedAt ? ` · ${p.confirmedAt}` : status === 'marked' ? ' · awaiting deposit confirmation' : ''), color: statusMeta.color, bold: true, fontSize: 11 },
+      { text: statusMeta.label + (status === 'confirmed' && p?.confirmedAt ? ` · ${p.confirmedAt}` : ''), color: statusMeta.color, bold: true, fontSize: 11 },
       ...(p && status !== 'unpaid' ? [{ text: `${p.method} ref ${p.reference}`, style: 'small' }] : []),
 
       { text: 'REMIT TO', style: 'k', margin: [0, 14, 0, 2] },

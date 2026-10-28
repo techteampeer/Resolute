@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   money, invoiceTotal, invoiceNumber, termByKey, cycleByKey, addDays,
   paymentOf, payStatusOf, isBillable, dueDate, isOverdue,
+  payStatusMeta, payStatusLabel, PAY_STATUS, OVERDUE_META,
   buildPayment, confirmPayment, bouncePayment,
   isAbsAssigned, payoutOf, needsFee, buildPayout, payPayout,
   subscriptionNextDue, isSubscriptionDue,
@@ -81,6 +82,28 @@ describe('payment state', () => {
     expect(p).toMatchObject({ method: 'ACH', reference: 'TR1', status: 'marked' })
     expect(confirmPayment(p, 'Vivek')).toMatchObject({ status: 'confirmed', confirmedBy: 'Vivek' })
     expect(bouncePayment(p, 'Vivek')).toMatchObject({ status: 'bounced', confirmedBy: 'Vivek' })
+  })
+})
+
+describe('payStatusMeta (standardized labels)', () => {
+  it('maps each status to its canonical label', () => {
+    expect(PAY_STATUS.unpaid.label).toBe('Outstanding')
+    expect(PAY_STATUS.marked.label).toBe('Awaiting confirmation')
+    expect(PAY_STATUS.confirmed.label).toBe('Paid')
+    expect(PAY_STATUS.bounced.label).toBe('Bounced')
+  })
+  it('payStatusLabel reads the status off the order', () => {
+    expect(payStatusLabel(order())).toBe('Outstanding')
+    expect(payStatusLabel(order({ workflow: { payment: { status: 'confirmed' } } }))).toBe('Paid')
+  })
+  it('overdue takes precedence over an unpaid label', () => {
+    const o = order({ completed: '2000-01-01' })
+    expect(payStatusMeta(o, 'net30')).toEqual(OVERDUE_META)
+    expect(payStatusLabel(o, 'net30')).toBe('Overdue')
+  })
+  it('a confirmed order is never shown overdue', () => {
+    const o = order({ completed: '2000-01-01', workflow: { payment: { status: 'confirmed' } } })
+    expect(payStatusLabel(o, 'net30')).toBe('Paid')
   })
 })
 

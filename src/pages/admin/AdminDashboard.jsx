@@ -20,7 +20,8 @@ import { openDocument, getAccessToken } from '../../lib/backend'
 import { isSupabaseConfigured } from '../../lib/backend'
 import { useProfiles, refreshProfiles } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
-import { money, invoiceAmount, payStatusOf, PAY_STATUS } from '../../lib/billing'
+import { money, invoiceAmount, isBillable,
+  payStatusMeta, clientCodeOf, getClientTerms, hydrateClientTerms } from '../../lib/billing'
 import { orderSourceOf, orderSourceLabel } from '../../lib/orderSource'
 import { STATUS_META as STATUS_MAP } from '../../lib/orderStatus'
 import { ORDER_TABS, tabOf, tabCounts, withinRange, propertyOf, DATE_RANGES, statusRank, dueByValue, orderedOnValue, sortByAccessor } from '../../lib/ordersView'
@@ -1038,6 +1039,10 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
   const [page, setPage]         = useState(1)
   const [sortKey, setSortKey]   = useState(null)   // header label of the active sort
   const [sortDir, setSortDir]   = useState(null)   // 'asc' | 'desc' | null
+  const [, bumpTerms] = useState(0)
+  // Pull durable client terms into the cache so Outstanding / Overdue chips use
+  // each client's real due dates (billing hydrates too; this covers the Orders page).
+  useEffect(() => { hydrateClientTerms().then(ok => ok && bumpTerms(n => n + 1)) }, [])
   const PAGE_SIZE = pageSize
   // Compact, Qualia-style rows: one padding for every header and body cell.
   const CELL_PAD = `${density.rowPadY}px ${density.rowPadX}px`
@@ -1262,9 +1267,14 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       so money lives in its own column, never mixed into Status. */}
                   <td style={{ padding:CELL_PAD, whiteSpace:'nowrap' }}>
                     <div style={{ fontSize:12.5, fontWeight:600, color:Q.text }}>{money(invoiceAmount(o))}</div>
-                    <div style={{ fontSize:10.5, fontWeight:600, color:(PAY_STATUS[payStatusOf(o)] || PAY_STATUS.unpaid).color }}>
-                      {(PAY_STATUS[payStatusOf(o)] || PAY_STATUS.unpaid).label}
-                    </div>
+                    {(() => {
+                      // Billable orders carry a payment status (Outstanding / Overdue /
+                      // Awaiting confirmation / Paid / Bounced); pre-delivery it's an estimate.
+                      const m = isBillable(o) ? payStatusMeta(o, getClientTerms(clientCodeOf(o))) : null
+                      return m
+                        ? <div style={{ fontSize:10.5, fontWeight:600, color:m.color }}>{m.label}</div>
+                        : <div style={{ fontSize:10.5, color:Q.faint }}>est.</div>
+                    })()}
                   </td>
                   <td style={{ padding:CELL_PAD, color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{o.created || '—'}</td>
                   <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',

@@ -21,7 +21,8 @@ import { useSupport } from '../../context/SupportContext'
 import { DEMO_ORDERS } from '../../data/demoData'
 import ClientBilling from './ClientBilling'
 import BulkImport from './BulkImport'
-import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS, isBillable } from '../../lib/billing'
+import { invoiceAmount, invoiceNumber, money, payStatusOf, isBillable,
+  payStatusMeta, clientCodeOf, getClientTerms, hydrateClientTerms } from '../../lib/billing'
 import { ROLE_COLOR } from '../../lib/ui'
 import OrdersTableView from '../../components/OrdersTableView'
 import { propertyOf, statusRank, dueByValue, orderedOnValue } from '../../lib/ordersView'
@@ -54,7 +55,7 @@ function useMyOrders() {
 function InvoiceCard({ order }) {
   const navigate = useNavigate()
   const status = payStatusOf(order)
-  const s = PAY_STATUS[status]
+  const s = payStatusMeta(order, getClientTerms(clientCodeOf(order)))
   return (
     <div className="glass-card p-5" style={{ border: '1px solid rgba(160,192,112,0.28)' }}>
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
@@ -213,6 +214,9 @@ function OrderDetailPage() {
     order?.status === 'cancelled' ? 'cancelled'
       : order?.workflow?.cancelRequested ? 'requested' : 'none')
   const [clientDocs, setClientDocs] = useState(order?.workflow?.clientDocs || [])
+  // Hydrate client terms so the invoice card can resolve overdue accurately.
+  const [, bumpTerms] = useState(0)
+  useEffect(() => { hydrateClientTerms().then(ok => ok && bumpTerms(n => n + 1)) }, [])
 
   if (!order) return (
     <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
@@ -987,6 +991,10 @@ function ClientHome() {
   const { getOrderThread } = useSupport()
   const navigate = useNavigate()
   const stats = clientStats(myOrders)
+  // Pull durable payment terms into the cache so the orders table's Outstanding /
+  // Overdue chips use this client's real due dates (not the per-order default).
+  const [, bumpTerms] = useState(0)
+  useEffect(() => { hydrateClientTerms().then(ok => ok && bumpTerms(n => n + 1)) }, [])
   // Outstanding $ — billable orders not yet confirmed paid (the money still owed).
   const outstanding = myOrders.filter(isBillable)
     .filter(o => payStatusOf(o) !== 'confirmed')
@@ -1279,14 +1287,20 @@ const clientOrderColumns = [
   { header: 'Property', render: o => (
     <span title={propertyOf(o)} style={{ display:'inline-block', maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', verticalAlign:'bottom' }}>{propertyOf(o)}</span>
   ) },
-  { header: 'Total Price', render: o => (
-    <span>
-      <span style={{ fontWeight:600, color:'#12284C' }}>{money(invoiceAmount(o))}</span>
-      <span style={{ marginLeft:6, fontSize:11, fontWeight:600, color:(PAY_STATUS[payStatusOf(o)] || PAY_STATUS.unpaid).color }}>
-        {(PAY_STATUS[payStatusOf(o)] || PAY_STATUS.unpaid).label}
+  { header: 'Total Price', render: o => {
+    // A payment-status word (Outstanding / Overdue / Awaiting confirmation /
+    // Paid / Bounced) applies only once an order is billable; before delivery
+    // the amount is a catalog estimate, so show "est." rather than a false status.
+    const m = isBillable(o) ? payStatusMeta(o, getClientTerms(clientCodeOf(o))) : null
+    return (
+      <span>
+        <span style={{ fontWeight:600, color:'#12284C' }}>{money(invoiceAmount(o))}</span>
+        {m
+          ? <span style={{ marginLeft:6, fontSize:11, fontWeight:600, color:m.color }}>{m.label}</span>
+          : <span style={{ marginLeft:6, fontSize:11, color:'#9AA8BF' }}>est.</span>}
       </span>
-    </span>
-  ), sortValue: o => invoiceAmount(o) },
+    )
+  }, sortValue: o => invoiceAmount(o) },
   { header: 'Ordered On', render: o => o.created || '—', sortValue: orderedOnValue },
   { header: 'Due By', render: o => o.completed ? `Done ${o.completed}` : (o.eta || '—'), sortValue: dueByValue },
 ]

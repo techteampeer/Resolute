@@ -64,11 +64,15 @@ export const invoiceNumber = (order: Pick<Order, 'id'>): string => `INV-${order.
 // ── Payment state ─────────────────────────────────────────────────────────────
 export interface Payment { status: string; [k: string]: any }
 export const PAY_STATUS: Record<string, { label: string; color: string }> = {
-  unpaid:    { label: 'Unpaid',      color: '#5C6E8C' },
-  marked:    { label: 'Marked Paid', color: '#b45309' },
-  confirmed: { label: 'Paid',        color: '#15803d' },
-  bounced:   { label: 'Bounced',     color: '#dc2626' },
+  unpaid:    { label: 'Outstanding',           color: '#b45309' }, // owed, not yet past due
+  marked:    { label: 'Awaiting confirmation', color: '#2441E5' }, // client marked; billing admin confirms
+  confirmed: { label: 'Paid',                  color: '#15803d' },
+  bounced:   { label: 'Bounced',               color: '#dc2626' },
 }
+// Overdue is a derived state (past due + not confirmed) shown IN PLACE of the
+// pay status, so the whole interface uses one consistent set of words:
+// Outstanding · Overdue · Awaiting confirmation · Paid · Bounced.
+export const OVERDUE_META = { label: 'Overdue', color: '#dc2626' }
 // Normalize the legacy { status:'submitted' } shape to 'marked'.
 export const paymentOf = (order: Order): Payment | null => {
   const p = order.workflow?.payment
@@ -87,6 +91,14 @@ export const isOverdue = (order: Order, termKey?: string): boolean => {
   const due = dueDate(order, termKey)
   return Boolean(due && due < todayISO())
 }
+
+// The single source for an order's payment-status chip (label + colour), in the
+// standardized wording. 'Overdue' overrides 'Outstanding' once past due;
+// otherwise it is the PAY_STATUS entry. Every screen (billing pages, order
+// tables, the invoice PDF) uses this so the terminology never drifts.
+export const payStatusMeta = (order: Order, termKey?: string): { label: string; color: string } =>
+  isOverdue(order, termKey) ? OVERDUE_META : (PAY_STATUS[payStatusOf(order)] || PAY_STATUS.unpaid)
+export const payStatusLabel = (order: Order, termKey?: string): string => payStatusMeta(order, termKey).label
 
 // Payment object builders. A client may only MARK; confirm/bounce belong to the
 // billing owner (enforced by DB trigger, see enforce_payment_confirmer).
