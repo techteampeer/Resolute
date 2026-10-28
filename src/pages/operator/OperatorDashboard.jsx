@@ -15,6 +15,11 @@ import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
 import NotificationSettings from '../../components/NotificationSettings'
 import { ROLE_COLOR } from '../../lib/ui'
+import { dueByValue, statusRank, orderedOnValue, sortByAccessor } from '../../lib/ordersView'
+
+// Sort options for the production desk's Active Orders queue (card list, so a
+// control rather than clickable headers). Uses the shared ordersView accessors.
+const OP_SORT = { due: dueByValue, status: statusRank, ordered: orderedOnValue }
 
 const NAV = [
   { path: '/user',          label: 'Dashboard', icon: LayoutDashboard },
@@ -294,6 +299,8 @@ function OperatorHome() {
   const actionable = active.filter(o => o.assignedTo === 'user' && o.assignedUserId === user?.id)
   const awaiting   = active.filter(o => o.workflow?.singleSeating && o.assignedTo !== 'user')
   const byStage = (r) => actionable.filter(o => nextRoleFor(o) === r).length
+  const [sort, setSort] = useState('default')
+  const sortedActionable = sort !== 'default' ? sortByAccessor(actionable, OP_SORT[sort], 'asc') : actionable
 
   return (
     <div className="space-y-6">
@@ -313,9 +320,21 @@ function OperatorHome() {
         ))}
       </div>
       <div className="glass-card p-5">
-        <h2 className="font-semibold mb-4" style={{ color: '#12284C' }}>Active Orders</h2>
+        <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+          <h2 className="font-semibold" style={{ color: '#12284C' }}>Active Orders</h2>
+          <label className="text-xs flex items-center gap-1.5" style={{ color: '#5C6E8C' }}>
+            Sort by
+            <select value={sort} onChange={e => setSort(e.target.value)}
+              className="text-xs rounded-lg px-2 py-1.5" style={{ border: '1px solid #DDE3EC', background: '#fff', color: '#12284C' }}>
+              <option value="default">Default</option>
+              <option value="due">Due date</option>
+              <option value="status">Status</option>
+              <option value="ordered">Ordered on</option>
+            </select>
+          </label>
+        </div>
         <div className="space-y-3">
-          {actionable.map((o, i) => {
+          {sortedActionable.map((o, i) => {
             const role = nextRoleFor(o)
             const s = STAGE[role] || {}
             return (

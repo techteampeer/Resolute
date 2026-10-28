@@ -24,7 +24,7 @@ import BulkImport from './BulkImport'
 import { invoiceAmount, invoiceNumber, money, payStatusOf, PAY_STATUS } from '../../lib/billing'
 import { ROLE_COLOR } from '../../lib/ui'
 import OrdersTableView from '../../components/OrdersTableView'
-import { propertyOf } from '../../lib/ordersView'
+import { propertyOf, statusRank, dueByValue, orderedOnValue } from '../../lib/ordersView'
 import { useContacts } from '../../lib/useContacts'
 import CompanySettings from './CompanySettings'
 
@@ -1229,7 +1229,7 @@ const clientOrderColumns = [
       )}
     </span>
   ) },
-  { header: 'Status', render: o => <ClientStatusBadge order={o} /> },
+  { header: 'Status', render: o => <ClientStatusBadge order={o} />, sortValue: statusRank },
   { header: 'File #', render: o => <span style={{ fontFamily:'monospace', fontSize:11.5 }}>{o.clientFileNo || '—'}</span> },
   { header: 'Product', render: o => o.type },
   { header: 'Property', render: o => (
@@ -1242,9 +1242,9 @@ const clientOrderColumns = [
         {(PAY_STATUS[payStatusOf(o)] || PAY_STATUS.unpaid).label}
       </span>
     </span>
-  ) },
-  { header: 'Ordered On', render: o => o.created || '—' },
-  { header: 'Due By', render: o => o.completed ? `Done ${o.completed}` : (o.eta || '—') },
+  ), sortValue: o => invoiceAmount(o) },
+  { header: 'Ordered On', render: o => o.created || '—', sortValue: orderedOnValue },
+  { header: 'Due By', render: o => o.completed ? `Done ${o.completed}` : (o.eta || '—'), sortValue: dueByValue },
 ]
 
 // Search across order #, product, client-facing status and property details.
