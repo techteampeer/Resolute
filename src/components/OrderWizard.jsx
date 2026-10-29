@@ -158,6 +158,7 @@ export default function OrderWizard({ mode = 'client' }) {
     contactName: admin ? '' : (user?.name || ''),
     email: admin ? '' : (user?.email || ''),
     phone:'', role:'', notes:'', marketingOptIn:false, placedById:'',
+    adminNote:'',   // admin-only internal note (→ workflow.intake.reviewNotes)
   })
   const [form, setForm] = useState(makeInitialForm)
   const [submitted, setSubmitted] = useState(false)
@@ -185,7 +186,7 @@ export default function OrderWizard({ mode = 'client' }) {
   // Step model — admin inserts a leading "Client" step before the four content
   // steps, so `cs` (content step) is 1..4 for Property/Search/Contact/Review.
   const STEPS = admin
-    ? ['Client','Property Info','Search Details','Contact','Review']
+    ? ['Client','Property Info','Search Details','Notes','Review']
     : ['Property Info','Search Details','Contact','Review']
   const total = STEPS.length
   const cs = admin ? step - 1 : step
@@ -195,7 +196,9 @@ export default function OrderWizard({ mode = 'client' }) {
     if (admin && s === 1) return !!adminClientCode
     if (c === 1) return !!(form.state.trim() && form.county.trim())
     if (c === 2) return !!(form.searchType.trim() || form.customSearch.trim())
-    if (c === 3) return !!(form.contactName.trim() && /\S+@\S+\.\S+/.test(form.email))
+    // Admin's step 4 is just the placed-by line + an optional note — nothing
+    // required; the client's Contact step needs a name + a valid email.
+    if (c === 3) return admin ? true : !!(form.contactName.trim() && /\S+@\S+\.\S+/.test(form.email))
     return true
   }
   const goNext = () => { if (!stepValid(step)) { setStepErr(true); return } setStepErr(false); setStep(s => s + 1) }
@@ -216,17 +219,21 @@ export default function OrderWizard({ mode = 'client' }) {
         ? (companyName || 'Web Order')
         : (companyName || user?.name || 'Web Order')
       // Record WHO placed the order in the company directory (best-effort — never
-      // block an order on it) and attach a snapshot to the intake.
+      // block an order on it) and attach a snapshot to the intake. Admin-placed
+      // orders capture no client contact (just the admin + an internal note), so
+      // there is nothing to save to the company directory.
       let placedBy = null
-      try {
-        const saved = await savePlacer({
-          id: form.placedById || undefined,
-          name: form.contactName.trim(), email: form.email.trim(),
-          phone: form.phone.trim(), title: form.role.trim(),
-          marketingOptIn: !!form.marketingOptIn, createdBy: admin ? (user?.name || 'Admin') : 'client',
-        })
-        if (saved) placedBy = { id: saved.id, name: saved.name, email: saved.email, title: saved.title }
-      } catch { /* directory is best-effort */ }
+      if (!admin) {
+        try {
+          const saved = await savePlacer({
+            id: form.placedById || undefined,
+            name: form.contactName.trim(), email: form.email.trim(),
+            phone: form.phone.trim(), title: form.role.trim(),
+            marketingOptIn: !!form.marketingOptIn, createdBy: 'client',
+          })
+          if (saved) placedBy = { id: saved.id, name: saved.name, email: saved.email, title: saved.title }
+        } catch { /* directory is best-effort */ }
+      }
       const order = await createOrder({
         state: form.state, county: form.county, type,
         priority: form.priority,
@@ -237,10 +244,13 @@ export default function OrderWizard({ mode = 'client' }) {
           source: 'web', propertyAddress: [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', '),
           parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
           parties, propertyType: propertyType || null, customSearch: customSearch || null,
-          orderType: type, from: `${form.contactName} <${form.email}>`.trim(),
+          orderType: type, from: admin ? '' : `${form.contactName} <${form.email}>`.trim(),
           company, role: form.role, specialInstructions: form.notes,
           placedBy, contactPhone: form.phone.trim() || null,
+          // Admin: record who on the Resolute team placed it, plus the optional
+          // admin-only internal note (shown only on Admin's order view).
           ...(admin ? { placedByAdmin: user?.name || 'Admin' } : {}),
+          ...(admin && form.adminNote.trim() ? { reviewNotes: [form.adminNote.trim()] } : {}),
         },
       })
       // Upload staged reference docs now that we have an order id, then persist
@@ -383,7 +393,7 @@ export default function OrderWizard({ mode = 'client' }) {
                 {adminClientCode && (
                   <div className="flex items-start gap-2 p-3 rounded-xl text-[12.5px]" style={{ background:'rgba(36,65,229,0.06)', border:'1px solid rgba(36,65,229,0.18)', color:'#3D5171' }}>
                     <Building2Dot />
-                    <span>Placing for <strong style={{ color:'#12284C' }}>{companyName}</strong>{contacts.length ? ` · ${contacts.length} saved ${contacts.length === 1 ? 'contact' : 'contacts'} on file` : ''}.</span>
+                    <span>Placing for <strong style={{ color:'#12284C' }}>{companyName}</strong> — this company becomes the order’s client.</span>
                   </div>
                 )}
               </div>
@@ -539,7 +549,21 @@ export default function OrderWizard({ mode = 'client' }) {
                 </div>
               </div>
             )}
-            {cs===3 && (
+            {cs===3 && (admin ? (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Placed by &amp; notes</h2>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Placed by (Resolute)</label>
+                  <div className="input-field text-sm" style={{ background:'#F6F8FC', color:'#12284C', fontWeight:600 }}>{user?.name || 'Admin'}</div>
+                  <p className="text-[11px] mt-1.5" style={{ color:'#9AA8BF' }}>Recorded automatically — you’re placing this on behalf of {companyName || 'the client'}.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Internal note <span style={{textTransform:'none',opacity:.6}}>(optional)</span></label>
+                  <textarea value={form.adminNote} onChange={e=>set('adminNote', e.target.value)} rows={4} className="input-field text-sm resize-none" placeholder="Context for the team — how the order came in, who to follow up with, anything to check before pricing…" />
+                  <p className="text-[11px] mt-1.5" style={{ color:'#9AA8BF' }}>Admin-only — shown on the order’s Admin view. The client never sees it, and it’s separate from the Special Instructions that go to the search team.</p>
+                </div>
+              </div>
+            ) : (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Contact Information</h2>
                 {contacts.length > 0 && (
@@ -577,7 +601,7 @@ export default function OrderWizard({ mode = 'client' }) {
                   <span className="text-[12.5px]" style={{ color:'#5C6E8C' }}>Okay to send this person occasional product news and updates.</span>
                 </label>
               </div>
-            )}
+            ))}
             {cs===4 && (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Review &amp; Submit</h2>
@@ -602,12 +626,17 @@ export default function OrderWizard({ mode = 'client' }) {
                       ['Special instructions', form.notes],
                     ]],
                     ['Parties', form.parties.filter(p => p.name.trim()).map(p => [p.role, p.name])],
-                    ['Contact', [
-                      ['Placed by', form.contactName],
-                      ['Title / role', form.role],
-                      ['Work email', form.email],
-                      ['Phone', form.phone],
-                    ]],
+                    ...(admin
+                      ? [['Placed by', [
+                          ['Resolute', user?.name || 'Admin'],
+                          ...(form.adminNote.trim() ? [['Internal note', form.adminNote.trim()]] : []),
+                        ]]]
+                      : [['Contact', [
+                          ['Placed by', form.contactName],
+                          ['Title / role', form.role],
+                          ['Work email', form.email],
+                          ['Phone', form.phone],
+                        ]]]),
                   ].map(([title, pairs]) => (
                     <div key={title} className="glass p-4 rounded-xl">
                       <div className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color:'#5C6E8C' }}>

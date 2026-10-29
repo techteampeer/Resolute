@@ -710,6 +710,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
                   <Detail label="Product" value={intake.orderType || order.type} />
                   <Detail label="Requested by" value={intake.from} wide />
                   <Detail label="Company" value={intake.company} />
+                  {intake.placedByAdmin && <Detail label="Placed by (Resolute)" value={intake.placedByAdmin} />}
                 </div>
                 {/* Internal intake metadata — Admin's view only, and by code only */}
                 {intake.clientCreated && (
