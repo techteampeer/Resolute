@@ -159,6 +159,7 @@ export default function OrderWizard({ mode = 'client' }) {
     email: admin ? '' : (user?.email || ''),
     phone:'', role:'', notes:'', marketingOptIn:false, placedById:'',
     adminNote:'',   // admin-only internal note (→ workflow.intake.reviewNotes)
+    source:'web',   // admin tracking label: 'web'=Portal | 'website' | 'email'
   })
   const [form, setForm] = useState(makeInitialForm)
   const [submitted, setSubmitted] = useState(false)
@@ -194,7 +195,7 @@ export default function OrderWizard({ mode = 'client' }) {
   const stepValid = (s) => {
     const c = admin ? s - 1 : s
     if (admin && s === 1) return !!adminClientCode
-    if (c === 1) return !!(form.state.trim() && form.county.trim())
+    if (c === 1) return !!(form.state.trim() && form.county.trim() && form.address.trim())
     if (c === 2) return !!(form.searchType.trim() || form.customSearch.trim())
     // Admin's step 4 is just the placed-by line + an optional note — nothing
     // required; the client's Contact step needs a name + a valid email.
@@ -241,7 +242,7 @@ export default function OrderWizard({ mode = 'client' }) {
         clientCode: activeClientCode,
         client: company,
         intake: {
-          source: 'web', propertyAddress: [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', '),
+          source: admin ? (form.source || 'web') : 'web', propertyAddress: [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', '),
           parcelNumberAPN: form.parcelId, borrowerName: borrower, buyer, seller,
           parties, propertyType: propertyType || null, customSearch: customSearch || null,
           orderType: type, from: admin ? '' : `${form.contactName} <${form.email}>`.trim(),
@@ -390,6 +391,15 @@ export default function OrderWizard({ mode = 'client' }) {
                   </select>
                   <div className="text-[11px] mt-1" style={{ color:'#9AA8BF' }}>The order is placed on behalf of this company — it becomes the order’s client.</div>
                 </div>
+                <div>
+                  <Field>Order source</Field>
+                  <select value={form.source} onChange={e => set('source', e.target.value)} className="input-field text-sm">
+                    <option value="web">Portal</option>
+                    <option value="website">Website</option>
+                    <option value="email">Email</option>
+                  </select>
+                  <div className="text-[11px] mt-1" style={{ color:'#9AA8BF' }}>Where the order came from — shown on the order and in the orders list for tracking.</div>
+                </div>
                 {adminClientCode && (
                   <div className="flex items-start gap-2 p-3 rounded-xl text-[12.5px]" style={{ background:'rgba(36,65,229,0.06)', border:'1px solid rgba(36,65,229,0.18)', color:'#3D5171' }}>
                     <Building2Dot />
@@ -422,8 +432,8 @@ export default function OrderWizard({ mode = 'client' }) {
                   )}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Property Address</label>
-                  <input value={form.address} onChange={e=>set('address',e.target.value)} placeholder="123 Main St, City, State 00000" className="input-field text-sm"/>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color:'#5C6E8C' }}>Property Address *</label>
+                  <input value={form.address} onChange={e=>set('address',e.target.value)} placeholder="123 Main St, City, State 00000" className="input-field text-sm" required/>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -674,7 +684,7 @@ export default function OrderWizard({ mode = 'client' }) {
             {stepErr && !stepValid(step) && (
               <div className="mt-4 text-[12px] px-3 py-2 rounded-lg" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
                 {admin && step===1 ? 'Select a client to place this order for.'
-                  : cs===1 ? 'Property State and County are required.'
+                  : cs===1 ? 'Property street address, state and county are required.'
                   : cs===2 ? 'Choose a product or describe a custom search.'
                   : 'Contact name and a valid email are required.'}
               </div>
