@@ -6,12 +6,13 @@
 export const uid = () => Math.random().toString(36).slice(2, 9)
 
 // ── Date helpers ───────────────────────────────────────────────────────────
-// Inputs store ISO (yyyy-mm-dd); generated clauses render MM/DD/YYYY.
+// Inputs store ISO (yyyy-mm-dd); generated clauses render MM-DD-YYYY (matches
+// the portal-wide date format).
 export const fmtDate = (iso) => {
   if (!iso) return ''
   const [y, m, d] = iso.slice(0, 10).split('-')
   if (!y || !m || !d) return iso
-  return `${m}/${d}/${y}`
+  return `${m}-${d}-${y}`
 }
 export const fmtDateTime = (iso) => {
   if (!iso) return ''

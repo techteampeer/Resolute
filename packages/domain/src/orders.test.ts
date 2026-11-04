@@ -3,6 +3,7 @@ import {
   ROLE_SEQUENCE, nextRoleFor, roleAfter, statusForRole, progressFor, orderProgress, isOrderComplete,
   activeCountForUser, workloadWeight, lineItemsOf, lineSubId,
   stagePlanOf, hasStagePlan, ownerForStage, nextOwnerFor, isSingleSeatingPlan, stageSequenceFor,
+  formatDate,
 } from './pipeline'
 import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
@@ -401,5 +402,20 @@ describe('optional Search QC stage', () => {
     expect(n.completedDates!.screener).toBe('x')         // earlier stamp untouched
     expect(n.completed).toBeNull()
     expect(n.workflow!.qcReview).toMatchObject({ result: 'rejected', note: 'missing a legal', by: 'Sam', stage: 'searchqc' })
+  })
+})
+
+describe('formatDate (MM-DD-YYYY display)', () => {
+  it('renders an ISO date as MM-DD-YYYY', () => {
+    expect(formatDate('2026-06-09')).toBe('06-09-2026')
+  })
+  it('accepts an ISO datetime and keeps just the date', () => {
+    expect(formatDate('2026-11-04T14:30:00.000Z')).toBe('11-04-2026')
+  })
+  it('returns empty string for falsy or unparseable input (so `|| "—"` fallbacks still apply)', () => {
+    expect(formatDate('')).toBe('')
+    expect(formatDate(null)).toBe('')
+    expect(formatDate(undefined)).toBe('')
+    expect(formatDate('not a date')).toBe('')
   })
 })

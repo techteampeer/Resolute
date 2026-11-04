@@ -161,6 +161,7 @@ export {
   activeCountForUser, workloadWeight, lineItemsOf, lineSubId,
   stagePlanOf, hasStagePlan, ownerForStage, nextOwnerFor, isSingleSeatingPlan,
   can, effectiveCapabilities, workableStages,
+  todayISO, formatDate,
 } from '@domain'
 
 export const ACTIVITY = [

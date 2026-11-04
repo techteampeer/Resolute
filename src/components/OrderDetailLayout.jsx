@@ -2,14 +2,14 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ChevronRight } from 'lucide-react'
-import { displayClient } from '../data/mockData'
+import { displayClient, formatDate } from '../data/mockData'
 
 // Subtitle from whatever the order actually has. Email-ingested orders often
 // arrive without county/state, and naively interpolating them renders a stray
 // "Full Search · ," — so drop the empty parts instead.
 export const orderSubtitle = (order) => {
   const place = [order.county && `${order.county} County`, order.state].filter(Boolean).join(', ')
-  return [order.type, place, order.eta && `ETA ${order.eta}`].filter(Boolean).join(' · ')
+  return [order.type, place, order.eta && `ETA ${formatDate(order.eta)}`].filter(Boolean).join(' · ')
 }
 
 // Shared full-page order detail shell for every portal.

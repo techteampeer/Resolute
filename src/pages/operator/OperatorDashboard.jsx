@@ -6,7 +6,7 @@ import DocUpload from '../../components/DocUpload'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
-import { displayClient, nextRoleFor, roleAfterFor, lineItemsOf, hasStagePlan } from '../../data/mockData'
+import { displayClient, nextRoleFor, roleAfterFor, lineItemsOf, hasStagePlan, formatDate } from '../../data/mockData'
 import SubOrders from '../../components/SubOrders'
 import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files, Bell, RotateCcw } from 'lucide-react'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
@@ -244,7 +244,7 @@ function OperatorOrderPage() {
             ['Client file #', order.clientFileNo || '—'],
             ['Property', items.length > 1 ? `${items.length} properties — see sub-orders` : (order.workflow?.intake?.propertyAddress || '—')],
             ['Search Type', order.type], ['County', order.county], ['State', order.state],
-            ['Priority', order.priority?.toUpperCase()], ['ETA', order.eta], ['Current stage', meta.label],
+            ['Priority', order.priority?.toUpperCase()], ['ETA', formatDate(order.eta)], ['Current stage', meta.label],
           ]} />
           <SubOrders order={order} />
         </div>
@@ -355,7 +355,7 @@ function OperatorHome() {
                 </div>
                 <div className="text-right flex-shrink-0">
                   <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: `${s.color}22`, color: s.color }}>{s.label}</span>
-                  <div className="text-xs mt-1" style={{ color: '#5C6E8C' }}>ETA {o.eta}</div>
+                  <div className="text-xs mt-1" style={{ color: '#5C6E8C' }}>ETA {formatDate(o.eta)}</div>
                 </div>
                 <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: 'rgba(18,40,76,0.18)' }} />
               </motion.div>
@@ -410,7 +410,7 @@ function CompletedList() {
             <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#15803d' }} />
             <span className="font-mono text-xs" style={{ color: '#3D5171' }}>{o.id}</span>
             <span className="text-xs flex-1 truncate" style={{ color: '#3D5171' }}>{displayClient(o, user)}</span>
-            <span className="text-xs" style={{ color: '#5C6E8C' }}>{o.completed || o.eta}</span>
+            <span className="text-xs" style={{ color: '#5C6E8C' }}>{formatDate(o.completed || o.eta)}</span>
           </div>
         ))}
         {done.length === 0 && <div className="text-sm text-center py-6" style={{ color: '#5C6E8C' }}>Nothing delivered yet.</div>}

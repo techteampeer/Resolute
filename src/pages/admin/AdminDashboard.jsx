@@ -36,7 +36,7 @@ import {
   displayClient, clientByName, clientCode, stateCode,
   REGIONS, regionOf, nextRoleFor, lineItemsOf, workloadWeight,
   stagePlanOf, hasStagePlan, isSingleSeatingPlan,
-  ROLE_SEQUENCE, can, workableStages,
+  ROLE_SEQUENCE, can, workableStages, formatDate,
 } from '../../data/mockData'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
@@ -142,7 +142,7 @@ export function exportOrdersCsv(orders, user) {
     { label: 'State', get: o => o.state }, { label: 'County', get: o => o.county },
     { label: 'Type', get: o => o.type }, { label: 'Status', get: o => STATUS_MAP[o.status]?.label || o.status },
     { label: 'Priority', get: o => o.priority }, { label: 'Payment', get: o => o.payment },
-    { label: 'Created', get: o => o.created }, { label: 'ETA', get: o => o.eta }, { label: 'Completed', get: o => o.completed || '' },
+    { label: 'Created', get: o => formatDate(o.created) }, { label: 'ETA', get: o => formatDate(o.eta) }, { label: 'Completed', get: o => formatDate(o.completed) },
   ], orders)
 }
 
@@ -619,7 +619,7 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
             background:'rgba(220,140,40,0.10)', border:'1px solid rgba(220,140,40,0.28)' }}>
             <div>
               <div style={{ fontSize:13, fontWeight:700, color:'#b45309' }}>On hold{order.workflow?.holdReason ? ` — ${order.workflow.holdReason}` : ''}</div>
-              <div style={{ fontSize:11.5, color:'#a16207', marginTop:2 }}>{[order.workflow?.holdBy, order.workflow?.holdAt].filter(Boolean).join(' · ') || 'Paused'}</div>
+              <div style={{ fontSize:11.5, color:'#a16207', marginTop:2 }}>{[order.workflow?.holdBy, formatDate(order.workflow?.holdAt)].filter(Boolean).join(' · ') || 'Paused'}</div>
             </div>
             <button onClick={resumeHold} style={{ flexShrink:0, padding:'7px 14px', background:'#fff', border:'1px solid rgba(220,140,40,0.45)', borderRadius:8, color:'#b45309', fontSize:12.5, fontWeight:600, cursor:'pointer' }}>Resume</button>
           </div>
@@ -1277,10 +1277,10 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                         : <div style={{ fontSize:10.5, color:Q.faint }}>est.</div>
                     })()}
                   </td>
-                  <td style={{ padding:CELL_PAD, color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{o.created || '—'}</td>
+                  <td style={{ padding:CELL_PAD, color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{formatDate(o.created) || '—'}</td>
                   <td style={{ padding:CELL_PAD, fontSize:12, whiteSpace:'nowrap',
                     color: o.completed ? '#16a34a' : Q.muted }}>
-                    {o.completed ? `Done ${o.completed}` : (o.eta || '—')}
+                    {o.completed ? `Done ${formatDate(o.completed)}` : (formatDate(o.eta) || '—')}
                   </td>
                   {/* Assignee — the real current owner (assigned_user_id → name)
                       and which stage they hold, not the empty o[assignedTo]. */}
@@ -1812,7 +1812,7 @@ function AdminUsers() {
                         </div>
                       </td>
                     ) : (
-                      <td style={{ padding: '10px 16px', fontSize: 12, color: Q.faint }}>{u.joined || '—'}</td>
+                      <td style={{ padding: '10px 16px', fontSize: 12, color: Q.faint }}>{formatDate(u.joined) || '—'}</td>
                     )}
                   </tr>
                 )
