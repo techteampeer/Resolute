@@ -5,7 +5,7 @@
 // not take payment.
 import {
   invoiceNumber, invoiceAmount, money, payStatusOf, payStatusMeta,
-  dueDate, paymentOf, REMITTANCE, termByKey,
+  dueDate, paymentOf, REMITTANCE, termByKey, formatDate,
 } from './billing'
 
 const ACCENT = '#2441E5'
@@ -79,7 +79,7 @@ export function invoiceDocDefinition(order, { company, termKey, logo }) {
           { width: '*', stack: [
             { text: 'INVOICE', style: 'h1', alignment: 'right' },
             { text: invoiceNo, style: 'meta', alignment: 'right' },
-            { text: `Issued ${new Date().toISOString().slice(0, 10)}`, style: 'meta', alignment: 'right' },
+            { text: `Issued ${formatDate(new Date().toISOString())}`, style: 'meta', alignment: 'right' },
           ] },
         ],
       },
@@ -95,7 +95,7 @@ export function invoiceDocDefinition(order, { company, termKey, logo }) {
             { text: 'ORDER', style: 'k' },
             { text: `${order.id} · ${order.type || ''}`, style: 'v', margin: [0, 1, 0, 0] },
             { text: property, style: 'small' },
-            { text: `Delivered ${order.completed || '—'}   ·   Due ${due || 'on receipt'}${term?.key && term.key !== 'per_order' ? ` (${term.label})` : ''}`, style: 'small' },
+            { text: `Delivered ${formatDate(order.completed) || '—'}   ·   Due ${formatDate(due) || 'on receipt'}${term?.key && term.key !== 'per_order' ? ` (${term.label})` : ''}`, style: 'small' },
           ] },
         ],
         margin: [0, 0, 0, 14],
@@ -118,7 +118,7 @@ export function invoiceDocDefinition(order, { company, termKey, logo }) {
       },
 
       { text: 'STATUS', style: 'k', margin: [0, 12, 0, 2] },
-      { text: statusMeta.label + (status === 'confirmed' && p?.confirmedAt ? ` · ${p.confirmedAt}` : ''), color: statusMeta.color, bold: true, fontSize: 11 },
+      { text: statusMeta.label + (status === 'confirmed' && p?.confirmedAt ? ` · ${formatDate(p.confirmedAt)}` : ''), color: statusMeta.color, bold: true, fontSize: 11 },
       ...(p && status !== 'unpaid' ? [{ text: `${p.method} ref ${p.reference}`, style: 'small' }] : []),
 
       { text: 'REMIT TO', style: 'k', margin: [0, 14, 0, 2] },

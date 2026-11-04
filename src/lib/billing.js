@@ -14,13 +14,13 @@ import {
   money, invoiceNumber, TERMS, termByKey, PAY_STATUS, paymentOf, payStatusOf,
   isBillable, dueDate, isOverdue, buildPayment, confirmPayment, bouncePayment,
   payStatusMeta, payStatusLabel, OVERDUE_META,
-  invoiceTotal, addDays,
+  invoiceTotal, addDays, formatDate,
 } from '@domain'
 
 export {
   money, invoiceNumber, TERMS, termByKey, PAY_STATUS, paymentOf, payStatusOf,
   isBillable, dueDate, isOverdue, buildPayment, confirmPayment, bouncePayment,
-  payStatusMeta, payStatusLabel, OVERDUE_META,
+  payStatusMeta, payStatusLabel, OVERDUE_META, formatDate,
 }
 
 // ── Remittance details (PLACEHOLDERS — fill in real values here later) ──────

@@ -221,3 +221,12 @@ export const activeCountForUser = (orders: Order[] | null | undefined, userId: s
     .reduce((sum, o) => sum + workloadWeight(o), 0)
 
 export const todayISO = (): string => new Date().toISOString().slice(0, 10)
+
+// Render a stored ISO date (YYYY-MM-DD, or an ISO datetime) as MM-DD-YYYY for
+// display. Storage stays ISO everywhere — this is display-only. Falsy or
+// unparseable input returns '' so a caller's own `|| '—'` fallback still applies.
+export const formatDate = (iso: string | null | undefined): string => {
+  if (!iso) return ''
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso))
+  return m ? `${m[2]}-${m[3]}-${m[1]}` : ''
+}

@@ -9,7 +9,7 @@ import {
   TERMS, termByKey, getClientTerms, setClientTerms, hydrateClientTerms, canConfirmPayments,
   invoiceAmount, invoiceNumber, money, clientCodeOf, paymentOf, payStatusOf,
   PAY_STATUS, payStatusMeta, isBillable, dueDate, isOverdue, openStatement,
-  confirmPayment, bouncePayment,
+  confirmPayment, bouncePayment, formatDate,
 } from '../../lib/billing'
 import {
   PAYOUT_CYCLES, cycleByKey, getVendorCycle, setVendorCycle, hydrateVendors,
@@ -207,9 +207,9 @@ export default function AdminBilling() {
                       <tr key={o.id} style={{ borderBottom: `1px solid ${Q.border}` }}>
                         <td className="px-4 py-3 font-medium whitespace-nowrap" style={{ color: Q.text }}>{invoiceNumber(o)}</td>
                         <td className="px-4 py-3 whitespace-nowrap" style={{ color: Q.muted }}>{o.id} · {o.type}</td>
-                        <td className="px-4 py-3 whitespace-nowrap" style={{ color: Q.muted }}>{o.completed || '—'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap" style={{ color: Q.muted }}>{formatDate(o.completed) || '—'}</td>
                         <td className="px-4 py-3 whitespace-nowrap" style={{ color: overdue ? '#dc2626' : Q.muted }}>
-                          {dueDate(o, termKey) || '—'}{overdue && ' ⚠'}
+                          {formatDate(dueDate(o, termKey)) || '—'}{overdue && ' ⚠'}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-xs" style={{ color: Q.muted }}>
                           {p ? (
@@ -238,7 +238,7 @@ export default function AdminBilling() {
                                 </button>
                               </span>
                             )}
-                            {status === 'confirmed' && <span className="text-xs" style={{ color: Q.faint }}>by {p?.confirmedBy} · {p?.confirmedAt}</span>}
+                            {status === 'confirmed' && <span className="text-xs" style={{ color: Q.faint }}>by {p?.confirmedBy} · {formatDate(p?.confirmedAt)}</span>}
                           </td>
                         )}
                       </tr>
@@ -387,7 +387,7 @@ function VendorPayouts({ orders, updateOrder, user, vivek }) {
                         <td className="px-4 py-3 whitespace-nowrap text-xs" style={{ color: Q.muted }}>
                           {o.workflow?.searchAssignment === 'both' ? 'Both (vendor share)' : 'ABS (Abstract)'}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap" style={{ color: Q.muted }}>{o.completedDates?.screener || '—'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap" style={{ color: Q.muted }}>{formatDate(o.completedDates?.screener) || '—'}</td>
                         <td className="px-4 py-3 whitespace-nowrap" style={{ color: overdue ? '#dc2626' : Q.muted }}>
                           {payoutDue(o) || '—'}{overdue && ' ⚠'}
                         </td>
@@ -409,7 +409,7 @@ function VendorPayouts({ orders, updateOrder, user, vivek }) {
                                 <CheckCircle className="w-3.5 h-3.5" /> Mark Paid
                               </button>
                             ) : (
-                              <span className="text-xs" style={{ color: Q.faint }}>by {p.paidBy} · {p.paidAt}</span>
+                              <span className="text-xs" style={{ color: Q.faint }}>by {p.paidBy} · {formatDate(p.paidAt)}</span>
                             )}
                           </td>
                         )}
@@ -449,7 +449,7 @@ function VendorPayouts({ orders, updateOrder, user, vivek }) {
                   <tr key={s.id} style={{ borderBottom: `1px solid ${Q.border}` }}>
                     <td className="px-4 py-3 whitespace-nowrap font-medium" style={{ color: Q.text }}>{s.name}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-xs" style={{ color: Q.muted }}>{cycleByKey(s.cycle).label}</td>
-                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: due ? '#dc2626' : Q.muted }}>{subscriptionNextDue(s)}{due && ' ⚠'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: due ? '#dc2626' : Q.muted }}>{formatDate(subscriptionNextDue(s))}{due && ' ⚠'}</td>
                     <td className="px-4 py-3 font-semibold tabular-nums whitespace-nowrap" style={{ color: Q.text }}>{money(s.amount)}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-xs" style={{ color: Q.faint }}>
                       {s.lastPaidAt ? `${s.lastPaidAt}${s.paidBy ? ` · ${s.paidBy}` : ''}` : 'Never'}

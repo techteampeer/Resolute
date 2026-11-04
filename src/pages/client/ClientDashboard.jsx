@@ -11,7 +11,7 @@ import {
   Package, CheckCircle, Clock, ChevronRight, Zap, Send, FileText, DollarSign,
   UploadCloud, Paperclip, Trash2, AlertCircle, Eye, Download
 } from 'lucide-react'
-import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, lineItemsOf } from '../../data/mockData'
+import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, lineItemsOf, formatDate } from '../../data/mockData'
 import SubOrders from '../../components/SubOrders'
 import { openDocument } from '../../lib/backend'
 import { useOrders } from '../../context/OrderContext'
@@ -206,7 +206,7 @@ function OrderDetailPage() {
           <div>
             <div className="font-mono font-semibold text-sm" style={{ color:ROLE_COLOR }}>{order.id}</div>
             <div className="font-bold text-xl" style={{ color:'#12284C' }}>{order.type}</div>
-            <div className="text-xs" style={{ color:'#5C6E8C' }}>{order.county}, {order.state} · placed {order.created}</div>
+            <div className="text-xs" style={{ color:'#5C6E8C' }}>{order.county}, {order.state} · placed {formatDate(order.created)}</div>
           </div>
           <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background:`${stage.color}1e`, color:stage.color }}>{stage.label}</span>
         </div>
@@ -293,9 +293,9 @@ function OrderDetailPage() {
           <SubOrders order={order} />
           <div className="glass-card p-4 text-sm space-y-1.5">
             <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color:'#5C6E8C' }}>Timeline</div>
-            <Row k="Placed" v={order.created} />
-            <Row k="Estimated delivery" v={order.eta} />
-            <Row k="Delivered" v={order.completed} />
+            <Row k="Placed" v={formatDate(order.created)} />
+            <Row k="Estimated delivery" v={formatDate(order.eta)} />
+            <Row k="Delivered" v={formatDate(order.completed)} />
             <div className="pt-1"><span style={{ color:'#5C6E8C' }}>Progress: </span><span className="font-medium" style={{ color:'#12284C' }}>{isOrderComplete(order) ? 'Completed (100%)' : `${orderProgress(order)}%`}</span></div>
           </div>
           {clientDocs.length > 0 && order.clarification !== 'pending' && (
@@ -487,7 +487,7 @@ function ClientHome() {
                 <span className="text-xs flex-1 truncate" style={{ color:'#5C6E8C' }}>
                   {last
                     ? `${last.from === 'support' ? 'Reply from Resolute' : 'You'}: ${(last.text || (last.attachment ? `📎 ${last.attachment.name}` : '')).slice(0, 72)}`
-                    : `${o.type} · placed ${o.created || '—'}`}
+                    : `${o.type} · placed ${formatDate(o.created) || '—'}`}
                 </span>
                 {last?.from === 'support' && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background:'#dc2626' }} title="New reply" />}
                 <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color:'rgba(18,40,76,0.18)' }} />
@@ -675,7 +675,7 @@ const EXPORT_COLUMNS = [
   ['Borrower',         (o, i) => partyNames(i, 'borrowerName', 'Borrower')],
   ['Priority',         (o) => (o.priority === 'rush' ? 'Rush' : o.priority === 'normal' ? 'Normal' : o.priority)],
   ['Status',           (o) => clientStage(o).label],
-  ['Placed',           (o) => o.created],
+  ['Placed',           (o) => formatDate(o.created)],
 ]
 const exportRow = (o) => {
   const intake = (o.workflow?.intake && typeof o.workflow.intake === 'object') ? o.workflow.intake : {}
@@ -714,8 +714,8 @@ const clientOrderColumns = [
       </span>
     )
   }, sortValue: o => invoiceAmount(o) },
-  { header: 'Ordered On', render: o => o.created || '—', sortValue: orderedOnValue },
-  { header: 'Due By', render: o => o.completed ? `Done ${o.completed}` : (o.eta || '—'), sortValue: dueByValue },
+  { header: 'Ordered On', render: o => formatDate(o.created) || '—', sortValue: orderedOnValue },
+  { header: 'Due By', render: o => o.completed ? `Done ${formatDate(o.completed)}` : (formatDate(o.eta) || '—'), sortValue: dueByValue },
 ]
 
 // Search across order #, product, client-facing status and property details.

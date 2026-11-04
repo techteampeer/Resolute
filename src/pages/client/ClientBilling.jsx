@@ -10,7 +10,7 @@ import { downloadInvoicePdf } from '../../lib/invoicePdf'
 import {
   REMITTANCE, hasRemittanceDetails, termByKey, getClientTerms, hydrateClientTerms,
   invoiceAmount, invoiceNumber, money, clientCodeOf, paymentOf, payStatusOf,
-  PAY_STATUS, payStatusMeta, isBillable, dueDate, openStatement, buildPayment,
+  PAY_STATUS, payStatusMeta, isBillable, dueDate, openStatement, buildPayment, formatDate,
 } from '../../lib/billing'
 
 const ROLE_COLOR = '#2441E5'
@@ -187,14 +187,14 @@ function InvoiceRow({ order, termKey, onPaid, demo }) {
             <Chip order={order} termKey={termKey} />
           </div>
           <div className="text-xs mt-1" style={{ color: '#5C6E8C' }}>
-            {order.type} · {order.id} · delivered {order.completed || '—'} · due {dueDate(order, termKey) || '—'}
+            {order.type} · {order.id} · delivered {formatDate(order.completed) || '—'} · due {formatDate(dueDate(order, termKey)) || '—'}
           </div>
           {p && status !== 'unpaid' && (
             <div className="text-xs mt-1" style={{ color: '#5C6E8C' }}>
               {p.method} ref <span className="font-mono">{p.reference}</span>
               {(p.checkDoc?.url || p.checkDoc?.path) && <> · <button onClick={() => openDocument(p.checkDoc)} className="underline" style={{ color: ROLE_COLOR, background:'none', border:'none', padding:0, font:'inherit', cursor:'pointer' }}>check image</button></>}
               {status === 'marked' && ' · awaiting deposit confirmation'}
-              {status === 'confirmed' && ` · confirmed ${p.confirmedAt}`}
+              {status === 'confirmed' && ` · confirmed ${formatDate(p.confirmedAt)}`}
             </div>
           )}
         </div>
@@ -371,7 +371,7 @@ export default function ClientBilling({ myOrders }) {
                 <div className="text-xs" style={{ color: '#5C6E8C' }}>
                   <span className="font-semibold text-sm" style={{ color: '#12284C' }}>{invoiceNumber(o)}</span>
                   <span> · {p?.method} ref </span><span className="font-mono">{p?.reference}</span>
-                  <span> · confirmed {p?.confirmedAt} by {p?.confirmedBy}</span>
+                  <span> · confirmed {formatDate(p?.confirmedAt)} by {p?.confirmedBy}</span>
                 </div>
                 <span className="flex items-center gap-2">
                   <Chip order={o} termKey={termKey} />

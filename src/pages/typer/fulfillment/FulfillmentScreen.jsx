@@ -8,7 +8,7 @@ import {
 import { useOrders } from '../../../context/OrderContext'
 import { useAuth } from '../../../context/AuthContext'
 import { useFulfillmentStore } from '../../../context/FulfillmentContext'
-import { displayClient, clientByName, hasStagePlan } from '../../../data/mockData'
+import { displayClient, clientByName, hasStagePlan, formatDate } from '../../../data/mockData'
 import {
   completeness, titleVestingAuto, fmtDateTime, uid, unfilledClauses,
 } from '../../../data/fulfillment'
@@ -786,7 +786,7 @@ function OverviewTab({ order, f, user }) {
         <Row k="Customer" v={displayClient(order, user)} />
         <Row k="Priority" v={(order.priority || '').toUpperCase()} />
         <Row k="Status" v={order.status} />
-        <Row k="ETA" v={order.eta} mono />
+        <Row k="ETA" v={formatDate(order.eta)} mono />
       </Card>
 
       <Card title="Property">
