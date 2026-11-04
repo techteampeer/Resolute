@@ -100,8 +100,6 @@ export function commitmentDocDefinition(order, f, logo) {
   const vest = f.titleVesting?.isAuto
     ? titleVestingAuto(f.deeds?.[0] || {}, m.county)
     : (f.titleVesting?.text || '')
-  const tax = f.tax || {}
-  const hasTax = Object.values(tax).some(x => x && String(x).trim())
   const genAt = fmtDateTime(new Date().toISOString())
 
   const deedRows = (f.deeds || []).filter(deedHasContent).map((d, i) => ([
@@ -117,7 +115,7 @@ export function commitmentDocDefinition(order, f, logo) {
     { text: j.filedOn ? fmtDate(j.filedOn) : '—', alignment: 'right' },
     { text: j.recDate ? fmtDate(j.recDate) : '—', alignment: 'right' },
     { text: recInfo(j) || '—', alignment: 'right' },
-    { text: j.amount ? `$${j.amount}` : '—', alignment: 'right' },
+    { text: j.amountNA ? 'Not Applicable' : (j.amount ? `$${j.amount}` : '—'), alignment: 'right' },
   ]))
 
   const content = [
@@ -167,15 +165,6 @@ export function commitmentDocDefinition(order, f, logo) {
       ? { text: f.legalDescription, alignment: 'justify', preserveLeadingSpaces: true }
       : { text: 'Not provided.', color: '#9AA8BF', italics: true },
   ]
-
-  if (hasTax) {
-    content.push(heading('Assessment & Tax Information'), grid([
-      ['Assessed Land', tax.assessedLand], ['Assessed Building', tax.assessedBuilding],
-      ['Total Assessed', tax.totalAssessed], ['Tax Year', tax.taxYear],
-      ['Status', tax.status], ['1st Half', tax.firstHalfAmount],
-      ['2nd Half', tax.secondHalfAmount],
-    ]))
-  }
 
   content.push(
     heading('Schedule B-I — Requirements'), clauses(f.requirements, requirementText),

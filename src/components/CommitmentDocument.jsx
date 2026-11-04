@@ -44,7 +44,7 @@ function judgmentRows(all = []) {
       <th>Instrument</th><th>Case No.</th><th>Filed</th><th>Recorded</th><th>Rec Info</th><th class="num">Amount</th></tr></thead><tbody>
     ${js.map(j => `<tr><td>${val(j.instrumentName)}</td><td>${val(j.caseNo)}</td>
       <td class="num">${j.filedOn ? fmtDate(j.filedOn) : '—'}</td><td class="num">${j.recDate ? fmtDate(j.recDate) : '—'}</td>
-      <td class="num">${esc(recInfo(j)) || '—'}</td><td class="num">${j.amount ? '$' + esc(j.amount) : '—'}</td></tr>`).join('')}
+      <td class="num">${esc(recInfo(j)) || '—'}</td><td class="num">${j.amountNA ? 'Not Applicable' : (j.amount ? '$' + esc(j.amount) : '—')}</td></tr>`).join('')}
     </tbody></table>`
 }
 
@@ -57,8 +57,6 @@ function lines(arr) {
 export function buildCommitmentHtml(order, f) {
   const m = f.meta || {}
   const vest = f.titleVesting?.isAuto ? titleVestingAuto(f.deeds?.[0] || {}, m.county) : (f.titleVesting?.text || '')
-  const tax = f.tax || {}
-  const hasTax = Object.values(tax).some(v => v && String(v).trim())
   const genAt = fmtDateTime(new Date().toISOString())
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(order.id)} — Title Commitment</title>
 <style>
@@ -116,15 +114,6 @@ export function buildCommitmentHtml(order, f) {
 
   <h2>Legal Description</h2>
   <p class="legal">${f.legalDescription ? esc(f.legalDescription) : '<span class="ph">Not provided.</span>'}</p>
-
-  ${hasTax ? `<h2>Assessment &amp; Tax Information</h2><div class="grid">
-    <div class="row"><span class="k">Assessed Land</span><span class="v">${val(tax.assessedLand)}</span></div>
-    <div class="row"><span class="k">Assessed Building</span><span class="v">${val(tax.assessedBuilding)}</span></div>
-    <div class="row"><span class="k">Total Assessed</span><span class="v">${val(tax.totalAssessed)}</span></div>
-    <div class="row"><span class="k">Tax Year</span><span class="v">${val(tax.taxYear)}</span></div>
-    <div class="row"><span class="k">Status</span><span class="v">${val(tax.status)}</span></div>
-    <div class="row"><span class="k">1st Half</span><span class="v">${val(tax.firstHalfAmount)}</span></div>
-    <div class="row"><span class="k">2nd Half</span><span class="v">${val(tax.secondHalfAmount)}</span></div></div>` : ''}
 
   <h2>Schedule B-I — Requirements</h2>
   ${listBlock(f.requirements, requirementText)}

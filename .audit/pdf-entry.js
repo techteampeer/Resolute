@@ -1,5 +1,5 @@
 import { commitmentDocDefinition } from '../src/lib/commitmentPdf.js'
-import { makeDefaultFulfillment, makeDeed, makeJudgment, makeTax, uid } from '../src/data/fulfillment.js'
+import { makeDefaultFulfillment, makeDeed, makeJudgment, uid } from '../src/data/fulfillment.js'
 import { buildCommitmentHtml } from '../src/components/CommitmentDocument.jsx'
 import pdfMake from 'pdfmake/build/pdfmake'
 import * as vfs from 'pdfmake/build/vfs_fonts'
@@ -24,8 +24,6 @@ function full() {
   const d1 = makeDeed(); Object.assign(d1, { deedType: 'Warranty Deed', grantor: 'GRANTOR-ONE-Smith', grantee: 'GRANTEE-ONE-Alice', dateOfDeed: '2020-03-04', recordedDate: '2020-03-10', book: 'BK101', page: 'PG202' })
   const d2 = makeDeed(); Object.assign(d2, { deedType: 'Quitclaim Deed', grantor: 'GRANTOR-TWO-Jones', grantee: 'GRANTEE-TWO-Smith', dateOfDeed: '2015-06-01', recordedDate: '2015-06-08', book: 'BK55', page: 'PG66' })
   f.deeds = [d1, d2]
-  const t = makeTax(); Object.assign(t, { assessedLand: 'TAXLAND-11000', assessedBuilding: 'TAXBLDG-22000', totalAssessed: 'TAXTOTAL-33000', taxYear: 'TAXYEAR-2025', status: 'TAXSTATUS-Paid', firstHalfAmount: 'TAXH1-500', secondHalfAmount: 'TAXH2-600' })
-  f.tax = t
   const j1 = makeJudgment(); Object.assign(j1, { instrumentName: 'JUDG-ONE-Lien', caseNo: 'CASE-111', filedOn: '2021-01-05', recDate: '2021-01-09', book: 'JBK1', page: 'JPG1', amount: '4321.00' })
   const j2 = makeJudgment(); Object.assign(j2, { instrumentName: 'JUDG-TWO-Mortgage', caseNo: 'CASE-222', filedOn: '2022-02-06', recDate: '2022-02-10', book: 'JBK2', page: 'JPG2', amount: '8765.00' })
   f.judgments = [j1, j2]

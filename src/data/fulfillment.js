@@ -63,15 +63,7 @@ export const emptyLien = (county = '') => ({
 })
 
 export const makeJudgment = () => ({
-  id: uid(), instrumentName: '', caseNo: '', filedOn: '', recDate: '', book: '', page: '', amount: '', comments: '',
-})
-
-export const makeTax = () => ({
-  assessedLand: '', assessedBuilding: '', totalAssessed: '',
-  parcelNo: '', taxYear: '', status: '',
-  firstHalfAmount: '', firstHalfPaidDate: '',
-  secondHalfAmount: '', secondHalfPaidDate: '',
-  comments: '',
+  id: uid(), instrumentName: '', caseNo: '', filedOn: '', recDate: '', book: '', page: '', amount: '', amountNA: false, comments: '',
 })
 
 // Compose a single "REC INFO" string from the structured Book/Page/Instrument.
@@ -211,7 +203,7 @@ export const deedHasContent = (d = {}) =>
       d.book, d.page, d.instrument, d.documentNo, d.certOfTitle, d.consideration, d.comments)
 
 export const judgmentHasContent = (j = {}) =>
-  any(j.instrumentName, j.caseNo, j.filedOn, j.recDate, j.book, j.page, j.amount, j.comments)
+  any(j.instrumentName, j.caseNo, j.filedOn, j.recDate, j.book, j.page, j.amount, j.amountNA, j.comments)
 
 // Clauses the document will print with a ruled blank in them, so the typer can
 // be told before the client is.
@@ -269,7 +261,6 @@ export function makeDefaultFulfillment(order = {}) {
       recordOwner:   '',
       searchDate:    '',
     },
-    tax: makeTax(),
     judgments: [],
     namesSearched: [{ id: uid(), value: '' }],
     additionalInfo: [{ id: uid(), value: '' }],

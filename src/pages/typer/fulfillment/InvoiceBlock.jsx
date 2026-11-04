@@ -6,26 +6,21 @@ import { fmtMoney, uid } from '../../../data/fulfillment'
 const lineTotal = (li) => (Number(li.costPerUnit) || 0) * (Number(li.units) || 0)
 const sum = (rows) => rows.reduce((a, li) => a + lineTotal(li), 0)
 
-// Verify Customer Charges — Final Invoice (§2.4 item 11).
-export default function InvoiceBlock({ invoice, onChange }) {
-  const set = (patch) => onChange({ ...invoice, ...patch })
-  const setRow = (key, id, patch) =>
-    set({ [key]: invoice[key].map(li => li.id === id ? { ...li, ...patch } : li) })
-  const rmRow = (key, id) => set({ [key]: invoice[key].filter(li => li.id !== id) })
+// Common additional-charge labels offered as a quick-pick. The Type field stays
+// free text — this datalist just saves typing for the usual charges.
+const CHARGE_TYPES = ['Copy Costs', 'Recording Fee', 'Municipal Search', 'Rush Fee', 'Courier', 'Certification', 'Other']
 
-  const addCost = () => set({ additionalCosts: [...invoice.additionalCosts, { id: uid(), type: 'Copy Costs', costPerUnit: '', units: 1 }] })
-  const addDiscount = () => set({ additionalCosts: [...invoice.additionalCosts, { id: uid(), type: 'Discount', costPerUnit: '', units: 1, discount: true }] })
-
-  const servicesTotal = sum(invoice.services)
-  const addlTotal = invoice.additionalCosts.reduce((a, li) => a + (li.discount ? -1 : 1) * lineTotal(li), 0)
-  const final = servicesTotal + addlTotal
-  const cancelCharge = invoice.chargeOnCancel ? invoice.additionalCosts.reduce((a, li) => a + (li.discount ? 0 : lineTotal(li)), 0) : 0
-
-  const Row = ({ li, sectionKey, locked }) => (
+// Hoisted to module scope ON PURPOSE. When this lived inside InvoiceBlock, every
+// keystroke bubbled an onChange that re-rendered InvoiceBlock, which created a
+// NEW Row function identity each time — so React unmounted/remounted the row's
+// <input> and the caret (and focus) were lost, forcing a click per character.
+// At module scope its identity is stable, so the inputs keep focus while typing.
+function Row({ li, sectionKey, locked, setRow, rmRow }) {
+  return (
     <div className="grid grid-cols-[1fr_120px_72px_110px_28px] gap-2 items-center min-w-[560px]">
       <div className="relative">
         <TextInput value={li.type} onChange={v => setRow(sectionKey, li.id, { type: v })} disabled={locked}
-          className={locked ? 'opacity-70' : ''} />
+          list={locked ? undefined : 'charge-types'} className={locked ? 'opacity-70' : ''} />
         {locked && <Lock className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: T.dim }} />}
       </div>
       <MoneyInput value={li.costPerUnit} onChange={v => setRow(sectionKey, li.id, { costPerUnit: v })} disabled={locked} />
@@ -43,26 +38,45 @@ export default function InvoiceBlock({ invoice, onChange }) {
         : <span />}
     </div>
   )
+}
 
-  const HeaderRow = () => (
+function HeaderRow() {
+  return (
     <div className="grid grid-cols-[1fr_120px_72px_110px_28px] gap-2 px-0.5 min-w-[560px]">
       {['Type', 'Cost / Unit', 'Units', 'Total', ''].map((h, i) => (
         <div key={i} className={`text-[10px] font-semibold uppercase tracking-[0.1em] ${i === 3 ? 'text-right pr-1' : ''}`} style={{ color: T.dim }}>{h}</div>
       ))}
     </div>
   )
+}
+
+// Verify Customer Charges — Final Invoice (§2.4 item 11).
+export default function InvoiceBlock({ invoice, onChange }) {
+  const set = (patch) => onChange({ ...invoice, ...patch })
+  const setRow = (key, id, patch) =>
+    set({ [key]: invoice[key].map(li => li.id === id ? { ...li, ...patch } : li) })
+  const rmRow = (key, id) => set({ [key]: invoice[key].filter(li => li.id !== id) })
+
+  const addCost = () => set({ additionalCosts: [...invoice.additionalCosts, { id: uid(), type: 'Copy Costs', costPerUnit: '', units: 1 }] })
+  const addDiscount = () => set({ additionalCosts: [...invoice.additionalCosts, { id: uid(), type: 'Discount', costPerUnit: '', units: 1, discount: true }] })
+
+  const servicesTotal = sum(invoice.services)
+  const addlTotal = invoice.additionalCosts.reduce((a, li) => a + (li.discount ? -1 : 1) * lineTotal(li), 0)
+  const final = servicesTotal + addlTotal
+  const cancelCharge = invoice.chargeOnCancel ? invoice.additionalCosts.reduce((a, li) => a + (li.discount ? 0 : lineTotal(li)), 0) : 0
 
   return (
     <div className="rounded-lg p-3.5" style={{ background: T.card, border: `1px solid ${T.border}` }}>
+      <datalist id="charge-types">{CHARGE_TYPES.map(t => <option key={t} value={t} />)}</datalist>
       <div className="overflow-x-auto">
         <div className="text-[11px] font-semibold uppercase tracking-[0.12em] mb-2" style={{ color: T.faint }}>Services</div>
         <HeaderRow />
-        <div className="space-y-1.5 mt-1.5">{invoice.services.map(li => <Row key={li.id} li={li} sectionKey="services" locked={li.locked} />)}</div>
+        <div className="space-y-1.5 mt-1.5">{invoice.services.map(li => <Row key={li.id} li={li} sectionKey="services" locked={li.locked} setRow={setRow} rmRow={rmRow} />)}</div>
 
         {invoice.additionalCosts.length > 0 && (
           <>
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] mt-4 mb-1.5" style={{ color: T.faint }}>Additional Costs</div>
-            <div className="space-y-1.5">{invoice.additionalCosts.map(li => <Row key={li.id} li={li} sectionKey="additionalCosts" />)}</div>
+            <div className="space-y-1.5">{invoice.additionalCosts.map(li => <Row key={li.id} li={li} sectionKey="additionalCosts" setRow={setRow} rmRow={rmRow} />)}</div>
           </>
         )}
       </div>
