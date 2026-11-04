@@ -377,6 +377,17 @@ export async function fetchClients() {
   return [...byCode.values()].sort((a, b) => String(a.code).localeCompare(String(b.code)))
 }
 
+// Admin creates a client by company name via a SECURITY DEFINER RPC that gates
+// on is_admin() (browser sessions cannot create clients directly). Returns
+// { status: 'matched'|'created'|'ambiguous', code?, name?, codes? }.
+export async function createAdminClient(company, contact, email) {
+  const { data, error } = await supabase.rpc('admin_create_client', {
+    p_company: company, p_contact: contact || null, p_email: email || null,
+  })
+  if (error) { console.error('[createAdminClient]', error.message); throw error }
+  return data
+}
+
 // ── Client payment terms ──────────────────────────────────────────────────────
 export async function fetchClientTerms() {
   // From the directory, not the table: clients_read is super-admin-only since
