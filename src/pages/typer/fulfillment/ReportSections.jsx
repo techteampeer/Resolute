@@ -26,34 +26,6 @@ export function SearchInformation({ meta, onChange }) {
   )
 }
 
-// ── Assessment & Tax Information ──────────────────────────────────────────────
-export function AssessmentTax({ tax, onChange }) {
-  const f = (k) => (v) => onChange({ [k]: v })
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div><Label>Assessed Land</Label><MoneyInput value={tax.assessedLand} onChange={f('assessedLand')} /></div>
-        <div><Label>Assessed Building</Label><MoneyInput value={tax.assessedBuilding} onChange={f('assessedBuilding')} /></div>
-        <div><Label>Total Assessed</Label><MoneyInput value={tax.totalAssessed} onChange={f('totalAssessed')} /></div>
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div><Label>Parcel No.</Label><TextInput value={tax.parcelNo} onChange={f('parcelNo')} numeric /></div>
-        <div><Label>Tax Year</Label><TextInput value={tax.taxYear} onChange={f('taxYear')} numeric /></div>
-        <div><Label>Status</Label><TextInput value={tax.status} onChange={f('status')} placeholder="Paid / Due" /></div>
-      </div>
-      <Pair>
-        <div><Label>1st Half Amount</Label><MoneyInput value={tax.firstHalfAmount} onChange={f('firstHalfAmount')} /></div>
-        <div><Label>1st Half Paid Date</Label><DateInput value={tax.firstHalfPaidDate} onChange={f('firstHalfPaidDate')} /></div>
-      </Pair>
-      <Pair>
-        <div><Label>2nd Half Amount</Label><MoneyInput value={tax.secondHalfAmount} onChange={f('secondHalfAmount')} /></div>
-        <div><Label>2nd Half Paid Date</Label><DateInput value={tax.secondHalfPaidDate} onChange={f('secondHalfPaidDate')} /></div>
-      </Pair>
-      <div><Label>Comments</Label><TextArea value={tax.comments} onChange={f('comments')} rows={2} placeholder="Tax comments…" /></div>
-    </div>
-  )
-}
-
 // ── Judgments / Liens (repeatable) ───────────────────────────────────────────
 export function JudgmentsLiens({ items, onChange }) {
   const add = () => onChange([...items, makeJudgment()])
@@ -77,7 +49,17 @@ export function JudgmentsLiens({ items, onChange }) {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div><Label>Filed On</Label><DateInput value={j.filedOn} onChange={v => set(j.id, { filedOn: v })} /></div>
               <div><Label>Rec Date</Label><DateInput value={j.recDate} onChange={v => set(j.id, { recDate: v })} /></div>
-              <div><Label>Amount</Label><MoneyInput value={j.amount} onChange={v => set(j.id, { amount: v })} /></div>
+              <div>
+                <Label>Amount</Label>
+                {j.amountNA
+                  ? <div className="px-2.5 py-1.5 text-[13px] rounded-md" style={{ background: T.card, border: `1px solid ${T.border}`, color: T.dim }}>Not Applicable</div>
+                  : <MoneyInput value={j.amount} onChange={v => set(j.id, { amount: v })} />}
+                <label className="flex items-center gap-1.5 mt-1 text-[11px] cursor-pointer select-none" style={{ color: T.dim }}>
+                  <input type="checkbox" checked={!!j.amountNA}
+                    onChange={e => set(j.id, e.target.checked ? { amountNA: true, amount: '' } : { amountNA: false })} />
+                  Not applicable
+                </label>
+              </div>
             </div>
             <Pair>
               <div><Label>Book</Label><TextInput value={j.book} onChange={v => set(j.id, { book: v })} numeric /></div>

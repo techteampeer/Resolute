@@ -22,7 +22,7 @@ import { FileDropZone, FileRow, makeFileRef } from './FileDrop'
 import RequirementsSection from './RequirementsSection'
 import ExceptionsSection from './ExceptionsSection'
 import InvoiceBlock from './InvoiceBlock'
-import { SearchInformation, AssessmentTax, JudgmentsLiens, TextLineList, DisclaimerBlock } from './ReportSections'
+import { SearchInformation, JudgmentsLiens, TextLineList, DisclaimerBlock } from './ReportSections'
 import { isSupabaseConfigured, uploadDocument } from '../../../lib/backend'
 
 const TABS = ['Overview', 'Fulfillment', 'Activity', 'Inbox', 'Files']
@@ -136,67 +136,61 @@ function FulfillmentBody({ order, f, set, comp, save, saveError, user, navigate 
           )}
         </Section>
 
-        {/* 4 — Assessment & Tax */}
-        <Section n={4} title="Assessment &amp; Tax Information" optional
-          instruction="Provided as a courtesy; not proof of payment or status.">
-          <AssessmentTax tax={f.tax} onChange={patch => set(d => ({ ...d, tax: { ...d.tax, ...patch } }))} />
-        </Section>
-
-        {/* 5 — Deeds */}
-        <Section id="deeds" n={5} title="Deeds — Vesting &amp; Chain of Title" done={comp.items[2].done}
+        {/* 4 — Deeds */}
+        <Section id="deeds" n={4} title="Deeds — Vesting &amp; Chain of Title" done={comp.items[2].done}
           instruction="One tab per deed. The first is the Vesting deed; the rest are the chain of title.">
           <DeedTabs deeds={f.deeds} onChange={deeds => set(d => ({ ...d, deeds }))} />
         </Section>
 
-        {/* 6 — Title Vesting */}
-        <Section id="vesting" n={6} title="Title Vesting" done={comp.items[3].done}>
+        {/* 5 — Title Vesting */}
+        <Section id="vesting" n={5} title="Title Vesting" done={comp.items[3].done}>
           <TitleVesting f={f} set={set} />
         </Section>
 
-        {/* 7 — Legal Description */}
-        <Section id="legal" n={7} title="Legal Description" done={comp.items[4].done}
+        {/* 6 — Legal Description */}
+        <Section id="legal" n={6} title="Legal Description" done={comp.items[4].done}
           instruction="Enter the full legal description. Do not reference an attached document.">
           <TextArea value={f.legalDescription} onChange={v => set(d => ({ ...d, legalDescription: v }))} rows={5}
             placeholder="All that certain piece, parcel or lot of land…" />
         </Section>
 
-        {/* 8 — Estate Type */}
-        <Section id="estate" n={8} title="Estate Type" done={comp.items[5].done}>
+        {/* 7 — Estate Type */}
+        <Section id="estate" n={7} title="Estate Type" done={comp.items[5].done}>
           <TextInput value={f.estateType} onChange={v => set(d => ({ ...d, estateType: v }))} placeholder="Fee Simple" className="max-w-[320px]" />
         </Section>
 
-        {/* 9 — Judgments / Liens */}
-        <Section n={9} title="Judgments / Liens" optional
+        {/* 8 — Judgments / Liens */}
+        <Section n={8} title="Judgments / Liens" optional
           instruction="Open judgments and liens disclosed by the search.">
           <JudgmentsLiens items={f.judgments} onChange={judgments => set(d => ({ ...d, judgments }))} />
         </Section>
 
-        {/* 10 — Names Searched */}
-        <Section n={10} title="Names Searched" optional
+        {/* 9 — Names Searched */}
+        <Section n={9} title="Names Searched" optional
           instruction="Parties searched in the public records.">
           <TextLineList items={f.namesSearched} placeholder="Name searched…" addLabel="Add Name"
             onChange={namesSearched => set(d => ({ ...d, namesSearched }))} />
         </Section>
 
-        {/* 11 — Additional Information */}
-        <Section n={11} title="Additional Information" optional>
+        {/* 10 — Additional Information */}
+        <Section n={10} title="Additional Information" optional>
           <TextLineList items={f.additionalInfo} placeholder="Additional note…" addLabel="Add Note"
             onChange={additionalInfo => set(d => ({ ...d, additionalInfo }))} />
         </Section>
 
-        {/* 12 — Title Search Document */}
-        <Section id="searchdoc" n={12} title="Title Search Document" done={comp.items[6].done}>
+        {/* 11 — Title Search Document */}
+        <Section id="searchdoc" n={11} title="Title Search Document" done={comp.items[6].done}>
           <TitleSearchDoc order={order} f={f} set={set} />
         </Section>
 
-        {/* 13 — Supplementary Documents */}
-        <Section n={13} title="Supplementary Documents" optional
+        {/* 12 — Supplementary Documents */}
+        <Section n={12} title="Supplementary Documents" optional
           instruction="Select any additional documents to send to the customer.">
           <Supplementary order={order} f={f} set={set} />
         </Section>
 
-        {/* 14 — Commitment Requirements */}
-        <Section n={14} title="Commitment Requirements" done={comp.items[7].done} id="requirements"
+        {/* 13 — Commitment Requirements */}
+        <Section n={13} title="Commitment Requirements" done={comp.items[7].done} id="requirements"
           instruction="Schedule B-I. Edit, reorder, or remove. Mortgage payoffs use the Mortgage Lien drawer.">
           <RequirementsSection
             requirements={f.requirements} noneFlag={f.requirementsNone} county={f.meta.county} hasPayoff={false}
@@ -204,8 +198,8 @@ function FulfillmentBody({ order, f, set, comp, save, saveError, user, navigate 
             onToggleNone={v => set(d => ({ ...d, requirementsNone: v }))} />
         </Section>
 
-        {/* 15 — Commitment Exceptions */}
-        <Section n={15} title="Commitment Exceptions" optional
+        {/* 14 — Commitment Exceptions */}
+        <Section n={14} title="Commitment Exceptions" optional
           instruction="Schedule B-II. Typed exceptions open structured drawers; custom is free text.">
           <ExceptionsSection
             exceptions={f.exceptions} noneFlag={f.exceptionsNone}
@@ -213,18 +207,18 @@ function FulfillmentBody({ order, f, set, comp, save, saveError, user, navigate 
             onToggleNone={v => set(d => ({ ...d, exceptionsNone: v }))} />
         </Section>
 
-        {/* 16 — Verify Customer Charges */}
-        <Section n={16} title="Verify Customer Charges" optional>
+        {/* 15 — Verify Customer Charges */}
+        <Section n={15} title="Verify Customer Charges" optional>
           <InvoiceBlock invoice={f.invoice} onChange={invoice => set(d => ({ ...d, invoice }))} />
         </Section>
 
-        {/* 17 — Disclaimer */}
-        <Section n={17} title="Disclaimer" optional>
+        {/* 16 — Disclaimer */}
+        <Section n={16} title="Disclaimer" optional>
           <DisclaimerBlock value={f.disclaimer} onChange={v => set(d => ({ ...d, disclaimer: v }))} />
         </Section>
 
-        {/* 18 — Finalize */}
-        <Section n={18} title="Finalize Order" done={comp.done === comp.total}>
+        {/* 17 — Finalize */}
+        <Section n={17} title="Finalize Order" done={comp.done === comp.total}>
           <Finalize comp={comp} order={order} f={f} user={user} navigate={navigate} />
         </Section>
       </div>
@@ -329,7 +323,6 @@ function ImportControl({ order, set }) {
       titleVesting: { ...src.titleVesting },
       legalDescription: src.legalDescription,
       estateType: src.estateType,
-      tax: { ...src.tax },
       judgments: (src.judgments || []).map(x => ({ ...x, id: uid() })),
       namesSearched: (src.namesSearched || []).map(x => ({ ...x, id: uid() })),
       additionalInfo: (src.additionalInfo || []).map(x => ({ ...x, id: uid() })),
