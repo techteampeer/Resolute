@@ -404,9 +404,11 @@ function AdminOrderPage() {
 
 // Portal (client-login) orders carry workflow.intake.source === 'web' and are
 // priced when the client places them, so they skip the admin price-confirmation
-// step entirely. Mail / website orders (negotiated price — built separately) are
-// the only ones that still need "Confirm & price" before work starts.
-const isPortalOrder = (o) => o?.workflow?.intake?.source === 'web'
+// step entirely. Admin-placed orders are likewise priced at placement (the admin
+// picks a catalogue product), so they skip it too — regardless of the tracking
+// `source` the admin tags them with. Mail / website INTAKE orders (negotiated
+// price, no placedByAdmin) are the only ones that still need "Confirm & price".
+const isPortalOrder = (o) => o?.workflow?.intake?.source === 'web' || !!o?.workflow?.intake?.placedByAdmin
 
 // A small styled prompt — replaces window.prompt for the hold reason and the
 // clarification question, so these actions feel part of the app and give the
@@ -1211,7 +1213,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:density.bodySize, lineHeight:density.lineHeight, minWidth:990 }}>
           <thead>
             <tr style={{ background:'#F9FBFD', borderBottom:`1px solid ${Q.border}` }}>
-              {['Order','Status','Customer','Customer File','Product','Property','Total Price','Ordered On','Due By','Assignee',''].map(h => {
+              {['Order','Status','Customer','Customer File','Product','Source','Property','Total Price','Ordered On','Due By','Assignee',''].map(h => {
                 const sortable = !!PIPELINE_SORT[h]
                 const active = sortable && sortKey === h
                 const caret = active ? (sortDir === 'asc' ? '▲' : '▼') : (sortable ? '↕' : '')
@@ -1262,6 +1264,7 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                   <td style={{ padding:CELL_PAD, fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o, user)}</td>
                   <td style={{ padding:CELL_PAD, fontFamily:'monospace', fontSize:11.5, color:Q.muted, whiteSpace:'nowrap' }}>{o.clientFileNo || '—'}</td>
                   <td style={{ padding:CELL_PAD, color:Q.muted, whiteSpace:'nowrap', fontSize:12 }}>{o.type}</td>
+                  <td style={{ padding:CELL_PAD, color:Q.muted, fontSize:12, whiteSpace:'nowrap' }}>{orderSourceLabel(o)}</td>
                   <td style={{ padding:CELL_PAD, color:Q.muted, fontSize:12, maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={propertyOf(o)}>{propertyOf(o)}</td>
                   {/* Total Price — the order's amount (catalogue estimate until the
                       Typer stamps the final invoice), with the payment status beneath
