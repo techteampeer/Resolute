@@ -14,6 +14,7 @@ import {
 import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, lineItemsOf, formatDate } from '../../data/mockData'
 import SubOrders from '../../components/SubOrders'
 import { openDocument } from '../../lib/backend'
+import { clientVisibleDocs } from '../../lib/orderDocs'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
 import { useSupport } from '../../context/SupportContext'
@@ -176,10 +177,9 @@ function OrderDetailPage() {
     updateOrder({ ...order, workflow: { ...order.workflow, clientDocs: next } })
     return next
   })
-  const docs = [
-    order.workflow?.commitmentDoc && { ...order.workflow.commitmentDoc, label: 'Title Commitment' },
-    ...(order.workflow?.supplementaryDocs || []).filter(d => d.sendToCustomer).map(d => ({ ...d.file, label: 'Supplementary' })),
-  ].filter(Boolean)
+  // Whatever Delivery chose to send across — the final search package, title
+  // commitment and any flagged supplementary/delivery docs they ticked.
+  const docs = clientVisibleDocs(order).map(d => ({ name: d.name, type: d.type, url: d.url, path: d.path, label: d.label }))
   const onSend = ({ text, attachment }) => {
     if (!canMessage) return
     sendMessage({ clientCode: user.clientCode, clientName: clientName(user.clientCode) || user?.name, from: 'client', text, author: user?.name, orderId: order.id, attachment })

@@ -580,6 +580,13 @@ function Finalize({ comp, order, f, user, navigate }) {
       // Doc attach is best-effort — the invoice total is still stamped below.
       console.error('[commitment]', e.message)
     }
+    // Carry the typer's uploaded documents forward onto the order (they live only
+    // in the fulfillments row until now) so Delivery can curate them and the
+    // client can be given them: the final search package and any supplementary
+    // docs (each supplementary keeps its own sendToCustomer flag).
+    if (f.titleSearchDoc && (f.titleSearchDoc.url || f.titleSearchDoc.path)) extra.titleSearchDoc = { ...f.titleSearchDoc }
+    const supp = (f.supplementaryDocs || []).filter(x => x.file && (x.file.url || x.file.path))
+    if (supp.length) extra.supplementaryDocs = supp
     // E2: a PLANNED order routes the typer stage straight to the pre-assigned
     // owner of the next stage — Typing QC if the plan assigns a QC reviewer,
     // otherwise Delivery — NOT back to Admin (the DB guard rejects an admin
