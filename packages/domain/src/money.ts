@@ -46,18 +46,61 @@ export const addDays = (iso: string | null | undefined, days: number): string | 
   return d.toISOString().slice(0, 10)
 }
 
+// ── Additional charges (raised by Admin/Typer, consented to by the client) ────
+// A fee discovered after the base quote — an extra county, a rush of documents —
+// that the CLIENT must approve before it can bill. Two hard rules:
+//   * Raising a charge bills nothing; approving it is consent-to-bill, NEVER a
+//     payment. The deposit-confirmation path (Vivek only, canConfirmPayments)
+//     is untouched — an approved charge is still "Outstanding" until paid.
+//   * Declining is non-blocking: the order proceeds exactly as before, the
+//     charge simply never joins the invoice total.
+export type ChargeStatus = 'pending' | 'approved' | 'declined'
+export interface Charge {
+  id: string; label: string; amount: number;
+  raisedBy: string; raisedByRole: string; raisedAt: string;
+  status: ChargeStatus; resolvedAt?: string | null;
+}
+export const chargesOf = (order: Order): Charge[] =>
+  Array.isArray(order.workflow?.pendingCharges) ? (order.workflow!.pendingCharges as Charge[]) : []
+export const pendingChargesOf = (order: Order): Charge[] => chargesOf(order).filter(c => c.status === 'pending')
+export const hasPendingCharges = (order: Order): boolean => pendingChargesOf(order).length > 0
+// Only APPROVED charges bill. Pending and declined are excluded from the total.
+export const approvedChargesTotal = (order: Order): number =>
+  chargesOf(order).filter(c => c.status === 'approved').reduce((s, c) => s + (Number(c.amount) || 0), 0)
+// Build a pending charge. `id` is injected (the UI passes a uid) so the domain
+// stays deterministic and testable. Amount is coerced and magnitude-bounded.
+export const buildCharge = (
+  { id, label, amount, userName, role }:
+  { id: string; label: string; amount: unknown; userName: string; role: string },
+): Charge => ({
+  id,
+  label: String(label || 'Additional fee').trim().slice(0, 120) || 'Additional fee',
+  amount: isAmountInRange(amount) ? Number(amount) : 0,
+  raisedBy: userName, raisedByRole: role, raisedAt: todayISO(),
+  status: 'pending', resolvedAt: null,
+})
+// Pure resolver: flip exactly the one PENDING charge the client acts on. A charge
+// already approved/declined is immutable (a client can't undo consent, nor a
+// decline), so re-resolving is a no-op.
+export const resolveChargeIn = (order: Order, chargeId: string, decision: 'approved' | 'declined'): Charge[] =>
+  chargesOf(order).map(c =>
+    c.id === chargeId && c.status === 'pending' ? { ...c, status: decision, resolvedAt: todayISO() } : c)
+
 // ── Invoice amount ────────────────────────────────────────────────────────────
 // The authoritative invoice computation shared by the UI and (soon) the server.
 // Precedence: an admin/typer-set invoiceAmount, else the catalogue price for the
-// order type, else a flat fallback; a rush order adds a surcharge. Coerced with
-// Number() so a stored string can never concatenate.
+// order type, else a flat fallback; a rush order adds a surcharge; then any
+// client-APPROVED additional charges. Coerced with Number() so a stored string
+// can never concatenate.
 export interface InvoiceOpts { catalogue?: Record<string, number>; fallback?: number; rushSurcharge?: number }
 export const invoiceTotal = (
   order: Order,
   { catalogue = {}, fallback = 125, rushSurcharge = 50 }: InvoiceOpts = {},
 ): number => {
   const base = order.workflow?.invoiceAmount ?? catalogue[order.type as string] ?? fallback
-  return (Number(base) || 0) + (order.priority === 'rush' ? rushSurcharge : 0)
+  return (Number(base) || 0)
+    + (order.priority === 'rush' ? rushSurcharge : 0)
+    + approvedChargesTotal(order)
 }
 export const invoiceNumber = (order: Pick<Order, 'id'>): string => `INV-${order.id}`
 

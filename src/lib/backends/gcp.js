@@ -44,6 +44,7 @@ export async function insertSupportMessage() { notImpl('insertSupportMessage') }
 export async function markOrderPayment() { notImpl('markOrderPayment') }
 export async function cancelOrderRpc() { notImpl('cancelOrderRpc') }
 export async function respondClarificationRpc() { notImpl('respondClarificationRpc') }
+export async function resolveOrderCharge() { notImpl('resolveOrderCharge') }
 export function subscribeSupport() { return inertUnsub() }
 
 // ── Fulfillment ───────────────────────────────────────────────────────────────

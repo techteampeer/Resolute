@@ -28,6 +28,7 @@ import { ORDER_TABS, tabOf, tabCounts, withinRange, propertyOf, DATE_RANGES, sta
 import { ROLE_COLOR, density } from '../../lib/ui'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
+import OrderCharges from '../../components/OrderCharges'
 import { orderSubtitle } from '../../components/OrderDetailLayout'
 import OrderThread from '../../components/OrderThread'
 import SubOrders from '../../components/SubOrders'
@@ -778,6 +779,12 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
           {order.workflow && (order.workflow.screenerDoc || order.workflow.examinerDoc) && (
             <div style={{ padding:'0 22px 18px' }}><AttachedDocs workflow={order.workflow} /></div>
           )}
+
+          {/* Additional fees — Admin raises a fee the client must approve before
+              it bills, and sees the status of every charge. */}
+          <div style={{ padding:'0 22px 18px' }}>
+            <OrderCharges order={order} user={user} mode="staff" canRaise accent={ROLE_COLOR} />
+          </div>
 
           {/* Order actions — confirm + on-hold + clarification (live orders) */}
           {order.status !== 'delivered' && order.status !== 'cancelled' && (

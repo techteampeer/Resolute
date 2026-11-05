@@ -6,9 +6,9 @@ import { ORDERS, ACTIVITY } from '../data/mockData'
 import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
   applySingleSeatStep, applyReassign, applyPartialHandoff, applyStagePlan, applyRoutedStep, applyQcReject,
-  STAGE_BY_ROLE, todayISO,
+  resolveChargeIn, STAGE_BY_ROLE, todayISO,
 } from '@domain'
-import { isSupabaseConfigured, fetchOrders, fetchOrderById, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc } from '../lib/backend'
+import { isSupabaseConfigured, fetchOrders, fetchOrderById, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc, resolveOrderCharge } from '../lib/backend'
 import { useAuth } from './AuthContext'
 
 const OrderContext = createContext(null)
@@ -337,6 +337,30 @@ export function OrderProvider({ children }) {
     return mode
   }
 
+  // Admin or Typer raises an additional fee the client must consent to before it
+  // can bill. Staff can UPDATE their own/assigned order (RLS orders_update for
+  // admin, owner-scoped for the production user), so this persists through the
+  // normal staff path — unlike the client's resolve below, which needs an RPC.
+  // Raising bills nothing: the charge sits 'pending' until the client approves.
+  const raiseCharge = (order, charge) => {
+    const next = { ...order, workflow: { ...order.workflow, pendingCharges: [...(order.workflow?.pendingCharges || []), charge] } }
+    setOrders(os => os.map(o => (o.id === order.id ? next : o)))
+    persist(next)
+    log({ id: Date.now(), orderId: order.id, actor: charge.raisedBy, action: `${charge.raisedBy} raised an additional fee on ${order.id} — awaiting client approval`, time: 'Just now', type: 'status', audience: 'all' })
+    return next
+  }
+
+  // Client approves or declines a pending charge on their OWN order. Clients have
+  // no UPDATE on orders (RLS), so persist through resolve_order_charge; the pure
+  // resolver flips the one pending charge for the optimistic local update.
+  // Approving is consent-to-bill (the amount joins invoiceTotal) — NOT a payment.
+  const resolveCharge = (order, chargeId, decision) => {
+    const next = { ...order, workflow: { ...order.workflow, pendingCharges: resolveChargeIn(order, chargeId, decision) } }
+    setOrders(os => os.map(o => (o.id === order.id ? next : o)))
+    if (isSupabaseConfigured) resolveOrderCharge(order.id, chargeId, decision).catch(() => {})
+    return next
+  }
+
   // Client responds to a pending clarification (RLS-safe RPC; own order only).
   const respondClarification = (orderId) => {
     setOrders(os => os.map(o => (o.id === orderId ? { ...o, clarification: 'responded' } : o)))
@@ -402,7 +426,7 @@ export function OrderProvider({ children }) {
   const getOrdersForRole = (role) => orders.filter(o => o.assignedTo === role)
 
   return (
-    <OrderContext.Provider value={{ orders, activityLog, writeError, clearWriteError, assignOrder, reassign, setStagePlan, routeStep, rejectQc, advanceInSeat, partialHandoff, completeStep, returnToAdmin, updateOrder, logAction, markPayment, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
+    <OrderContext.Provider value={{ orders, activityLog, writeError, clearWriteError, assignOrder, reassign, setStagePlan, routeStep, rejectQc, advanceInSeat, partialHandoff, completeStep, returnToAdmin, updateOrder, logAction, markPayment, raiseCharge, resolveCharge, respondClarification, createOrder, cancelOrder, resolveCancel, getOrdersForRole }}>
       {children}
     </OrderContext.Provider>
   )
