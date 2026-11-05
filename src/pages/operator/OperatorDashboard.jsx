@@ -8,9 +8,12 @@ import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
 import { displayClient, nextRoleFor, roleAfterFor, lineItemsOf, hasStagePlan, formatDate } from '../../data/mockData'
 import SubOrders from '../../components/SubOrders'
-import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files, Bell, RotateCcw } from 'lucide-react'
+import { LayoutDashboard, Layers, CheckCircle, Send, ChevronRight, FileText, Keyboard, Clock, Inbox, Files, Bell, RotateCcw, Eye } from 'lucide-react'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
+import { ClientAttach } from '../../components/OrderWizard'
+import { collectOrderDocs } from '../../lib/orderDocs'
+import { openDocument } from '../../lib/backend'
 import OrderMessages from '../../components/OrderMessages'
 import OrderDetailLayout, { DetailGrid, Panel, ActivityTab } from '../../components/OrderDetailLayout'
 import NotificationSettings from '../../components/NotificationSettings'
@@ -55,6 +58,10 @@ function OperatorOrderPage() {
   const [doc, setDoc] = useState(role === 'examiner' ? (order?.workflow?.examinerDoc || null) : (order?.workflow?.screenerDoc || null))
   const [method, setMethod] = useState(order?.workflow?.deliveryMethod || 'email')
   const [notes, setNotes] = useState('')
+  // Delivery curation: which documents go to the client (overrides on top of each
+  // doc's default), and the docs Delivery uploads itself.
+  const [docShare, setDocShare] = useState(order?.workflow?.docShare || {})
+  const [deliveryDocs, setDeliveryDocs] = useState(order?.workflow?.deliveryDocs || [])
 
   if (!order) return (
     <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
@@ -149,7 +156,7 @@ function OperatorOrderPage() {
             </button>
           </div>
         )}
-        {role === 'delivery' && (
+        {role === 'delivery' && (<>
           <Panel title="Delivery method">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {[['email', 'Email'], ['portal', 'Client Portal']].map(([k, l]) => (
@@ -166,7 +173,38 @@ function OperatorOrderPage() {
               {method === 'email' ? 'Full package + invoice emailed to the client.' : 'Package posted to the client portal; invoice reflected there.'}
             </p>
           </Panel>
-        )}
+          <Panel title="Documents to send to client" hint="Everything gathered across the stages — tick what the client receives, and add any delivery documents of your own.">
+            {(() => {
+              const allDocs = collectOrderDocs({ ...order, workflow: { ...order.workflow, deliveryDocs } })
+              if (!allDocs.length) return <p className="text-[12px]" style={{ color: '#5C6E8C' }}>No documents attached to this order yet.</p>
+              return (
+                <div className="space-y-1.5">
+                  {allDocs.map(d => {
+                    const shared = docShare[d.id] !== undefined ? docShare[d.id] : d.defaultShare
+                    return (
+                      <div key={d.id} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg" style={{ background: '#fff', border: '1px solid #DDE3EC' }}>
+                        <FileText className="w-4 h-4 flex-shrink-0" style={{ color: d.type === 'pdf' ? '#dc2626' : '#2441E5' }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[12.5px] font-medium truncate" style={{ color: '#12284C' }}>{d.name}</div>
+                          <div className="text-[10px] uppercase tracking-wide" style={{ color: '#5C6E8C' }}>{d.label}</div>
+                        </div>
+                        {(d.url || d.path) && (
+                          <button onClick={() => openDocument(d)} title="Open"
+                            className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ color: '#3D5171' }}><Eye className="w-4 h-4" /></button>
+                        )}
+                        <label className="flex items-center gap-1.5 text-[11px] font-medium cursor-pointer select-none" style={{ color: shared ? '#15803d' : '#5C6E8C' }}>
+                          <input type="checkbox" checked={!!shared} onChange={e => setDocShare(s => ({ ...s, [d.id]: e.target.checked }))} /> Send
+                        </label>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] mt-3 mb-1.5" style={{ color: '#5C6E8C' }}>Add delivery documents</div>
+            <ClientAttach orderId={order.id} value={deliveryDocs} onChange={setDeliveryDocs} />
+          </Panel>
+        </>)}
         {(role === 'qc' || role === 'searchqc') && (() => {
           // Both QC gates share this panel. Pass routes to the plan's next stage
           // (Search QC → Examiner, Typing QC → Delivery); Reject returns the order
@@ -214,7 +252,7 @@ function OperatorOrderPage() {
               onClick={() => advance(
                 role === 'screener' ? { searchAssignment: assignment, screenerDoc: doc }
                 : role === 'examiner' ? { examinerDoc: doc }
-                : role === 'delivery' ? { deliveryMethod: method, invoiceVisibleToClient: method === 'portal' }
+                : role === 'delivery' ? { deliveryMethod: method, invoiceVisibleToClient: method === 'portal', docShare, deliveryDocs }
                 : null)}
               className="btn-primary w-full text-sm py-2.5 flex items-center justify-center gap-2"
               style={{ opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
