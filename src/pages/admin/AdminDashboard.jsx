@@ -39,6 +39,7 @@ import {
   stagePlanOf, hasStagePlan, isSingleSeatingPlan,
   ROLE_SEQUENCE, can, workableStages, formatDate,
 } from '../../data/mockData'
+import { useClients, addClient } from '../../lib/useClients'
 import { useAuth } from '../../context/AuthContext'
 import { useOrders } from '../../context/OrderContext'
 import { useSupport } from '../../context/SupportContext'
@@ -1577,9 +1578,33 @@ function UserFormModal({ initial, onClose, onSave, busy, canGrantSuper }) {
   const toggleStage = (s) => setF(st => ({ ...st, stages: st.stages.includes(s) ? st.stages.filter(x => x !== s) : [...st.stages, s] }))
   const inputStyle = { width: '100%', padding: '9px 12px', border: `1px solid ${Q.border}`, borderRadius: 8, fontSize: 13, outline: 'none', color: Q.text, background: '#fff' }
   const lbl = { fontSize: 11, fontWeight: 600, color: Q.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }
+  // A client user must be linked to a REAL client (orders.client_code is FK'd to
+  // clients) — so the code is PICKED from live clients or a new client is created
+  // inline, never free-typed. '__new__' reveals a company-name field.
+  const clients = useClients()
+  const [newName, setNewName] = useState('')
+  const [cErr, setCErr] = useState('')
+  const [working, setWorking] = useState(false)
 
-  const submit = () => {
-    const payload = { id: initial?.id, name: f.name, email: f.email, role: f.role, clientCode: f.clientCode }
+  const submit = async () => {
+    setCErr('')
+    let code = f.role === 'client' ? f.clientCode : ''
+    if (f.role === 'client') {
+      if (code === '__new__') {
+        const name = newName.trim()
+        if (!name) { setCErr('Enter the new client’s company name.'); return }
+        setWorking(true)
+        try {
+          const res = await addClient({ name })
+          if (res?.status === 'ambiguous') { setCErr('Several clients already match that name — pick one from the list instead.'); return }
+          code = res?.code
+        } catch (e) { setCErr(e.message || 'Could not create the client.'); return }
+        finally { setWorking(false) }
+        if (!code) { setCErr('Could not create the client. Try again.'); return }
+      }
+      if (!code) { setCErr('Choose or add a client for this user.'); return }
+    }
+    const payload = { id: initial?.id, name: f.name, email: f.email, role: f.role, clientCode: code }
     // Stage scope only applies to production users; everyone else clears grants.
     payload.permissions = f.role === 'user' ? permissionsForStages(f.stages) : []
     // Only send the elevated bits when the caller may set them AND the role is admin,
@@ -1628,8 +1653,17 @@ function UserFormModal({ initial, onClose, onSave, busy, canGrantSuper }) {
           </div>
           {f.role === 'client' && (
             <div>
-              <label style={lbl}>Client code</label>
-              <input value={f.clientCode} onChange={e => set('clientCode', e.target.value.toUpperCase())} style={inputStyle} placeholder="e.g. CL08" />
+              <label style={lbl}>Client</label>
+              <select value={f.clientCode} onChange={e => set('clientCode', e.target.value)} style={inputStyle}>
+                <option value="">Select a client…</option>
+                {clients.map(c => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
+                <option value="__new__">＋ Add a new client…</option>
+              </select>
+              {f.clientCode === '__new__' && (
+                <input value={newName} onChange={e => setNewName(e.target.value)} style={{ ...inputStyle, marginTop: 8 }} placeholder="New client company name" />
+              )}
+              {cErr && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 6 }}>{cErr}</div>}
+              <div style={{ fontSize: 11, color: Q.muted, marginTop: 6 }}>Orders are placed under this client — it must be a real client account, so pick one or add it here.</div>
             </div>
           )}
 
@@ -1668,9 +1702,9 @@ function UserFormModal({ initial, onClose, onSave, busy, canGrantSuper }) {
           )}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-          <button disabled={busy || !f.email || !f.role} onClick={submit}
-            style={{ flex: 1, padding: '10px', background: ROLE_COLOR, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 600, cursor: busy ? 'wait' : 'pointer', opacity: (!f.email || !f.role) ? 0.6 : 1 }}>
-            {busy ? 'Saving…' : isEdit ? 'Save changes' : 'Create user'}
+          <button disabled={busy || working || !f.email || !f.role || (f.role === 'client' && !f.clientCode)} onClick={submit}
+            style={{ flex: 1, padding: '10px', background: ROLE_COLOR, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 600, cursor: (busy || working) ? 'wait' : 'pointer', opacity: (!f.email || !f.role || (f.role === 'client' && !f.clientCode)) ? 0.6 : 1 }}>
+            {busy || working ? 'Saving…' : isEdit ? 'Save changes' : 'Create user'}
           </button>
           <button onClick={onClose} style={{ padding: '10px 18px', background: Q.bg, border: `1px solid ${Q.border}`, borderRadius: 8, color: Q.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
         </div>
