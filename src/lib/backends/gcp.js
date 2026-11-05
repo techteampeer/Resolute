@@ -58,6 +58,7 @@ export async function clearNotificationPreference() { return writeErr('B2') }
 
 // ── Clients ───────────────────────────────────────────────────────────────────
 export async function fetchClients() { return null }
+export async function createAdminClient() { return null }
 export async function fetchClientTerms() { return null }
 export async function saveClientTerms() { /* side-effect write; no-op until B2 */ }
 

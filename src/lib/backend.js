@@ -31,7 +31,7 @@ export const {
   // notification preferences
   fetchNotificationTypes, fetchNotificationPreferences, saveNotificationPreference, clearNotificationPreference,
   // clients
-  fetchClients, fetchClientTerms, saveClientTerms,
+  fetchClients, createAdminClient, fetchClientTerms, saveClientTerms,
   // client contacts (per-company people directory)
   fetchContacts, saveContact, deleteContact,
   // client company profile (client-editable half of Company Settings)

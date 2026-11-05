@@ -10,7 +10,7 @@ import { PRODUCTS } from '../data/products'
 import { fileKind, uid } from '../data/fulfillment'
 import { isSupabaseConfigured, openDocument, uploadDocument } from '../lib/backend'
 import { ROLE_COLOR } from '../lib/ui'
-import { useClients, clientLabelOf } from '../lib/useClients'
+import { useClients, clientLabelOf, addClient } from '../lib/useClients'
 import { useContacts } from '../lib/useContacts'
 import { useOrders } from '../context/OrderContext'
 import { useAuth } from '../context/AuthContext'
@@ -125,8 +125,13 @@ export default function OrderWizard({ mode = 'client' }) {
   // portal's wizard is always scoped to the signed-in client.
   const clients = useClients()
   const [adminClientCode, setAdminClientCode] = useState('')
+  // Admin can type a company that isn't in the list yet. null = pick-existing
+  // mode; { name, contact, email } = new-client mode (created on submit).
+  const [newClient, setNewClient] = useState(null)
   const activeClientCode = admin ? (adminClientCode || null) : (user?.clientCode || null)
-  const companyName = admin ? (clientLabelOf(clients, adminClientCode) || '') : (clientName(user?.clientCode) || '')
+  const companyName = admin
+    ? (newClient ? newClient.name.trim() : (clientLabelOf(clients, adminClientCode) || ''))
+    : (clientName(user?.clientCode) || '')
   // Per-company people directory (#12): who is placing the order. Scoped to the
   // active client so admin only ever sees the selected company's people.
   const { contacts, save: savePlacer } = useContacts(activeClientCode)
@@ -194,7 +199,7 @@ export default function OrderWizard({ mode = 'client' }) {
 
   const stepValid = (s) => {
     const c = admin ? s - 1 : s
-    if (admin && s === 1) return !!adminClientCode
+    if (admin && s === 1) return !!adminClientCode || !!(newClient && newClient.name.trim())
     if (c === 1) return !!(form.state.trim() && form.county.trim() && form.address.trim())
     if (c === 2) return !!(form.searchType.trim() || form.customSearch.trim())
     // Admin's step 4 is just the placed-by line + an optional note — nothing
@@ -206,10 +211,25 @@ export default function OrderWizard({ mode = 'client' }) {
 
   const submit = async () => {
     if (busy) return
-    if (admin && !adminClientCode) { setStep(1); setStepErr(true); return }
+    if (admin && !adminClientCode && !(newClient && newClient.name.trim())) { setStep(1); setStepErr(true); return }
     setBusy(true)
     setSubmitErr('')
     try {
+      // Admin may have typed a brand-new company — create (or match) it now and
+      // place the order against the resulting client code. Ambiguous (several
+      // existing clients already match the name) stops here so Admin can pick one.
+      let effCode = activeClientCode
+      let effCompany = companyName
+      if (admin && newClient && !adminClientCode) {
+        const res = await addClient({ name: newClient.name, contact: newClient.contact, email: newClient.email })
+        if (res?.status === 'ambiguous') {
+          setSubmitErr('More than one client already matches that name — pick the client from the list instead of adding a new one.')
+          setBusy(false); return
+        }
+        effCode = res.code
+        effCompany = res.name || companyName
+        setAdminClientCode(res.code); setNewClient(null)
+      }
       const parties = form.parties.map(p => ({ role: p.role, name: (p.name || '').trim() })).filter(p => p.name)
       const namesByRole = (role) => parties.filter(p => p.role === role).map(p => p.name).join(', ')
       const buyer = namesByRole('Buyer'), seller = namesByRole('Seller'), borrower = namesByRole('Borrower')
@@ -217,7 +237,7 @@ export default function OrderWizard({ mode = 'client' }) {
       const customSearch = form.customSearch.trim()
       const type = form.searchType || customSearch || 'Full Search'
       const company = admin
-        ? (companyName || 'Web Order')
+        ? (effCompany || 'Web Order')
         : (companyName || user?.name || 'Web Order')
       // Record WHO placed the order in the company directory (best-effort — never
       // block an order on it) and attach a snapshot to the intake. Admin-placed
@@ -239,7 +259,7 @@ export default function OrderWizard({ mode = 'client' }) {
         state: form.state, county: form.county, type,
         priority: form.priority,
         clientFileNo: form.clientFileNo || null,
-        clientCode: activeClientCode,
+        clientCode: effCode,
         client: company,
         intake: {
           source: admin ? (form.source || 'web') : 'web', propertyAddress: [form.address, form.city, stateName(form.state), form.zip].filter(Boolean).join(', '),
@@ -385,12 +405,41 @@ export default function OrderWizard({ mode = 'client' }) {
                 <h2 className="text-lg font-semibold mb-4" style={{ color:'#12284C' }}>Client</h2>
                 <div>
                   <Field>Client *</Field>
-                  <select value={adminClientCode} onChange={e => pickClient(e.target.value)} className="input-field text-sm" required>
+                  <select value={newClient ? '__new__' : adminClientCode}
+                    onChange={e => {
+                      if (e.target.value === '__new__') { setNewClient({ name:'', contact:'', email:'' }); pickClient('') }
+                      else { setNewClient(null); pickClient(e.target.value) }
+                    }}
+                    className="input-field text-sm" required>
                     <option value="">Select a client…</option>
                     {clients.map(c => <option key={c.code} value={c.code}>{c.name ? `${c.name} (${c.code})` : c.code}</option>)}
+                    <option value="__new__">＋ Add a new client…</option>
                   </select>
                   <div className="text-[11px] mt-1" style={{ color:'#9AA8BF' }}>The order is placed on behalf of this company — it becomes the order’s client.</div>
                 </div>
+                {newClient && (
+                  <div className="space-y-3 p-3 rounded-xl" style={{ background:'#F6F8FC', border:'1px solid #E6EBF2' }}>
+                    <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color:'#5C6E8C' }}>New client</div>
+                    <div>
+                      <Field>Company name *</Field>
+                      <input value={newClient.name} onChange={e => setNewClient(n => ({ ...n, name: e.target.value }))}
+                        placeholder="e.g. Harborline Title Co" className="input-field text-sm" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <Field>Contact <span style={{ textTransform:'none', opacity:.6 }}>(optional)</span></Field>
+                        <input value={newClient.contact} onChange={e => setNewClient(n => ({ ...n, contact: e.target.value }))}
+                          placeholder="Full name" className="input-field text-sm" />
+                      </div>
+                      <div>
+                        <Field>Email <span style={{ textTransform:'none', opacity:.6 }}>(optional)</span></Field>
+                        <input type="email" value={newClient.email} onChange={e => setNewClient(n => ({ ...n, email: e.target.value }))}
+                          placeholder="name@company.com" className="input-field text-sm" />
+                      </div>
+                    </div>
+                    <div className="text-[11px]" style={{ color:'#9AA8BF' }}>A new client (next CL code) is created when you place the order. If the company already exists, it’s matched instead of duplicated.</div>
+                  </div>
+                )}
                 <div>
                   <Field>Order source</Field>
                   <select value={form.source} onChange={e => set('source', e.target.value)} className="input-field text-sm">
@@ -683,7 +732,7 @@ export default function OrderWizard({ mode = 'client' }) {
             )}
             {stepErr && !stepValid(step) && (
               <div className="mt-4 text-[12px] px-3 py-2 rounded-lg" style={{ background:'rgba(220,38,38,0.08)', border:'1px solid rgba(220,38,38,0.22)', color:'#dc2626' }}>
-                {admin && step===1 ? 'Select a client to place this order for.'
+                {admin && step===1 ? 'Select an existing client, or enter a new company name, to place this order for.'
                   : cs===1 ? 'Property street address, state and county are required.'
                   : cs===2 ? 'Choose a product or describe a custom search.'
                   : 'Contact name and a valid email are required.'}
