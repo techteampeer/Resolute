@@ -15,6 +15,7 @@ import { clientCode as codeByName, clientName, orderProgress, isOrderComplete, l
 import SubOrders from '../../components/SubOrders'
 import { openDocument } from '../../lib/backend'
 import { clientVisibleDocs } from '../../lib/orderDocs'
+import OrderCharges from '../../components/OrderCharges'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
 import { useSupport } from '../../context/SupportContext'
@@ -329,6 +330,10 @@ function OrderDetailPage() {
               ))}
             </div>
           )}
+          {/* Additional fees raised by Resolute — the client approves or declines
+              each; an approval is added to the invoice (consent-to-bill, not a
+              payment). Renders nothing until a fee exists. */}
+          <OrderCharges order={order} user={user} mode="client" />
           {/* Billing summary — the invoice card the client already knows. */}
           {order.workflow?.invoiceVisibleToClient ? (
             <InvoiceCard order={order} />

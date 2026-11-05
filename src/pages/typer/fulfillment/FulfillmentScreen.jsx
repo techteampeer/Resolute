@@ -8,13 +8,14 @@ import {
 import { useOrders } from '../../../context/OrderContext'
 import { useAuth } from '../../../context/AuthContext'
 import { useFulfillmentStore } from '../../../context/FulfillmentContext'
-import { displayClient, clientByName, hasStagePlan, formatDate } from '../../../data/mockData'
+import { displayClient, clientByName, hasStagePlan, formatDate, nextRoleFor } from '../../../data/mockData'
 import {
   completeness, titleVestingAuto, fmtDateTime, uid, unfilledClauses,
 } from '../../../data/fulfillment'
 import { T, Label, TextInput, TextArea, DateInput, RoundBtn, AccentButton, GhostButton } from './ui'
 import DeedTabs from './DeedTabs'
 import AttachedDocs from '../../../components/AttachedDocs'
+import OrderCharges from '../../../components/OrderCharges'
 import OrderMessages from '../../../components/OrderMessages'
 import { CommitmentDocumentModal } from '../../../components/CommitmentDocument'
 import { commitmentPdfBlob, commitmentFileName } from '../../../lib/commitmentPdf'
@@ -815,6 +816,13 @@ function OverviewTab({ order, f, user }) {
       )}
 
       <AttachedDocs workflow={order.workflow} />
+
+      {/* Additional fees — Admin always, or the production user working the typer
+          stage, can raise a fee the client must approve before it bills. */}
+      <div className="mt-4">
+        <OrderCharges order={order} user={user} mode="staff"
+          canRaise={user?.role === 'admin' || (user?.role === 'user' && nextRoleFor(order) === 'typer')} />
+      </div>
     </div>
   )
 }

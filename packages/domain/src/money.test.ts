@@ -7,6 +7,8 @@ import {
   isAbsAssigned, payoutOf, needsFee, buildPayout, payPayout,
   subscriptionNextDue, isSubscriptionDue,
   AMOUNT_LIMIT, isAmountInRange,
+  chargesOf, pendingChargesOf, hasPendingCharges, approvedChargesTotal,
+  buildCharge, resolveChargeIn,
 } from './money'
 
 const CATALOGUE = { 'Full Search': 150, 'Two Owner Search': 100 }
@@ -37,6 +39,62 @@ describe('invoiceTotal', () => {
     expect(invoiceTotal(order({ type: 'Full Search', priority: 'rush' }), { catalogue: CATALOGUE })).toBe(200)
   })
   it('invoiceNumber', () => expect(invoiceNumber({ id: 'RTS-9' })).toBe('INV-RTS-9'))
+  it('adds client-approved additional charges, and only approved ones', () => {
+    const wf = { invoiceAmount: 150, pendingCharges: [
+      { id: 'a', label: 'extra county', amount: 40, status: 'approved' },
+      { id: 'b', label: 'rush docs',    amount: 25, status: 'pending' },
+      { id: 'c', label: 'declined one', amount: 99, status: 'declined' },
+    ] }
+    expect(invoiceTotal(order({ type: 'Full Search', workflow: wf }), { catalogue: CATALOGUE })).toBe(190)
+  })
+  it('stacks approved charges on top of the rush surcharge', () => {
+    const wf = { invoiceAmount: 150, pendingCharges: [{ id: 'a', label: 'x', amount: 40, status: 'approved' }] }
+    expect(invoiceTotal(order({ type: 'Full Search', priority: 'rush', workflow: wf }), { catalogue: CATALOGUE })).toBe(240)
+  })
+})
+
+describe('additional charges', () => {
+  const withCharges = (list: any[]) => order({ workflow: { pendingCharges: list } })
+
+  it('buildCharge coerces amount, bounds it, defaults the label, starts pending', () => {
+    const c = buildCharge({ id: 'x1', label: '  Extra county  ', amount: '40', userName: 'Rajni', role: 'admin' })
+    expect(c).toMatchObject({ id: 'x1', label: 'Extra county', amount: 40, status: 'pending', raisedBy: 'Rajni', raisedByRole: 'admin' })
+    expect(buildCharge({ id: 'x2', label: '', amount: 'junk', userName: 'A', role: 'admin' })).toMatchObject({ label: 'Additional fee', amount: 0 })
+    expect(buildCharge({ id: 'x3', label: 'huge', amount: 9_999_999, userName: 'A', role: 'admin' }).amount).toBe(0)
+  })
+
+  it('chargesOf / pendingChargesOf / hasPendingCharges are null-safe', () => {
+    expect(chargesOf(order())).toEqual([])
+    expect(hasPendingCharges(order())).toBe(false)
+    const o = withCharges([{ id: 'a', status: 'pending', amount: 10 }, { id: 'b', status: 'approved', amount: 10 }])
+    expect(pendingChargesOf(o).map((c: any) => c.id)).toEqual(['a'])
+    expect(hasPendingCharges(o)).toBe(true)
+  })
+
+  it('approvedChargesTotal sums only approved amounts', () => {
+    expect(approvedChargesTotal(withCharges([
+      { id: 'a', amount: 40, status: 'approved' },
+      { id: 'b', amount: 25, status: 'pending' },
+      { id: 'c', amount: 99, status: 'declined' },
+      { id: 'd', amount: 10, status: 'approved' },
+    ]))).toBe(50)
+  })
+
+  it('resolveChargeIn flips exactly the one pending charge, immutably', () => {
+    const o = withCharges([
+      { id: 'a', amount: 40, status: 'pending' },
+      { id: 'b', amount: 25, status: 'pending' },
+    ])
+    const after = resolveChargeIn(o, 'a', 'approved')
+    expect(after.find(c => c.id === 'a')).toMatchObject({ status: 'approved' })
+    expect(after.find(c => c.id === 'a')!.resolvedAt).toBeTruthy()
+    expect(after.find(c => c.id === 'b')).toMatchObject({ status: 'pending' })
+  })
+
+  it('resolveChargeIn never re-resolves an already-decided charge', () => {
+    const o = withCharges([{ id: 'a', amount: 40, status: 'approved', resolvedAt: '2026-01-01' }])
+    expect(resolveChargeIn(o, 'a', 'declined')).toEqual([{ id: 'a', amount: 40, status: 'approved', resolvedAt: '2026-01-01' }])
+  })
 })
 
 describe('terms / cycles defaults', () => {

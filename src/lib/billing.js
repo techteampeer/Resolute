@@ -15,12 +15,16 @@ import {
   isBillable, dueDate, isOverdue, buildPayment, confirmPayment, bouncePayment,
   payStatusMeta, payStatusLabel, OVERDUE_META,
   invoiceTotal, addDays, formatDate,
+  chargesOf, pendingChargesOf, hasPendingCharges, approvedChargesTotal,
+  buildCharge, resolveChargeIn, isAmountInRange,
 } from '@domain'
 
 export {
   money, invoiceNumber, TERMS, termByKey, PAY_STATUS, paymentOf, payStatusOf,
   isBillable, dueDate, isOverdue, buildPayment, confirmPayment, bouncePayment,
   payStatusMeta, payStatusLabel, OVERDUE_META, formatDate,
+  chargesOf, pendingChargesOf, hasPendingCharges, approvedChargesTotal,
+  buildCharge, resolveChargeIn, isAmountInRange,
 }
 
 // ── Remittance details (PLACEHOLDERS — fill in real values here later) ──────

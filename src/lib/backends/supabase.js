@@ -259,6 +259,16 @@ export async function respondClarificationRpc(orderId) {
   if (error) { console.error('[respondClarificationRpc]', error.message); throw error }
 }
 
+// Client approves or declines an Admin/Typer-raised additional charge on their
+// own order (clients have no UPDATE on orders). The SECURITY DEFINER RPC flips
+// only the one PENDING charge's status — it never touches amounts or any other
+// field, so consent can't be forged into a different fee. Approving is consent-
+// to-bill, not a payment; the deposit-confirmation path is untouched.
+export async function resolveOrderCharge(orderId, chargeId, decision) {
+  const { error } = await supabase.rpc('resolve_order_charge', { p_order_id: orderId, p_charge_id: chargeId, p_decision: decision })
+  if (error) { console.error('[resolveOrderCharge]', error.message); throw error }
+}
+
 export function subscribeSupport(cb) {
   const channel = supabase.channel('support-rt')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_messages' }, cb)

@@ -25,7 +25,7 @@ export const {
   // orders
   fetchOrders, fetchOrderById, saveOrder, insertOrder, subscribeOrders,
   // support messages
-  fetchSupportMessages, insertSupportMessage, markOrderPayment, cancelOrderRpc, respondClarificationRpc, subscribeSupport,
+  fetchSupportMessages, insertSupportMessage, markOrderPayment, cancelOrderRpc, respondClarificationRpc, resolveOrderCharge, subscribeSupport,
   // fulfillment
   fetchFulfillment, saveFulfillment,
   // notification preferences
