@@ -54,5 +54,44 @@ check('non-owner attempt left the charge pending', chargeState().st === 'pending
 // Clean up: remove the audit charge from the real demo order.
 sql(`update orders set workflow = workflow - 'pendingCharges' where id = '${OID}'`)
 
+console.log('\n── raise path (Admin / Typer write pendingCharges) ──')
+// A production `user` may raise a fee only on an order assigned to them (owner RLS);
+// Admin may raise on any order. The F3 amount guard watches invoiceAmount /
+// abstractorFee, so writing pendingCharges must not trip it.
+const UID = (sqlJson(`select id from profiles where email = 'operator@resolute.com'`)[0] || {}).id
+const SOID = 'RTS-AUDIT-CHG'
+const c1 = sqlJson('select code from clients order by code limit 1')[0]?.code
+sql(`delete from orders where id = '${SOID}'`)
+// A pipeline-CONSISTENT typer-stage order (screener+examiner done → status 'typing'),
+// owned by the production user. Status is derived server-side, so a malformed status
+// would be rejected by the derivation guard before we ever test the raise.
+sql(`insert into orders (id, client_code, state, county, type, status, assigned_to, assigned_user_id, progress, created, completed_dates)
+     values ('${SOID}', ${c1 ? `'${c1}'` : 'null'}, 'FL', 'Charge', 'Full Search', 'typing', 'user', '${UID}', 50, current_date,
+             '{"screener":"2026-11-01","examiner":"2026-11-02"}'::jsonb)`)
+
+const CHARGE = JSON.stringify([{ id: 'raise1', label: 'extra county', amount: 60, raisedBy: 'Op', raisedByRole: 'user', raisedAt: '2026-11-05', status: 'pending' }])
+const raiseAs = (who) => as(who, `/orders?id=eq.${SOID}`, { method: 'PATCH', body: JSON.stringify({ workflow: { pendingCharges: JSON.parse(CHARGE) } }) })
+const pc = () => sqlJson(`select workflow->'pendingCharges'->0->>'status' as st, workflow->'pendingCharges'->0->>'amount' as amt from orders where id = '${SOID}'`)[0] || {}
+
+// owner (production user) can raise on their own order; F3 guard not tripped
+const asOwner = await raiseAs('user')
+check('owner production user can raise a fee', asOwner.status < 400, `HTTP ${asOwner.status}`)
+check('raised charge persisted with its amount', pc().st === 'pending' && pc().amt === '60', `st=${pc().st} amt=${pc().amt}`)
+
+// a non-owner production user cannot touch it (owner-scoped RLS) — the typer login
+// is a different `user` account; its PATCH is filtered to 0 rows, leaving the order
+// unchanged (the anti-tamper guarantee).
+const OTHER = (sqlJson(`select id from profiles where email = 'typer@resolute.com'`)[0] || {}).id
+check('sanity: typer is a different production user', !!OTHER && OTHER !== UID, `${OTHER}`)
+await as('typer', `/orders?id=eq.${SOID}`, { method: 'PATCH', body: JSON.stringify({ workflow: { pendingCharges: [] } }) })
+check('a non-owner production user leaves the order unchanged',
+  sqlJson(`select jsonb_array_length(coalesce(workflow->'pendingCharges','[]'::jsonb)) n from orders where id='${SOID}'`)[0].n === 1)
+
+// admin can raise on any order
+const asAdmin = await as('admin', `/orders?id=eq.${SOID}`, { method: 'PATCH', body: JSON.stringify({ workflow: { pendingCharges: JSON.parse(CHARGE) } }) })
+check('admin can raise a fee on any order', asAdmin.status < 400, `HTTP ${asAdmin.status}`)
+
+sql(`delete from orders where id = '${SOID}'`)
+
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed')
 process.exit(failures ? 1 : 0)

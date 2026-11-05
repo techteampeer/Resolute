@@ -48,6 +48,19 @@ const touchesElevated = (body, perms) =>
   'superAdmin' in body || 'canConfirmPayments' in body ||
   (Array.isArray(perms) && perms.some(p => p.effect === 'grant' && ELEVATED.has(p.capability)))
 
+// A client user must be linked to a REAL client. orders.client_code is FK'd to
+// clients(code), so a blank or unknown code mints an account that logs in and
+// passes RLS but whose every order placement is rejected by the FK (23503) — the
+// "newly created client can't place orders" bug. Guard it at the source.
+async function badClientLink(role, clientCode) {
+  if (role !== 'client') return null
+  const code = (clientCode || '').trim()
+  if (!code) return 'A client user must be linked to a client (client code required).'
+  const { data } = await supabaseAdmin.from('clients').select('code').eq('code', code).maybeSingle()
+  if (!data) return `Client ${code} does not exist. Create the client first, or choose an existing one.`
+  return null
+}
+
 async function requireAdmin(req) {
   const authz = req.headers.authorization || ''
   const token = authz.startsWith('Bearer ') ? authz.slice(7) : ''
@@ -97,6 +110,8 @@ export default async function handler(req, res) {
     if (!perms.ok) return send(res, 400, { error: perms.error })
     if (touchesElevated(body, perms.value) && !gate.superAdmin)
       return send(res, 403, { error: 'Only a super admin can grant super-admin, billing, or elevated permissions.' })
+    const linkErr = await badClientLink(role, clientCode)
+    if (linkErr) return send(res, 400, { error: linkErr })
     const isAdmin = role === 'admin'
     const password = genPassword()
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
@@ -143,6 +158,12 @@ export default async function handler(req, res) {
     if (!perms.ok) return send(res, 400, { error: perms.error })
     if (touchesElevated(body, perms.value) && !gate.superAdmin)
       return send(res, 403, { error: 'Only a super admin can grant super-admin, billing, or elevated permissions.' })
+    // When this update makes (or keeps) the account a client, the same link rule
+    // applies — never leave a client pointing at a non-existent clients row.
+    if (role === 'client') {
+      const linkErr = await badClientLink('client', clientCode)
+      if (linkErr) return send(res, 400, { error: linkErr })
+    }
     const patch = {}
     if (name != null) patch.name = name
     if (role != null) { patch.role = role; patch.client_code = role === 'client' ? (clientCode || null) : null }
