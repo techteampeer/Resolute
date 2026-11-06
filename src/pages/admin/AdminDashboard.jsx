@@ -29,6 +29,7 @@ import { ROLE_COLOR, density } from '../../lib/ui'
 import FulfillmentScreen from '../typer/fulfillment/FulfillmentScreen'
 import AttachedDocs from '../../components/AttachedDocs'
 import OrderCharges from '../../components/OrderCharges'
+import ChargeApprovalChip from '../../components/ChargeApprovalChip'
 import { orderSubtitle } from '../../components/OrderDetailLayout'
 import OrderThread from '../../components/OrderThread'
 import SubOrders from '../../components/SubOrders'
@@ -587,10 +588,13 @@ function AdminOrderDetail({ order, user, onClose, onSave, activityLog, resolveCa
               Source: <span style={{ color:Q.text, fontWeight:600 }}>{orderSourceLabel(order)}</span>
             </div>
           </div>
-          {order.priority === 'rush' && (
-            <span style={{ fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:99,
-              background:'rgba(220,38,38,0.12)', color:'#dc2626' }}>RUSH</span>
-          )}
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', justifyContent:'flex-end' }}>
+            <ChargeApprovalChip order={order} />
+            {order.priority === 'rush' && (
+              <span style={{ fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:99,
+                background:'rgba(220,38,38,0.12)', color:'#dc2626' }}>RUSH</span>
+            )}
+          </div>
         </div>
 
         {order.status === 'cancelled' && (
@@ -1266,8 +1270,11 @@ function OrdersPipeline({ pageSize = 6, scrollable = false }) {
                       used to stack here (New / Ready / Assigned / Awaiting-confirm)
                       lives in the Assignee column, which names who holds the order. */}
                   <td style={{ padding:CELL_PAD, whiteSpace:'nowrap' }}>
-                    <StatusBadge status={o.status} awaiting={awaitingApproval(o)}
-                      onHold={!!o.workflow?.onHold} clarification={o.clarification === 'pending'} />
+                    <span style={{ display:'inline-flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                      <StatusBadge status={o.status} awaiting={awaitingApproval(o)}
+                        onHold={!!o.workflow?.onHold} clarification={o.clarification === 'pending'} />
+                      <ChargeApprovalChip order={o} compact />
+                    </span>
                   </td>
                   <td style={{ padding:CELL_PAD, fontWeight:500, color:Q.text, whiteSpace:'nowrap' }}>{displayClient(o, user)}</td>
                   <td style={{ padding:CELL_PAD, fontFamily:'monospace', fontSize:11.5, color:Q.muted, whiteSpace:'nowrap' }}>{o.clientFileNo || '—'}</td>

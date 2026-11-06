@@ -28,6 +28,13 @@ export const AWAITING_META = { label: 'Awaiting Approval', color: '#B45309', bg:
 export const HOLD_META    = { label: 'On hold',       color: '#B91C1C', bg: '#FEF2F2', ring: '#FECACA' }
 export const CLARIFY_META = { label: 'Clarification', color: '#B45309', bg: '#FFFBEB', ring: '#FDE68A' }
 
+// A SEPARATE attention flag (not a stage modifier): the order has an additional
+// fee the client hasn't approved/declined yet. Shown alongside the normal status
+// — the order keeps moving (approval is non-blocking) — and clears itself once no
+// charge is left pending. Blue so it reads as "action", distinct from the amber
+// clarification and the red hold/overdue.
+export const CHARGE_APPROVAL_META = { label: 'Charge approval', color: '#2441E5', bg: '#EEF2FF', ring: '#C7D2FE' }
+
 export function statusMeta(status) {
   return STATUS_META[status] || STATUS_META.received
 }

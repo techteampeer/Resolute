@@ -6,7 +6,7 @@ import { ORDERS, ACTIVITY } from '../data/mockData'
 import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
   applySingleSeatStep, applyReassign, applyPartialHandoff, applyStagePlan, applyRoutedStep, applyQcReject,
-  resolveChargeIn, STAGE_BY_ROLE, todayISO,
+  resolveChargeIn, money, STAGE_BY_ROLE, todayISO,
 } from '@domain'
 import { isSupabaseConfigured, fetchOrders, fetchOrderById, saveOrder, subscribeOrders, insertOrder, fetchActivity, logEvent, nextOrderId, markOrderPayment, cancelOrderRpc, respondClarificationRpc, resolveOrderCharge } from '../lib/backend'
 import { useAuth } from './AuthContext'
@@ -346,7 +346,10 @@ export function OrderProvider({ children }) {
     const next = { ...order, workflow: { ...order.workflow, pendingCharges: [...(order.workflow?.pendingCharges || []), charge] } }
     setOrders(os => os.map(o => (o.id === order.id ? next : o)))
     persist(next)
-    log({ id: Date.now(), orderId: order.id, actor: charge.raisedBy, action: `${charge.raisedBy} raised an additional fee on ${order.id} — awaiting client approval`, time: 'Just now', type: 'status', audience: 'all' })
+    // Client-facing line (the client's Activity tab shows this order's events and
+    // does not mask by audience), so it names no staff member and reads for either
+    // side: the client sees a fee awaiting their approval, Admin sees it was raised.
+    log({ id: Date.now(), orderId: order.id, actor: 'Resolute', action: `Additional fee of ${money(charge.amount)} requested on ${order.id} — awaiting approval`, time: 'Just now', type: 'status', audience: 'all' })
     return next
   }
 
