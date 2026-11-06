@@ -1,8 +1,9 @@
 // Shared primitives for the Typer fulfillment screen.
 // Dense, dark-olive, olive-green accent. Tabular numerals for data fields.
-import React, { useRef, useEffect, useCallback } from 'react'
+import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Minus, X, GripVertical, ChevronUp, ChevronDown } from 'lucide-react'
+import { formatDate, parseMdyToIso } from '../../../data/mockData'
 
 export const T = {
   text:        '#12284C',
@@ -80,15 +81,53 @@ export function TextArea({ value, onChange, placeholder, rows = 3, className = '
   )
 }
 
+// A plain date field (type='date') is entered and shown as Month-Day-Year
+// everywhere, independent of the browser locale — a native <input type="date">
+// renders in the OS locale, which is exactly why the fulfillment form wasn't
+// showing MM-DD-YYYY. The value stored/emitted stays ISO (YYYY-MM-DD), so every
+// downstream consumer (previews, the commitment PDF, persistence) is unchanged.
+// datetime-local keeps the native control (its MDY readout sits beside it).
 export function DateInput({ value, onChange, type = 'date', className = '', ...rest }) {
+  if (type !== 'date') {
+    return (
+      <input
+        type={type}
+        value={value ?? ''}
+        onChange={e => onChange?.(e.target.value)}
+        onFocus={focusOn} onBlur={focusOff}
+        className={`px-2.5 py-1.5 text-[13px] tabular-nums transition-colors ${className}`}
+        style={{ ...baseInput, colorScheme: 'light' }}
+        {...rest}
+      />
+    )
+  }
+  return <MdyDateInput value={value} onChange={onChange} className={className} {...rest} />
+}
+
+function MdyDateInput({ value, onChange, className = '', ...rest }) {
+  const [text, setText] = useState(() => formatDate(value))
+  const editing = useRef(false)
+  // Reflect external changes (e.g. an auto-filled date) only while the user is not
+  // typing, so their keystrokes are never stomped mid-entry.
+  useEffect(() => { if (!editing.current) setText(formatDate(value)) }, [value])
+  const handle = (raw) => {
+    setText(raw)
+    const t = raw.trim()
+    if (t === '') { onChange?.(''); return }
+    const iso = parseMdyToIso(t)
+    if (iso) onChange?.(iso)            // emit only a complete, real date
+  }
   return (
     <input
-      type={type}
-      value={value ?? ''}
-      onChange={e => onChange?.(e.target.value)}
-      onFocus={focusOn} onBlur={focusOff}
+      value={text}
+      onChange={e => handle(e.target.value)}
+      onFocus={e => { editing.current = true; focusOn(e) }}
+      onBlur={e => { editing.current = false; setText(formatDate(value)); focusOff(e) }}
+      placeholder="MM-DD-YYYY"
+      inputMode="numeric"
+      maxLength={10}
       className={`px-2.5 py-1.5 text-[13px] tabular-nums transition-colors ${className}`}
-      style={{ ...baseInput, colorScheme: 'light' }}
+      style={{ ...baseInput }}
       {...rest}
     />
   )

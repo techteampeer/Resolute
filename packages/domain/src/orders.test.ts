@@ -3,7 +3,7 @@ import {
   ROLE_SEQUENCE, nextRoleFor, roleAfter, statusForRole, progressFor, orderProgress, isOrderComplete,
   activeCountForUser, workloadWeight, lineItemsOf, lineSubId,
   stagePlanOf, hasStagePlan, ownerForStage, nextOwnerFor, isSingleSeatingPlan, stageSequenceFor,
-  formatDate,
+  formatDate, parseMdyToIso,
 } from './pipeline'
 import {
   applyAssign, applyCompleteStep, applyReturnToAdmin, applyClientCancel, applyResolveCancel,
@@ -417,5 +417,30 @@ describe('formatDate (MM-DD-YYYY display)', () => {
     expect(formatDate(null)).toBe('')
     expect(formatDate(undefined)).toBe('')
     expect(formatDate('not a date')).toBe('')
+  })
+})
+
+describe('parseMdyToIso (MM-DD-YYYY data entry → ISO)', () => {
+  it('parses MM-DD-YYYY to an ISO date', () => {
+    expect(parseMdyToIso('06-09-2026')).toBe('2026-06-09')
+  })
+  it('accepts the separators people type, plain 8 digits, and 2-digit years', () => {
+    expect(parseMdyToIso('6/9/2026')).toBe('2026-06-09')
+    expect(parseMdyToIso('06.09.2026')).toBe('2026-06-09')
+    expect(parseMdyToIso('06092026')).toBe('2026-06-09')
+    expect(parseMdyToIso('6-9-26')).toBe('2026-06-09')
+    expect(parseMdyToIso('  06-09-2026  ')).toBe('2026-06-09')
+  })
+  it('rejects impossible or incomplete dates (so a half-typed field emits nothing)', () => {
+    expect(parseMdyToIso('02-31-2026')).toBeNull()   // Feb 31 doesn't exist
+    expect(parseMdyToIso('13-01-2026')).toBeNull()   // month 13
+    expect(parseMdyToIso('06-09')).toBeNull()        // incomplete
+    expect(parseMdyToIso('')).toBeNull()
+    expect(parseMdyToIso(null)).toBeNull()
+    expect(parseMdyToIso('abc')).toBeNull()
+  })
+  it('round-trips with formatDate', () => {
+    expect(formatDate(parseMdyToIso('11-04-2026'))).toBe('11-04-2026')
+    expect(parseMdyToIso(formatDate('2026-11-04'))).toBe('2026-11-04')
   })
 })

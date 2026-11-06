@@ -230,3 +230,23 @@ export const formatDate = (iso: string | null | undefined): string => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso))
   return m ? `${m[2]}-${m[3]}-${m[1]}` : ''
 }
+
+// The inverse of formatDate for data entry: parse a user-typed Month-Day-Year
+// string into a stored ISO date (YYYY-MM-DD), or null when it isn't a complete,
+// real date. Forgiving of the separators people actually type (-, /, ., space)
+// and of 8-digit MMDDYYYY, and of a 2-digit year (→ 20YY). Rejects impossible
+// dates (02-31) by round-tripping through Date. Everything stores ISO; only the
+// on-screen field is MDY, so no downstream consumer changes.
+export const parseMdyToIso = (input: string | null | undefined): string | null => {
+  const s = String(input ?? '').trim()
+  if (!s) return null
+  const m = /^(\d{1,2})[-/. ]+(\d{1,2})[-/. ]+(\d{2,4})$/.exec(s) || /^(\d{2})(\d{2})(\d{4})$/.exec(s)
+  if (!m) return null
+  const mm = +m[1], dd = +m[2]
+  let yy = +m[3]
+  if (yy < 100) yy += 2000
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null
+  const iso = `${String(yy).padStart(4, '0')}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`
+  const d = new Date(iso + 'T00:00:00')
+  return isNaN(d.getTime()) || d.getMonth() + 1 !== mm || d.getDate() !== dd ? null : iso
+}
