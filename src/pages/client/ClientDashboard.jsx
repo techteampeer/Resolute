@@ -16,6 +16,7 @@ import SubOrders from '../../components/SubOrders'
 import { openDocument } from '../../lib/backend'
 import { clientVisibleDocs } from '../../lib/orderDocs'
 import OrderCharges from '../../components/OrderCharges'
+import ChargeApprovalChip from '../../components/ChargeApprovalChip'
 import { useOrders } from '../../context/OrderContext'
 import { useAuth } from '../../context/AuthContext'
 import { useSupport } from '../../context/SupportContext'
@@ -209,7 +210,10 @@ function OrderDetailPage() {
             <div className="font-bold text-xl" style={{ color:'#12284C' }}>{order.type}</div>
             <div className="text-xs" style={{ color:'#5C6E8C' }}>{order.county}, {order.state} · placed {formatDate(order.created)}</div>
           </div>
-          <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background:`${stage.color}1e`, color:stage.color }}>{stage.label}</span>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background:`${stage.color}1e`, color:stage.color }}>{stage.label}</span>
+            <ChargeApprovalChip order={order} />
+          </div>
         </div>
         {/* Stage tracker — detail page only; list cards (TrackOrder) stay compact.
             Steps follow clientStage().idx; overlays (On Hold, Clarification,
@@ -488,7 +492,7 @@ function ClientHome() {
                 onMouseOver={e => e.currentTarget.style.background = 'rgba(18,40,76,0.03)'}
                 onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
                 <span className="font-mono text-xs font-semibold flex-shrink-0" style={{ color:ROLE_COLOR }}>{o.id}</span>
-                <ClientStatusBadge order={o} />
+                <ClientStatusBadge order={o} /><ChargeApprovalChip order={o} compact />
                 <span className="text-xs flex-1 truncate" style={{ color:'#5C6E8C' }}>
                   {last
                     ? `${last.from === 'support' ? 'Reply from Resolute' : 'You'}: ${(last.text || (last.attachment ? `📎 ${last.attachment.name}` : '')).slice(0, 72)}`
@@ -699,7 +703,11 @@ const clientOrderColumns = [
       )}
     </span>
   ) },
-  { header: 'Status', render: o => <ClientStatusBadge order={o} />, sortValue: statusRank },
+  { header: 'Status', render: o => (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+      <ClientStatusBadge order={o} /><ChargeApprovalChip order={o} compact />
+    </span>
+  ), sortValue: statusRank },
   { header: 'File #', render: o => <span style={{ fontFamily:'monospace', fontSize:11.5 }}>{o.clientFileNo || '—'}</span> },
   { header: 'Product', render: o => o.type },
   { header: 'Property', render: o => (
