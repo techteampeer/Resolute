@@ -53,7 +53,7 @@ export function JudgmentsLiens({ items, onChange }) {
                 <Label>Amount</Label>
                 {j.amountNA
                   ? <div className="px-2.5 py-1.5 text-[13px] rounded-md" style={{ background: T.card, border: `1px solid ${T.border}`, color: T.dim }}>Not Applicable</div>
-                  : <MoneyInput value={j.amount} onChange={v => set(j.id, { amount: v })} />}
+                  : <MoneyInput value={j.amount} onChange={v => set(j.id, { amount: v })} symbol={false} />}
                 <label className="flex items-center gap-1.5 mt-1 text-[11px] cursor-pointer select-none" style={{ color: T.dim }}>
                   <input type="checkbox" checked={!!j.amountNA}
                     onChange={e => set(j.id, e.target.checked ? { amountNA: true, amount: '' } : { amountNA: false })} />
