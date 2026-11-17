@@ -358,9 +358,17 @@ export function OrderProvider({ children }) {
   // resolver flips the one pending charge for the optimistic local update.
   // Approving is consent-to-bill (the amount joins invoiceTotal) — NOT a payment.
   const resolveCharge = (order, chargeId, decision) => {
+    const charge = (order.workflow?.pendingCharges || []).find(c => c.id === chargeId)
     const next = { ...order, workflow: { ...order.workflow, pendingCharges: resolveChargeIn(order, chargeId, decision) } }
     setOrders(os => os.map(o => (o.id === order.id ? next : o)))
     if (isSupabaseConfigured) resolveOrderCharge(order.id, chargeId, decision).catch(() => {})
+    // Supabase mode gets the durable audit line — and the admin tier's email +
+    // in-app feed entry — from the RPC's order_events insert. Mock mode has no DB,
+    // so record it locally so the in-app Activity/bell still reflects the decision.
+    else setActivityLog(a => [{
+      id: Date.now(), orderId: order.id, actor: 'Client', type: 'status', time: 'Just now',
+      action: `Client ${decision} an additional fee of ${money(charge?.amount || 0)} on ${order.id}`,
+    }, ...a])
     return next
   }
 

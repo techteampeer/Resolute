@@ -91,6 +91,29 @@ export const TYPES = {
     quote: (p) => p.body,
     cta: 'Read and reply',
   },
+  // A client approved/declined an additional fee an admin or the typer raised.
+  // p.action already carries the amount ("Client approved an additional fee of
+  // $45.00 on RTS-…"), so the lead reuses it; the subject stays masked via
+  // clientLabel for consistency (only admins receive these types anyway).
+  'charge.approved': {
+    label: 'Additional fee approved',
+    accent: '#15803D',
+    subject: (p, role) => `Fee approved · ${orderRef(p)} · ${clientLabel(p, role)}`,
+    headline: () => 'Client approved an additional fee',
+    lead: (p) =>
+      `${p.action || 'A client approved an additional fee'}. It is added to the order invoice — `
+      + 'this is consent to bill, not a payment.',
+    cta: 'Open the order',
+  },
+  'charge.declined': {
+    label: 'Additional fee declined',
+    accent: '#B45309',
+    subject: (p, role) => `Fee declined · ${orderRef(p)} · ${clientLabel(p, role)}`,
+    headline: () => 'Client declined an additional fee',
+    lead: (p) =>
+      `${p.action || 'A client declined an additional fee'}. It will not be billed; the order is unaffected.`,
+    cta: 'Open the order',
+  },
 }
 
 export const typeOf = (key) => TYPES[key] || {
