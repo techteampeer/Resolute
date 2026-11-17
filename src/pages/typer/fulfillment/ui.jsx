@@ -134,16 +134,19 @@ function MdyDateInput({ value, onChange, className = '', ...rest }) {
 }
 
 // Currency input — formats nothing live, stores raw number string.
-export function MoneyInput({ value, onChange, ...rest }) {
+// `symbol` (default true) renders the leading $; pass symbol={false} for fields
+// where a currency glyph shouldn't be assumed (e.g. judgment amounts, which may
+// be a bare figure or marked Not Applicable).
+export function MoneyInput({ value, onChange, symbol = true, ...rest }) {
   return (
     <div className="relative">
-      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] pointer-events-none" style={{ color: T.faint }}>$</span>
+      {symbol && <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] pointer-events-none" style={{ color: T.faint }}>$</span>}
       <input
         value={value ?? ''}
         onChange={e => onChange?.(e.target.value.replace(/[^0-9.]/g, ''))}
         inputMode="decimal"
         onFocus={focusOn} onBlur={focusOff}
-        className="w-full pl-6 pr-2.5 py-1.5 text-[13px] tabular-nums transition-colors"
+        className={`w-full ${symbol ? 'pl-6' : 'pl-2.5'} pr-2.5 py-1.5 text-[13px] tabular-nums transition-colors`}
         style={{ ...baseInput }}
         {...rest}
       />
