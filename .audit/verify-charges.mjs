@@ -93,5 +93,33 @@ check('admin can raise a fee on any order', asAdmin.status < 400, `HTTP ${asAdmi
 
 sql(`delete from orders where id = '${SOID}'`)
 
+console.log('\n── resolution notifications (approved / declined → admin tier) ──')
+// A dedicated client-owned order so we can assert the audit row + the enqueued
+// notification without touching real demo history. Cleaned up fully below.
+const CC = (await as('client', '/orders?select=client_code&limit=1')).body?.[0]?.client_code
+const ROID = 'RTS-AUDIT-CHGRES'
+const wipe = () => { sql(`delete from notification_outbox where order_id = '${ROID}'`); sql(`delete from order_events where order_id = '${ROID}'`); sql(`delete from orders where id = '${ROID}'`) }
+wipe()
+sql(`insert into orders (id, client_code, state, county, type, status, assigned_to, progress, created, workflow)
+     values ('${ROID}', '${CC}', 'FL', 'Res', 'Full Search', 'received', 'admin', 5, current_date,
+       '{"pendingCharges":[{"id":"r1","label":"extra county","amount":45,"status":"pending"},{"id":"r2","label":"rush docs","amount":30,"status":"pending"}]}'::jsonb)`)
+
+// client APPROVES r1 → durable order_event + a charge.approved notification to admins
+await rpc('client', 'resolve_order_charge', { p_order_id: ROID, p_charge_id: 'r1', p_decision: 'approved' })
+const apprEv = sqlJson(`select action from order_events where order_id='${ROID}' and action ilike '%approved an additional fee%'`)
+check('approval writes a durable order_events audit row', apprEv.length === 1, JSON.stringify(apprEv[0] || {}))
+check('audit row carries the amount', (apprEv[0]?.action || '').includes('$45.00'), apprEv[0]?.action)
+const apprOut = sqlJson(`select distinct recipient_role from notification_outbox where order_id='${ROID}' and type_key='charge.approved'`)
+check('approval enqueues charge.approved to the admin tier', apprOut.length >= 1 && apprOut.every(r => r.recipient_role === 'admin'), JSON.stringify(apprOut))
+
+// client DECLINES r2 → charge.declined notification
+await rpc('client', 'resolve_order_charge', { p_order_id: ROID, p_charge_id: 'r2', p_decision: 'declined' })
+check('decline enqueues charge.declined to the admin tier',
+  sqlJson(`select 1 from notification_outbox where order_id='${ROID}' and type_key='charge.declined' limit 1`).length === 1)
+// the client (a non-admin) is never a recipient of these staff types
+check('no charge notification targets the client role',
+  sqlJson(`select 1 from notification_outbox where order_id='${ROID}' and type_key like 'charge.%' and recipient_role='client' limit 1`).length === 0)
+wipe()
+
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed')
 process.exit(failures ? 1 : 0)
