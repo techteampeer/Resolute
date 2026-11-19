@@ -102,7 +102,9 @@ try {
   check('raised charge is pending with its amount', (r3.body?.workflow?.pendingCharges || []).some((c) => c.status === 'pending' && Number(c.amount) === 60))
   const typEv = await one(`select action, audience from public.order_events where order_id=$1 and action ilike '%requested on ${TYP}%'`, [TYP])
   check('raise writes a client-visible activity row', typEv.audience === 'all', JSON.stringify(typEv))
-  check('raise sends NO notification (in-portal only)', (await one(`select count(*)::int n from public.notification_outbox where order_id=$1`, [TYP])).n === 0)
+  // Raising a fee is in-portal only: it enqueues NO charge.* email (the order's
+  // own order.new on insert is separate and expected). Only resolving notifies.
+  check('raise enqueues no charge notification (in-portal only)', (await one(`select count(*)::int n from public.notification_outbox where order_id=$1 and type_key like 'charge.%'`, [TYP])).n === 0)
 
   const r4 = await call(admin, 'post', `/api/orders/${OWN}/charges`, { label: 'rush copy', amount: 25 })
   check('admin raises on any order (201)', r4.status === 201, `HTTP ${r4.status}`)

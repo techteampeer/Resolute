@@ -16,14 +16,12 @@ import { HttpError } from '../errors.js'
 // Mirrors the Supabase path: append to workflow.pendingCharges + a durable,
 // client-visible order_events line. Bills nothing until the client approves.
 export async function raiseCharge(client, orderId, { label, amount, user }) {
-  // Lock the row so two concurrent raises append in series (no lost update).
-  // RLS SELECT (orders_read = is_staff() or owner) decides visibility: a row the
-  // caller may not even see returns nothing → 404.
-  const locked = await client.query(
-    'select workflow from public.orders where id = $1 for update',
-    [orderId],
-  )
-  if (!locked.rows.length) throw new HttpError(404, 'order not found')
+  // Visibility under the SELECT policy (orders_read = is_staff() or owner) → a row
+  // the caller cannot even see is 404. A plain SELECT, not FOR UPDATE: FOR UPDATE
+  // additionally filters rows that fail the UPDATE policy, which would turn a
+  // non-owner production user's raise into a 404 instead of the 403 it deserves.
+  const vis = await client.query('select 1 from public.orders where id = $1', [orderId])
+  if (!vis.rows.length) throw new HttpError(404, 'order not found')
 
   // The staff member's name for the staff-only "Raised by" line. The client view
   // always masks this to "Added by Resolute" (OrderCharges), so no name reaches a
@@ -33,18 +31,19 @@ export async function raiseCharge(client, orderId, { label, amount, user }) {
   )
   const raisedBy = who.rows[0]?.name || 'Resolute'
   const raisedByRole = who.rows[0]?.role || user.role
-
   const charge = buildPendingCharge({ label, amount, raisedBy, raisedByRole })
-  const wf = locked.rows[0].workflow || {}
-  const pending = Array.isArray(wf.pendingCharges) ? wf.pendingCharges : []
-  const next = { ...wf, pendingCharges: [...pending, charge] }
 
-  // RLS UPDATE is the real guard: Admin writes via orders_write_admin; a
-  // production user only via orders_update_assigned (owner-scoped). A non-owner
-  // user can SELECT the row (is_staff) but this UPDATE matches 0 rows → 403.
+  // Atomic append under the UPDATE policy (the real guard): Admin writes via
+  // orders_write_admin, a production user only via orders_update_assigned
+  // (owner-scoped). The jsonb `||` concatenates onto the CURRENT committed array
+  // under the UPDATE's own row lock, so two concurrent raises both land (no
+  // read-modify-write lost update). A non-owner user matches 0 rows → 403.
   const upd = await client.query(
-    'update public.orders set workflow = $2::jsonb where id = $1',
-    [orderId, JSON.stringify(next)],
+    `update public.orders
+        set workflow = jsonb_set(coalesce(workflow, '{}'::jsonb), '{pendingCharges}',
+              coalesce(workflow->'pendingCharges', '[]'::jsonb) || $2::jsonb, true)
+      where id = $1`,
+    [orderId, JSON.stringify([charge])],
   )
   if (upd.rowCount === 0) throw new HttpError(403, 'you cannot modify this order')
 
