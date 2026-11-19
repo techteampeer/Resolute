@@ -14,6 +14,20 @@ Verify every new feature against these constraints before implementing.
   Abstract Vercel/Supabase-specific code (request/response handlers, `waitUntil`,
   rewrites, the `auth.uid()` / JWT-claims coupling) away from core logic so
   handlers are thin adapters over portable modules (`api/_lib/`, `services/`).
+- **Deployment reality (per the 18 Nov 2026 integration review — see ADR 0003):**
+  production ALREADY runs on GCP (Cloud Run `resolute-portal-00010-jay`), ahead of
+  this repo. `main` here is the **Vercel/Supabase lineage** and is NOT what is
+  deployed. The live GCP backend — the Firebase/Cloud SQL provider and the
+  `services/api` charge/company/document routes — lives in the deployed GCP
+  snapshot, NOT in this repo; the in-repo `src/lib/backends/gcp.js` is a stub
+  (`isSupabaseConfigured = false`, so a `VITE_BACKEND=gcp` build runs as mock).
+  So a feature added on the Supabase provider is **not production-real** until a
+  GCP-native backend lands for it (an authenticated `services/api` route + a Cloud
+  SQL transaction with role/ownership checks) AND the GCP backend is committed
+  here. New backend work must ship GCP parity and **fail safe** on the GCP
+  provider (surface a clear not-wired error, never fake success). NEVER run the
+  `supabase/migrations/*` SQL against the live Cloud SQL (`resolute_live`) — port
+  the behaviour as GCP-native code.
 
 ## AI & automation — BLOCKED until post-GCP migration
 
