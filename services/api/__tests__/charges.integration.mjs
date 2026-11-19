@@ -57,6 +57,9 @@ const wipe = async () => {
 const approvedTotal = (charges) =>
   (charges || []).filter((c) => c.status === 'approved').reduce((s, c) => s + Number(c.amount || 0), 0)
 const workflowOf = async (id) => (await one('select workflow from public.orders where id = $1', [id])).workflow || {}
+// Field-wise, because jsonb does not preserve object key order (a stringify
+// compare would spuriously fail even when payment is byte-for-byte untouched).
+const paymentUntouched = (p) => !!p && p.status === 'unpaid' && p.method === 'ach' && Object.keys(p).length === 2
 
 try {
   // Resolve the demo identities (seed-provisioned; profiles only, no auth.users).
@@ -124,7 +127,7 @@ try {
   check('owner client approves (200)', v2.status === 200, `HTTP ${v2.status}`)
   const approvedChg = (v2.body?.workflow?.pendingCharges || []).find((c) => c.id === OWNCHG)
   check('charge flipped to approved, amount untouched', approvedChg?.status === 'approved' && Number(approvedChg?.amount) === 25, JSON.stringify(approvedChg))
-  check('payment object untouched by approval', JSON.stringify((await workflowOf(OWN)).payment) === JSON.stringify({ status: 'unpaid', method: 'ach' }))
+  check('payment object untouched by approval', paymentUntouched((await workflowOf(OWN)).payment))
   check('re-resolving an approved charge → 409 (replay guard)', (await call(client, 'post', `/api/orders/${OWN}/charges/${OWNCHG}/resolve`, { decision: 'declined' })).status === 409)
 
   console.log('\n── notifications (admin tier only, never the client) ──')
@@ -153,7 +156,7 @@ try {
   check('the charge is approved exactly once', finalCharges.filter((c) => c.id === OWNCHG3 && c.status === 'approved').length === 1)
   // Invoice counts each approved charge once and excludes the declined one: 25 + 40.
   check('approved-charges total is exactly-once (25 + 40, decline excluded)', approvedTotal(finalCharges) === 65, `total=${approvedTotal(finalCharges)}`)
-  check('payment still untouched after all resolves', JSON.stringify((await workflowOf(OWN)).payment) === JSON.stringify({ status: 'unpaid', method: 'ach' }))
+  check('payment still untouched after all resolves', paymentUntouched((await workflowOf(OWN)).payment))
 
   await wipe()
 } catch (err) {
