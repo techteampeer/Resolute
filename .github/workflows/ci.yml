@@ -62,3 +62,17 @@ jobs:
         run: supabase start
       - name: Order-integrity + privilege-guard audit (RLS, real JWTs)
         run: npm run test:integrity
+      # B1 GCP charge API: supertest → the real chargesRouter → withUserClaims →
+      # RLS + resolve_order_charge, against the running stack's Postgres. Needs the
+      # service's own deps (pg/express/supertest), which the root install omits.
+      - name: GCP charge API integration (Cloud SQL parity)
+        run: npm install --prefix services/api --no-audit --no-fund
+      - name: Run GCP charge API integration
+        working-directory: services/api
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 54322
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: postgres
+        run: npm run test:integration

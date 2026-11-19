@@ -3,6 +3,7 @@
 import express from 'express'
 import { verifyBearer, resolveAppUser } from './auth.js'
 import { ordersRouter } from './routes/orders.js'
+import { chargesRouter } from './routes/charges.js'
 
 export function createServer() {
   const app = express()
@@ -26,6 +27,10 @@ export function createServer() {
     }
   })
 
+  // Charges nest under an order. Mounted before the orders router so the nested
+  // POSTs resolve here (mergeParams exposes :orderId); both sit under the /api
+  // auth gate above, so req.user is set.
+  app.use('/api/orders/:orderId/charges', chargesRouter)
   app.use('/api/orders', ordersRouter)
 
   // Error handler. Log the real reason server-side; never leak internals to the

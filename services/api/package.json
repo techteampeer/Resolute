@@ -6,11 +6,15 @@
   "description": "Cloud Run data-API tier (ADR 0002, B2). Replaces Supabase PostgREST: authenticates the Firebase token, injects per-transaction JWT claims, and runs RLS-enforced queries as the non-superuser app role.",
   "engines": { "node": ">=20" },
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test:integration": "node __tests__/charges.integration.mjs"
   },
   "dependencies": {
     "express": "^4.21.2",
     "firebase-admin": "^12.7.0",
     "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0"
   }
 }
