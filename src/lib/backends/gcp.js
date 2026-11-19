@@ -59,7 +59,10 @@ export async function clearNotificationPreference() { return writeErr('B2') }
 
 // ── Clients ───────────────────────────────────────────────────────────────────
 export async function fetchClients() { return null }
-export async function createAdminClient() { return null }
+// Fail safe, not false success: a silent `null` here read as "no client matched",
+// which would mislead an admin on a wired GCP build (ADR 0003 §3). Throw like the
+// other unsupported writes until a GCP-native match-or-create endpoint lands (B2).
+export async function createAdminClient() { notImpl('createAdminClient') }
 export async function fetchClientTerms() { return null }
 export async function saveClientTerms() { /* side-effect write; no-op until B2 */ }
 
