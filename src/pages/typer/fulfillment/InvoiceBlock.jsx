@@ -23,7 +23,7 @@ function Row({ li, sectionKey, locked, setRow, rmRow }) {
           list={locked ? undefined : 'charge-types'} className={locked ? 'opacity-70' : ''} />
         {locked && <Lock className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: T.dim }} />}
       </div>
-      <MoneyInput value={li.costPerUnit} onChange={v => setRow(sectionKey, li.id, { costPerUnit: v })} disabled={locked} />
+      <MoneyInput value={li.costPerUnit} onChange={v => setRow(sectionKey, li.id, { costPerUnit: v })} symbol={false} disabled={locked} />
       <TextInput value={li.units} onChange={v => setRow(sectionKey, li.id, { units: v.replace(/[^0-9]/g, '') })} numeric disabled={locked} />
       <div className="text-[13px] font-semibold tabular-nums text-right pr-1" style={{ color: li.discount ? T.warn : T.text }}>
         {li.discount ? '−' : ''}{fmtMoney(lineTotal(li))}
