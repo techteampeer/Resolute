@@ -4,6 +4,7 @@ import express from 'express'
 import { verifyBearer, resolveAppUser } from './auth.js'
 import { ordersRouter } from './routes/orders.js'
 import { chargesRouter } from './routes/charges.js'
+import { clientsRouter } from './routes/clients.js'
 
 export function createServer() {
   const app = express()
@@ -32,6 +33,7 @@ export function createServer() {
   // auth gate above, so req.user is set.
   app.use('/api/orders/:orderId/charges', chargesRouter)
   app.use('/api/orders', ordersRouter)
+  app.use('/api/clients', clientsRouter)
 
   // Error handler. Log the real reason server-side; never leak internals to the
   // client (the Supabase provider learned this the hard way — see refusalText).

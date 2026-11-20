@@ -102,10 +102,16 @@ export async function clearNotificationPreference() { return writeErr('B2') }
 
 // ── Clients ───────────────────────────────────────────────────────────────────
 export async function fetchClients() { return null }
-// Fail safe, not false success: a silent `null` here read as "no client matched",
-// which would mislead an admin on a wired GCP build (ADR 0003 §3). Throw like the
-// other unsupported writes until a GCP-native match-or-create endpoint lands (B2).
-export async function createAdminClient() { notImpl('createAdminClient') }
+// B2 (wired). Admin match-or-create a client company by name. Returns the
+// resolver's { status: 'created'|'matched'|'ambiguous', code?, name?, codes? }
+// — created|matched|ambiguous are all 2xx so the UI branches on status; a 403
+// (not admin) / 422 (empty name) throws fail-safe via apiFetch. Inert on a mock
+// build (useClients only calls this when isSupabaseConfigured).
+export async function createAdminClient(company, contact, email) {
+  return apiFetch('/api/clients', {
+    method: 'POST', body: { company, contact: contact || null, email: email || null },
+  })
+}
 export async function fetchClientTerms() { return null }
 export async function saveClientTerms() { /* side-effect write; no-op until B2 */ }
 

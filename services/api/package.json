@@ -7,7 +7,7 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node src/index.js",
-    "test:integration": "node __tests__/charges.integration.mjs"
+    "test:integration": "node __tests__/charges.integration.mjs && node __tests__/clients.integration.mjs"
   },
   "dependencies": {
     "express": "^4.21.2",
