@@ -326,3 +326,47 @@ Port the assertions already proven in `.audit/verify-charges.mjs` — they map 1
 Est. ~2–3 focused days for an engineer with the GCP codebase + a disposable DB;
 the Supabase reference implementation (#148/#153, `verify-charges.mjs`) is the
 oracle for behavior and tests.
+
+---
+
+## 13. Implementation status (what landed in this repo)
+
+**Done (items 2, 3, 5 of §12):**
+- `services/api/src/charges.js` — pure domain mirror of `money.ts` (bounds,
+  `buildPendingCharge`, `validateRaise`/`validateDecision`, the raise activity
+  string). `errors.js` — `HttpError` the routes map to a status.
+- `services/api/src/repositories/charges.js` — `raiseCharge` (row-locked append +
+  client-visible `order_events` line, RLS the real guard) and `resolveCharge`
+  (ownership/pending precheck for precise 404/409, then the tested
+  `resolve_order_charge` verbatim, with its concurrent "no pending" mapped to 409).
+- `services/api/src/routes/charges.js` + mount in `server.js` — the two routes,
+  role pre-checks, status mapping (201/200/403/404/409/422).
+- `src/lib/backends/gcp.js` — `resolveOrderCharge` wired (was `notImpl`) and
+  `raiseOrderCharge` added, both through a fail-safe `apiFetch` (throws the
+  server's message on non-2xx; unauthenticated until B3, so it 401s rather than
+  faking success). Inert on a mock build.
+- Tests: `__tests__/charges.test.js` (pure, runs in the root vitest/CI build job)
+  + `__tests__/charges.integration.mjs` — supertest → the real router →
+  `withUserClaims` → RLS + `resolve_order_charge` + notifications, over a live
+  Postgres, wired into the CI `db-integrity` lane. Covers the full §10 matrix.
+
+**Deliberate scope deltas from the spec above (so a later engineer isn't surprised):**
+- *Notifications (§6):* in this repo the resolve path keeps the **trigger-driven**
+  enqueue — `resolve_order_charge` writes the `order_events` row and the existing
+  `notify_on_order_event` trigger fans it out, exactly as on Supabase, which is
+  what the integration test asserts. The spec's **explicit-enqueue + disable the
+  trigger** is a `resolute_live` *deployment* choice (item 1, B4): it changes the
+  DB, not this Node code, since `resolve_order_charge` emits the event either way.
+- *Frontend (§9):* `OrderContext` and the `backend.js` contract are **unchanged**.
+  `resolveOrderCharge` already flows through the seam (guarded by
+  `isSupabaseConfigured`, so inert on GCP until B3). Wiring the raise path to
+  `raiseOrderCharge` and adding it to the contract is left to the B3 provider
+  cutover, to avoid altering the shipped, tested Supabase raise path now.
+- *Integration test:* drives the **repository + router via `withUserClaims`**
+  (the authoritative RLS path) rather than `resolute_live`; it connects as the
+  superuser but every query runs after `SET ROLE authenticated`, so RLS is in
+  force. A zero-traffic Cloud Run preview run (§11.3) remains the pre-cutover gate.
+
+**Still open (unchanged):** §12 items 1 (reviewed `resolute_live` migration), 4
+(outbox drainer as a Cloud Run Job + Scheduler), 6 (preview verification +
+promotion gate). These are env-gated / cost-approval steps, not in-repo code.

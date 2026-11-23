@@ -3,6 +3,10 @@
 import express from 'express'
 import { verifyBearer, resolveAppUser } from './auth.js'
 import { ordersRouter } from './routes/orders.js'
+import { chargesRouter } from './routes/charges.js'
+import { clientsRouter } from './routes/clients.js'
+import { adminUsersRouter } from './routes/adminUsers.js'
+import { documentsRouter } from './routes/documents.js'
 
 export function createServer() {
   const app = express()
@@ -26,7 +30,14 @@ export function createServer() {
     }
   })
 
+  // Charges nest under an order. Mounted before the orders router so the nested
+  // POSTs resolve here (mergeParams exposes :orderId); both sit under the /api
+  // auth gate above, so req.user is set.
+  app.use('/api/orders/:orderId/charges', chargesRouter)
+  app.use('/api/orders/:orderId/documents', documentsRouter)
   app.use('/api/orders', ordersRouter)
+  app.use('/api/clients', clientsRouter)
+  app.use('/api/admin/users', adminUsersRouter)
 
   // Error handler. Log the real reason server-side; never leak internals to the
   // client (the Supabase provider learned this the hard way — see refusalText).

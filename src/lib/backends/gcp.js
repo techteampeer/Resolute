@@ -16,6 +16,28 @@ const writeErr = (phase) => ({ ok: false, error: `GCP backend not wired yet (ADR
 const notImpl = (fn) => { throw new Error(`GCP backend not implemented yet: ${fn} — see docs/adr/0002 (B2+)`) }
 const inertUnsub = () => () => {}
 
+// The Cloud Run data API base (B2). Unset in a mock build, so apiFetch has no
+// host and every call fails safe (ADR 0003 §3) rather than silently succeeding.
+const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '')
+
+// A fetch to the data API that fails SAFE: it attaches the Firebase token when
+// one exists (getAccessToken is null until B3, so the request goes out
+// unauthenticated and the API answers 401 — never a fake success), and throws
+// the server's own error message on any non-2xx so the caller rolls back.
+async function apiFetch(path, { method = 'GET', body } = {}) {
+  const token = await getAccessToken()
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const text = await res.text()
+  let json = null
+  try { json = text ? JSON.parse(text) : null } catch { /* non-JSON body */ }
+  if (!res.ok) throw new Error((json && json.error) || `request failed (${res.status})`)
+  return json
+}
+
 // Mirrors supabase.js's flag. False here means "the active (GCP) backend is not
 // configured", so every isSupabaseConfigured guard in the app falls back to mock
 // until the real provider lands. (Renaming this to isBackendConfigured app-wide
@@ -44,7 +66,28 @@ export async function insertSupportMessage() { notImpl('insertSupportMessage') }
 export async function markOrderPayment() { notImpl('markOrderPayment') }
 export async function cancelOrderRpc() { notImpl('cancelOrderRpc') }
 export async function respondClarificationRpc() { notImpl('respondClarificationRpc') }
-export async function resolveOrderCharge() { notImpl('resolveOrderCharge') }
+// B1 (wired). The owning client approves/declines a pending charge; the server
+// re-checks ownership under RLS and reuses resolve_order_charge. Returns the
+// fresh, app-shaped order so OrderContext replaces local state. Inert on a mock
+// build (OrderContext only calls this when isSupabaseConfigured) and fail-safe
+// (apiFetch throws the server's error) once B3 activates this provider.
+export async function resolveOrderCharge(orderId, chargeId, decision) {
+  return apiFetch(
+    `/api/orders/${encodeURIComponent(orderId)}/charges/${encodeURIComponent(chargeId)}/resolve`,
+    { method: 'POST', body: { decision } },
+  )
+}
+// B1 (wired). Admin / the owning production user raises a fee for approval. The
+// server generates the id and stamps raisedBy/At, so only label + amount go out.
+// Not yet in the backend.js contract or OrderContext's raise path — that wiring
+// lands with the B3 provider cutover (see docs/specs/B1 §9); exported now so the
+// route has its client the moment the provider goes live.
+export async function raiseOrderCharge(orderId, charge) {
+  return apiFetch(
+    `/api/orders/${encodeURIComponent(orderId)}/charges`,
+    { method: 'POST', body: { label: charge?.label, amount: charge?.amount } },
+  )
+}
 export function subscribeSupport() { return inertUnsub() }
 
 // ── Fulfillment ───────────────────────────────────────────────────────────────
@@ -59,10 +102,16 @@ export async function clearNotificationPreference() { return writeErr('B2') }
 
 // ── Clients ───────────────────────────────────────────────────────────────────
 export async function fetchClients() { return null }
-// Fail safe, not false success: a silent `null` here read as "no client matched",
-// which would mislead an admin on a wired GCP build (ADR 0003 §3). Throw like the
-// other unsupported writes until a GCP-native match-or-create endpoint lands (B2).
-export async function createAdminClient() { notImpl('createAdminClient') }
+// B2 (wired). Admin match-or-create a client company by name. Returns the
+// resolver's { status: 'created'|'matched'|'ambiguous', code?, name?, codes? }
+// — created|matched|ambiguous are all 2xx so the UI branches on status; a 403
+// (not admin) / 422 (empty name) throws fail-safe via apiFetch. Inert on a mock
+// build (useClients only calls this when isSupabaseConfigured).
+export async function createAdminClient(company, contact, email) {
+  return apiFetch('/api/clients', {
+    method: 'POST', body: { company, contact: contact || null, email: email || null },
+  })
+}
 export async function fetchClientTerms() { return null }
 export async function saveClientTerms() { /* side-effect write; no-op until B2 */ }
 
