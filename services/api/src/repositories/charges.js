@@ -59,13 +59,16 @@ export async function raiseCharge(client, orderId, { label, amount, user }) {
   return getOrder(client, orderId)
 }
 
-// Resolve — the OWNING client approves or declines one pending charge. Reuses the
-// tested SECURITY DEFINER function verbatim (resolve_order_charge, migrations
-// 20261105000000 + 20261117000000): scoped to my_client_code(), atomic
+// Resolve — the OWNING client approves or declines one pending charge, through
+// gcp_resolve_order_charge (gcp/migrations/20261124000000, spec B1 §6). It runs
+// the tested resolve_order_charge verbatim — scoped to my_client_code(), atomic
 // single-statement UPDATE whose exists(...pending) guard + row lock make a second
-// concurrent/duplicate resolve fail, and it writes the order_events audit row the
-// admin-tier notifications fan out from. So GCP behaves byte-for-byte like the
-// Supabase path (#153) — verify-charges.mjs is the oracle.
+// concurrent/duplicate resolve fail, plus the order_events audit row — and then
+// enqueues charge.approved|declined for the admin tier EXPLICITLY. Calling
+// resolve_order_charge alone relied on the Supabase notify_on_order_event
+// classifier, which resolute_live does not have: there the decision was recorded
+// but no admin was mailed. Both paths seed the outbox dedupe key with the audit
+// event's id, so where the trigger also fires each admin still gets ONE row.
 export async function resolveCharge(client, orderId, chargeId, decision) {
   // Ownership + pending precheck for precise statuses. For a client, orders_read
   // scopes to their own client_code, so an order they don't own returns no row
@@ -84,10 +87,13 @@ export async function resolveCharge(client, orderId, chargeId, decision) {
   }
 
   try {
-    await client.query('select public.resolve_order_charge($1, $2, $3)', [orderId, chargeId, decision])
+    await client.query('select public.gcp_resolve_order_charge($1, $2, $3)', [orderId, chargeId, decision])
   } catch (err) {
     const m = (err && err.message) || ''
-    if (/decision must be/i.test(m)) throw new HttpError(422, 'decision must be approved or declined')
+    // 42501: not a client with a client code (the route admits clients only, so
+    // this is the DB's own guard). 22023: decision outside approved|declined.
+    if (err?.code === '42501') throw new HttpError(403, 'only the owning client can resolve a fee')
+    if (err?.code === '22023' || /decision must be/i.test(m)) throw new HttpError(422, 'decision must be approved or declined')
     // Past the ownership precheck, the function's "no pending charge" means a
     // concurrent resolve committed first — the duplicate/replay case.
     if (/no pending charge|not found, not owned/i.test(m)) throw new HttpError(409, 'charge is not pending')

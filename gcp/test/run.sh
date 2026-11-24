@@ -330,11 +330,12 @@ existing() { # db file label
 for f in charges clients adminUsers documents; do
   existing resolute_gcp_test_lineage "$f.integration.mjs" lineage
 done
-for f in clients adminUsers documents; do
+# charges on the prod shape is the B1 §6 regression: resolute_live has no
+# charge-aware notify trigger, so approval/decline mail must come from the
+# API's gcp_resolve_order_charge call alone.
+for f in charges clients adminUsers documents; do
   existing resolute_gcp_test_prod "$f.integration.mjs" "prod shape"
 done
-echo "  (charges.integration.mjs is not run on the prod shape: it asserts trigger-driven charge mail,"
-echo "   which resolute_live does not have -- the suite above proves that gap and the explicit fix.)"
 
 # ── 9. database isolation ──────────────────────────────────────────────────
 section "database isolation"

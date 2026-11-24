@@ -8,6 +8,8 @@ import {
   AMOUNT_LIMIT, isAmountInRange, money, raiseEventAction,
   buildPendingCharge, validateRaise, validateDecision,
 } from '../src/charges.js'
+import { resolveCharge } from '../src/repositories/charges.js'
+import { HttpError } from '../src/errors.js'
 
 describe('money / isAmountInRange', () => {
   it('formats like money.ts (en-US USD)', () => {
@@ -77,5 +79,64 @@ describe('buildPendingCharge', () => {
   })
   it('falls back to a default label', () => {
     expect(buildPendingCharge({ label: '', amount: 1 }).label).toBe('Additional fee')
+  })
+})
+
+// Resolve wiring (spec B1 §6). The decision itself is the database's
+// (gcp_resolve_order_charge -> resolve_order_charge); what is pinned here is that
+// the GCP API calls the procedure that ALSO enqueues the admin notification --
+// resolve_order_charge alone mails nobody on resolute_live -- and that each
+// refusal maps to the right status instead of a 500 or a false success.
+// The notification rows themselves are asserted against a real database in
+// charges.integration.mjs and gcp-migration.integration.mjs.
+
+const fakeClient = ({ pending = true, visible = true, fail } = {}) => {
+  const calls = []
+  return {
+    calls,
+    async query(sql, params) {
+      calls.push({ sql, params })
+      if (/^select workflow from public\.orders/.test(sql)) {
+        return { rows: visible ? [{ workflow: { pendingCharges: [{ id: 'chg_1', status: pending ? 'pending' : 'approved' }] } }] : [] }
+      }
+      if (/order_charge\(/.test(sql)) {
+        if (fail) throw Object.assign(new Error(fail.message || 'db error'), { code: fail.code })
+        return { rows: [{}] }
+      }
+      return { rows: [{ id: 'RTS-1', client_code: 'CL01', workflow: {} }] } // getOrder
+    },
+  }
+}
+const statusOf = (p) => p.then(() => 200, (e) => (e instanceof HttpError ? e.status : 'unmapped'))
+
+describe('resolveCharge (repository wiring)', () => {
+  it('approve and decline go through gcp_resolve_order_charge, never resolve_order_charge alone', async () => {
+    for (const decision of ['approved', 'declined']) {
+      const c = fakeClient()
+      const order = await resolveCharge(c, 'RTS-1', 'chg_1', decision)
+      const calls = c.calls.filter((x) => /order_charge\(/.test(x.sql))
+      expect(calls).toHaveLength(1)
+      expect(calls[0].sql).toBe('select public.gcp_resolve_order_charge($1, $2, $3)')
+      expect(calls[0].params).toEqual(['RTS-1', 'chg_1', decision])
+      expect(order.id).toBe('RTS-1')
+    }
+  })
+  it('a duplicate/replayed resolve is a 409 and never reaches the procedure', async () => {
+    const c = fakeClient({ pending: false })
+    expect(await statusOf(resolveCharge(c, 'RTS-1', 'chg_1', 'approved'))).toBe(409)
+    expect(c.calls.some((x) => /order_charge\(/.test(x.sql))).toBe(false)
+  })
+  it('a concurrent loser (no pending charge left) maps to 409', async () => {
+    const c = fakeClient({ fail: { code: 'P0001', message: 'resolve_order_charge: order not found, not owned, or no pending charge chg_1' } })
+    expect(await statusOf(resolveCharge(c, 'RTS-1', 'chg_1', 'approved'))).toBe(409)
+  })
+  it('maps the procedure refusals: 42501 -> 403, 22023 -> 422; an invisible order is 404', async () => {
+    expect(await statusOf(resolveCharge(fakeClient({ fail: { code: '42501' } }), 'RTS-1', 'chg_1', 'approved'))).toBe(403)
+    expect(await statusOf(resolveCharge(fakeClient({ fail: { code: '22023' } }), 'RTS-1', 'chg_1', 'approved'))).toBe(422)
+    expect(await statusOf(resolveCharge(fakeClient({ visible: false }), 'RTS-1', 'chg_1', 'approved'))).toBe(404)
+  })
+  it('a missing procedure or notification type is NOT turned into success', async () => {
+    expect(await statusOf(resolveCharge(fakeClient({ fail: { code: '42883' } }), 'RTS-1', 'chg_1', 'approved'))).toBe('unmapped')
+    expect(await statusOf(resolveCharge(fakeClient({ fail: { code: '55000' } }), 'RTS-1', 'chg_1', 'approved'))).toBe('unmapped')
   })
 })

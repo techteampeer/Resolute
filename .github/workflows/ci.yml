@@ -67,6 +67,15 @@ jobs:
       # service's own deps (pg/express/supertest), which the root install omits.
       - name: GCP charge API integration (Cloud SQL parity)
         run: npm install --prefix services/api --no-audit --no-fund
+      # The GCP API resolves fees through gcp_resolve_order_charge (spec B1 §6),
+      # which lives in the guarded GCP migration, not supabase/migrations. Install
+      # it on this throwaway local stack (resolve_order_charge/admin_create_client
+      # already exist here and must compare identical, or the migration aborts).
+      - name: GCP charge procedures on the local stack
+        run: >-
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          -X -v ON_ERROR_STOP=1 -v apply=true -v confirm_db=postgres
+          -f gcp/migrations/20261124000000_charge_and_client_functions.sql
       - name: Run GCP charge API integration
         working-directory: services/api
         env:

@@ -320,8 +320,7 @@ try {
   check('resolve_order_charge resolves and audits on this shape', gap.ok && gapResolve.ok && !!gapEvent.id)
   if (SHAPE === 'prodshape') {
     check('on a resolute_live-shaped database it mails NOBODY (no charge-aware trigger)', gapMail === 0, String(gapMail))
-    finding('services/api resolveCharge() calls resolve_order_charge directly; on resolute_live that sends no admin')
-    finding('notification. Switch it to gcp_resolve_order_charge (B1 §6) before the GCP cutover.')
+    finding('which is why services/api resolveCharge() calls gcp_resolve_order_charge (B1 §6), not this directly.')
   } else {
     check('on the full Supabase lineage the order_events trigger mails each admin once', gapMail === ACTIVE_ADMINS.length, String(gapMail))
   }

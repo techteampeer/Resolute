@@ -9,6 +9,10 @@
 // explicitly. Reuses the demo accounts the seed already provisions, so it never
 // touches auth.users — only its own RTS-GCPIT-* orders, cleaned up at both ends.
 //
+// Needs gcp_resolve_order_charge (gcp/migrations/20261124000000), which the CI
+// lane applies to the local stack before this runs; gcp/test/run.sh applies it to
+// its Cloud-SQL-shaped databases.
+//
 //   cd services/api && npm install
 //   DB_HOST=127.0.0.1 DB_PORT=54322 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=postgres \
 //     node __tests__/charges.integration.mjs
@@ -60,6 +64,27 @@ const workflowOf = async (id) => (await one('select workflow from public.orders 
 // Field-wise, because jsonb does not preserve object key order (a stringify
 // compare would spuriously fail even when payment is byte-for-byte untouched).
 const paymentUntouched = (p) => !!p && p.status === 'unpaid' && p.method === 'ach' && Object.keys(p).length === 2
+// Notification regression (B1 §6): every resolution must mail each eligible admin
+// EXACTLY once -- via gcp_resolve_order_charge's explicit enqueue where there is no
+// charge-aware trigger (resolute_live), and deduplicated where the Supabase
+// trigger fires too. Rows are matched by the audit event's id (the dedupe seed).
+const eligibleAdmins = async (type) => (await one(
+  `select count(*)::int n from public.profiles p
+    where p.role = 'admin' and p.status = 'active' and coalesce(p.email, '') <> ''
+      and not exists (select 1 from public.notification_preferences np
+                       where np.profile_id = p.id and np.type_key = $1 and np.mode = 'off')`, [type])).n
+const mailForEvent = async (orderId, action) => {
+  const ev = await svc('select id from public.order_events where order_id = $1 and action = $2 order by id', [orderId, action])
+  if (ev.rows.length !== 1) return { events: ev.rows.length, rows: [] }
+  const rows = (await svc('select recipient_id, recipient_role, type_key from public.notification_outbox where dedupe_key like $1',
+    [`%:${ev.rows[0].id}:%`])).rows
+  return { events: 1, rows }
+}
+const onceEach = (m, type, expected) => m.events === 1 && m.rows.length === expected && expected > 0 &&
+  new Set(m.rows.map((r) => r.recipient_id)).size === m.rows.length &&
+  m.rows.every((r) => r.type_key === type && r.recipient_role === 'admin')
+const chargeMailCount = async (orderId) =>
+  (await one(`select count(*)::int n from public.notification_outbox where order_id = $1 and type_key like 'charge.%'`, [orderId])).n
 
 try {
   // Resolve the demo identities (seed-provisioned; profiles only, no auth.users).
@@ -130,7 +155,13 @@ try {
   const approvedChg = (v2.body?.workflow?.pendingCharges || []).find((c) => c.id === OWNCHG)
   check('charge flipped to approved, amount untouched', approvedChg?.status === 'approved' && Number(approvedChg?.amount) === 25, JSON.stringify(approvedChg))
   check('payment object untouched by approval', paymentUntouched((await workflowOf(OWN)).payment))
+  const apprMail = await mailForEvent(OWN, `Client approved an additional fee of $25.00 on ${OWN}`)
+  const apprWant = await eligibleAdmins('charge.approved')
+  check('approval mails each eligible admin exactly once (no duplicate)', onceEach(apprMail, 'charge.approved', apprWant),
+    `${apprMail.rows.length} rows for ${apprWant} admins, ${apprMail.events} event(s)`)
+  const mailBeforeReplay = await chargeMailCount(OWN)
   check('re-resolving an approved charge → 409 (replay guard)', (await call(client, 'post', `/api/orders/${OWN}/charges/${OWNCHG}/resolve`, { decision: 'declined' })).status === 409)
+  check('a replayed resolve mails nobody again', (await chargeMailCount(OWN)) === mailBeforeReplay)
 
   console.log('\n── notifications (admin tier only, never the client) ──')
   const apprRoles = (await svc(`select distinct recipient_role from public.notification_outbox where order_id=$1 and type_key='charge.approved'`, [OWN])).rows
@@ -144,6 +175,10 @@ try {
   const v3 = await call(client, 'post', `/api/orders/${OWN}/charges/${OWNCHG2}/resolve`, { decision: 'declined' })
   check('owner client declines (200)', v3.status === 200, `HTTP ${v3.status}`)
   check('decline enqueues charge.declined', (await one(`select 1 as x from public.notification_outbox where order_id=$1 and type_key='charge.declined'`, [OWN])).x === 1)
+  const declMail = await mailForEvent(OWN, `Client declined an additional fee of $30.00 on ${OWN}`)
+  const declWant = await eligibleAdmins('charge.declined')
+  check('decline mails each eligible admin exactly once (no duplicate)', onceEach(declMail, 'charge.declined', declWant),
+    `${declMail.rows.length} rows for ${declWant} admins, ${declMail.events} event(s)`)
 
   console.log('\n── concurrency (exactly-once) ──')
   const c3 = await call(admin, 'post', `/api/orders/${OWN}/charges`, { label: 'concurrent', amount: 40 })
@@ -156,6 +191,9 @@ try {
   check('two parallel approvals → exactly one 200, one 409', statuses[0] === 200 && statuses[1] === 409, JSON.stringify(statuses))
   const finalCharges = (await workflowOf(OWN)).pendingCharges || []
   check('the charge is approved exactly once', finalCharges.filter((c) => c.id === OWNCHG3 && c.status === 'approved').length === 1)
+  const raceMail = await mailForEvent(OWN, `Client approved an additional fee of $40.00 on ${OWN}`)
+  check('the losing concurrent approval adds no audit event or mail (one per admin)', onceEach(raceMail, 'charge.approved', apprWant),
+    `${raceMail.rows.length} rows, ${raceMail.events} event(s)`)
   // Invoice counts each approved charge once and excludes the declined one: 25 + 40.
   check('approved-charges total is exactly-once (25 + 40, decline excluded)', approvedTotal(finalCharges) === 65, `total=${approvedTotal(finalCharges)}`)
   check('payment still untouched after all resolves', paymentUntouched((await workflowOf(OWN)).payment))
