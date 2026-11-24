@@ -61,3 +61,9 @@ lane (`test:integration` now runs B1 + B2 + B4).
    B1/B2 already REUSE the charge + client functions as GCP routes; what remains is
    landing them (esp. the `profile_client_code_fk` FK) on `resolute_live` as a
    reviewed GCP migration — env-gated, Claudio's cost approval.
+   **Prepared, not applied (2026-11-24):** `gcp/migrations/20261124000000_charge_and_client_functions.sql`
+   ports `admin_create_client` + `resolve_order_charge` (+ the `charge.*`
+   notification types) and adds `gcp_raise_order_charge` / `gcp_resolve_order_charge`,
+   behind `gcp/preflight.sh` (read-only) and `gcp/migrate.sh`, verified on
+   disposable PostgreSQL 15 over populated data (`gcp/test/run.sh`). The FK is
+   still separate. Steps and sign-offs: `gcp/PRODUCTION-PREREQUISITES.md`.

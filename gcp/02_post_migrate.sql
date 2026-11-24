@@ -53,3 +53,75 @@ begin
     raise exception 'tables carry policies but have RLS disabled: %', bad;
   end if;
 end $$;
+
+-- ── 4. Prove the API's roles work the way services/api/src/db.js uses them ──
+-- Every request runs `SET LOCAL ROLE authenticated` (withUserClaims) and the
+-- Firebase identity lookup runs `SET LOCAL ROLE service_role`
+-- (withServiceRole). The previous bootstrap granted the app role
+-- authenticated + anon but NOT service_role, so every sign-in failed with
+-- "permission denied to set role" on a database it had built. Each property
+-- below is one the app depends on, asserted rather than assumed; any failure
+-- aborts with a nonzero exit.
+--
+-- Needs the same setting as 01_bootstrap.sql (bootstrap.sh passes it):
+--   PGOPTIONS="-c resolute.app_user=<role>"
+do $$
+declare
+  u   text := nullif(current_setting('resolute.app_user', true), '');
+  app pg_roles%rowtype;
+  svc pg_roles%rowtype;
+begin
+  if u is null then
+    raise exception 'post-migrate: resolute.app_user is not set';
+  end if;
+  select * into app from pg_roles where rolname = u;
+  if not found then
+    raise exception 'post-migrate: app role % does not exist', u;
+  end if;
+  if app.rolsuper or app.rolbypassrls then
+    raise exception 'post-migrate: app role % is a superuser or BYPASSRLS; RLS would not apply', u;
+  end if;
+  if app.rolinherit then
+    raise exception 'post-migrate: app role % must be NOINHERIT', u;
+  end if;
+  if not pg_has_role(u, 'authenticated', 'MEMBER') then
+    raise exception 'post-migrate: app role % cannot SET ROLE authenticated (every request would fail)', u;
+  end if;
+  if not pg_has_role(u, 'service_role', 'MEMBER') then
+    raise exception 'post-migrate: app role % cannot SET ROLE service_role (every sign-in would fail)', u;
+  end if;
+
+  select * into svc from pg_roles where rolname = 'service_role';
+  if not svc.rolbypassrls or svc.rolcanlogin then
+    raise exception 'post-migrate: service_role must be NOLOGIN BYPASSRLS';
+  end if;
+  if not (has_table_privilege('service_role', 'auth.users', 'SELECT')
+          and has_table_privilege('service_role', 'public.profiles', 'SELECT')) then
+    raise exception 'post-migrate: service_role cannot read auth.users/profiles; identity resolution would fail';
+  end if;
+
+  -- The identity map holds every Firebase UID and sign-in email and has no RLS.
+  if has_table_privilege('authenticated', 'auth.users', 'SELECT')
+     or has_table_privilege('anon', 'auth.users', 'SELECT') then
+    raise exception 'post-migrate: auth.users is readable by a session role';
+  end if;
+end $$;
+
+-- ── 5. No SECURITY DEFINER function is executable by PUBLIC ────────────────
+-- 20260915000000 asserts this at the end of its own run; re-assert after the
+-- whole sequence, since a later migration can add a definer function and
+-- 20260722000000's default privileges grant EXECUTE on every new function.
+do $$
+declare bad text;
+begin
+  select string_agg(p.oid::regprocedure::text, ', ' order by 1)
+    into bad
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and p.prosecdef
+     and has_function_privilege('public', p.oid, 'EXECUTE');
+  if bad is not null then
+    raise exception 'post-migrate: SECURITY DEFINER functions executable by PUBLIC: %', bad;
+  end if;
+end $$;

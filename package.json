@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint . --max-warnings=0",
+    "test:gcp-db": "bash gcp/test/run.sh",
     "test:integrity": "node .audit/verify-order-integrity.mjs && node .audit/verify-stage-routing.mjs && node .audit/verify-amounts.mjs && node .audit/verify-contacts-rls.mjs && node .audit/verify-charges.mjs && node .audit/verify-user-provisioning.mjs"
   },
   "dependencies": {
