@@ -351,12 +351,15 @@ oracle for behavior and tests.
   Postgres, wired into the CI `db-integrity` lane. Covers the full §10 matrix.
 
 **Deliberate scope deltas from the spec above (so a later engineer isn't surprised):**
-- *Notifications (§6):* in this repo the resolve path keeps the **trigger-driven**
-  enqueue — `resolve_order_charge` writes the `order_events` row and the existing
-  `notify_on_order_event` trigger fans it out, exactly as on Supabase, which is
-  what the integration test asserts. The spec's **explicit-enqueue + disable the
-  trigger** is a `resolute_live` *deployment* choice (item 1, B4): it changes the
-  DB, not this Node code, since `resolve_order_charge` emits the event either way.
+- *Notifications (§6):* the resolve path now calls **`gcp_resolve_order_charge`**
+  (`gcp/migrations/20261124000000`), which runs `resolve_order_charge` verbatim and
+  then enqueues `charge.approved|declined` **explicitly**. Calling
+  `resolve_order_charge` alone relied on the Supabase `notify_on_order_event`
+  classifier, which `resolute_live` lacks — on a production-shaped database the
+  decision was recorded but no admin was mailed. The explicit enqueue uses the
+  audit event's id as the dedupe seed, so where the trigger also fires each admin
+  still gets one row. Disabling the trigger for charge events on `resolute_live`
+  stays a deployment choice. Requires the GCP migration to be applied first.
 - *Frontend (§9):* `OrderContext` and the `backend.js` contract are **unchanged**.
   `resolveOrderCharge` already flows through the seam (guarded by
   `isSupabaseConfigured`, so inert on GCP until B3). Wiring the raise path to

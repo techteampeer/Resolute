@@ -2,6 +2,9 @@
 // routers. Kept as a factory so a test can build the app without listening.
 import express from 'express'
 import { verifyBearer, resolveAppUser } from './auth.js'
+import { withUserClaims } from './db.js'
+import { getOwnProfile } from './repositories/profiles.js'
+import { toAppUser } from './mappers.js'
 import { ordersRouter } from './routes/orders.js'
 import { chargesRouter } from './routes/charges.js'
 import { clientsRouter } from './routes/clients.js'
@@ -25,6 +28,22 @@ export function createServer() {
       if (!user) return res.status(403).json({ error: 'no profile for this account' })
       req.user = user
       return next()
+    } catch (err) {
+      return next(err)
+    }
+  })
+
+  // The signed-in portal user -- what the GCP frontend's session is built from
+  // (the role never comes from the Firebase token). Behind the gate, so req.user
+  // is the verified identity; the profile is read under that user's RLS claims.
+  // Anything but the caller's own active profile with a role is a 403.
+  app.get('/api/me', async (req, res, next) => {
+    res.set('Cache-Control', 'no-store')
+    try {
+      const profile = await withUserClaims(req.user, (client) => getOwnProfile(client, req.user.id))
+      const me = toAppUser(profile, req.user)
+      if (!me) return res.status(403).json({ error: 'no active profile for this account' })
+      return res.status(200).json(me)
     } catch (err) {
       return next(err)
     }

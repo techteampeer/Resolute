@@ -1,7 +1,12 @@
 -- =====================================================================
 -- Cloud SQL bootstrap: roles, the auth shim, and grants
 -- =====================================================================
--- Run this ONCE against resolute_prod before applying supabase/migrations/*.sql.
+-- Run this ONCE against a NEW, empty Cloud SQL database before applying
+-- supabase/migrations/*.sql (gcp/bootstrap.sh does all three steps).
+--
+-- NEVER against resolute_live: production already exists, and CLAUDE.md
+-- forbids running supabase/migrations/* there. Changes to the live database go
+-- through gcp/preflight.sh (read-only) and the guarded gcp/migrations/ files.
 --
 -- Deliberately NOT in supabase/migrations/. Everything in that directory is
 -- applied to the live Supabase project by `supabase db push`; none of this
@@ -16,7 +21,8 @@
 -- ── 1. The roles the existing GRANTs already name ──────────────────────────
 -- Supabase creates anon / authenticated / service_role; Cloud SQL does not, and
 -- the migrations contain 26 GRANT/REVOKE statements naming them. They are
--- NOLOGIN: nothing connects as them, the app role inherits from them.
+-- NOLOGIN: nothing connects as them; the app role SETs ROLE to them per
+-- transaction (services/api/src/db.js).
 do $$
 begin
   if not exists (select 1 from pg_roles where rolname = 'anon') then
@@ -25,8 +31,35 @@ begin
   if not exists (select 1 from pg_roles where rolname = 'authenticated') then
     create role authenticated nologin;
   end if;
+end $$;
+
+-- service_role carries BYPASSRLS because withServiceRole() resolves a verified
+-- Firebase UID to its profiles.id before any user claims exist (and the
+-- admin-user route edits privilege columns the guard trigger only lets a
+-- claim-less session change). PostgreSQL 15 lets ONLY a superuser create a
+-- BYPASSRLS role, and Cloud SQL has no true superuser -- so on Cloud SQL this
+-- CREATE fails for the built-in `postgres` user. That used to surface as a bare
+-- "must be superuser" halfway through the bootstrap; it now stops with the
+-- prerequisite spelled out. See gcp/PRODUCTION-PREREQUISITES.md.
+do $$
+declare r pg_roles%rowtype;
+begin
   if not exists (select 1 from pg_roles where rolname = 'service_role') then
-    create role service_role nologin bypassrls;
+    begin
+      create role service_role nologin bypassrls;
+    exception when insufficient_privilege then
+      raise exception 'bootstrap: % cannot create service_role WITH BYPASSRLS', current_user
+        using detail = 'PostgreSQL 15 only lets a superuser create a BYPASSRLS role; Cloud SQL has no true superuser.',
+              hint   = 'Create service_role (NOLOGIN BYPASSRLS) once with a role that can, then re-run. See gcp/PRODUCTION-PREREQUISITES.md.';
+    end;
+  end if;
+
+  select * into r from pg_roles where rolname = 'service_role';
+  if not r.rolbypassrls then
+    raise exception 'bootstrap: service_role exists but lacks BYPASSRLS; identity resolution would silently find no profile';
+  end if;
+  if r.rolcanlogin or r.rolsuper then
+    raise exception 'bootstrap: service_role must be NOLOGIN and not a superuser';
   end if;
 end $$;
 
@@ -94,7 +127,43 @@ comment on table auth.users is
   'Platform) authenticates; this table maps its UID to the portal profiles.id '
   'uuid that every RLS policy and foreign key is built on.';
 
-grant select on auth.users to authenticated, service_role;
+-- Only the identity-resolution path (service_role) reads the mapping. It holds
+-- every Firebase UID and sign-in email and carries no RLS, so a signed-in
+-- session (`authenticated`) must not be able to list it; no policy or
+-- invoker function reads it (the profiles FK is checked as the table owner).
+revoke all on auth.users from public, anon, authenticated;
+grant select on auth.users to service_role;
+
+-- ── 3b. A storage schema stand-in, so the migrations apply ─────────────────
+-- 20260601000000 inserts the `documents` bucket into storage.buckets and puts
+-- policies on storage.objects, and 20260722010000 adds another. Supabase
+-- Storage provides both tables; Cloud SQL has no storage schema, so without
+-- this the very first migration stops at its storage.buckets insert and
+-- bootstrap.sh (set -e, ON_ERROR_STOP) aborts there -- reproduced on
+-- PostgreSQL 15 with 2 of 51 migrations failing.
+--
+-- These tables exist ONLY so those statements parse and apply. Cloud Storage
+-- never consults Postgres, so the policies on them enforce nothing;
+-- 02_post_migrate.sql drops the whole schema afterwards rather than leave rules
+-- that read as protection. Document access is enforced in the API, where a
+-- signed URL is minted.
+create schema if not exists storage;
+
+create table if not exists storage.buckets (
+  id      text primary key,
+  name    text,
+  public  boolean not null default false
+);
+
+create table if not exists storage.objects (
+  id          uuid primary key default gen_random_uuid(),
+  bucket_id   text references storage.buckets(id),
+  name        text,
+  owner       uuid,
+  metadata    jsonb,
+  created_at  timestamptz not null default now()
+);
+alter table storage.objects enable row level security;
 
 -- ── 4. The application role ────────────────────────────────────────────────
 -- Created here without a password; the password is set by bootstrap.sh from
@@ -107,18 +176,41 @@ grant select on auth.users to authenticated, service_role;
 -- billing-owner guard, message visibility, fulfillment scoping. Nothing would
 -- error -- the queries would simply start returning everything.
 do $$
+declare
+  u text := nullif(current_setting('resolute.app_user', true), '');
+  r pg_roles%rowtype;
 begin
-  if not exists (select 1 from pg_roles where rolname = current_setting('resolute.app_user', true)) then
-    execute format('create role %I login noinherit', current_setting('resolute.app_user'));
+  if u is null then
+    raise exception 'bootstrap: resolute.app_user is not set'
+      using hint = 'Run through gcp/bootstrap.sh, or pass PGOPTIONS="-c resolute.app_user=<role>".';
+  end if;
+  if not exists (select 1 from pg_roles where rolname = u) then
+    execute format('create role %I login noinherit nosuperuser nobypassrls nocreatedb nocreaterole', u);
+  end if;
+
+  -- An existing role is checked, not trusted: re-running against a database
+  -- where someone widened it must stop here rather than carry on looking fine.
+  select * into r from pg_roles where rolname = u;
+  if r.rolsuper or r.rolbypassrls then
+    raise exception 'bootstrap: app role % is a superuser or holds BYPASSRLS; RLS would not apply to it', u;
+  end if;
+  if r.rolinherit then
+    raise exception 'bootstrap: app role % must be NOINHERIT so it only gains rights through SET ROLE', u;
   end if;
 end $$;
 
--- The app acts as `authenticated` and elevates per request; NOINHERIT above
--- means it must SET ROLE explicitly rather than picking the rights up silently.
+-- The app acts as `authenticated` per request and as `service_role` for the one
+-- identity lookup; NOINHERIT above means it must SET ROLE explicitly rather
+-- than picking either role's rights up silently. Both memberships are what
+-- db.js actually does: without `service_role` here, SET LOCAL ROLE service_role
+-- fails ("permission denied to set role") and every Firebase sign-in
+-- (resolveAppUser) and the admin-user route fail with it -- reproduced against
+-- the previous version of this file. `anon` is not granted: nothing in the API
+-- acts as it.
 do $$
 declare u text := current_setting('resolute.app_user');
 begin
-  execute format('grant authenticated, anon to %I', u);
+  execute format('grant authenticated, service_role to %I', u);
   execute format('grant connect on database %I to %I', current_database(), u);
   execute format('grant usage on schema public, auth to %I', u);
 end $$;

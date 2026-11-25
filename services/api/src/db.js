@@ -41,11 +41,33 @@ export async function withUserClaims(user, fn) {
   }
 }
 
-// A narrow, RLS-bypassing read used ONLY for identity resolution — mapping a
-// verified Firebase UID to the portal profiles.id before any user claims exist
-// (the chicken-and-egg: we need profiles.id to set `sub`). service_role holds
-// BYPASSRLS. Keep its use to this one lookup; everything else goes through
+// Identity resolution, before any user claims exist (the chicken-and-egg: we need
+// profiles.id to set `sub`). Production's model (resolute_live): the restricted
+// login calls the SECURITY DEFINER resolver auth.resolve_app_user directly — it
+// does NOT SET ROLE: on Cloud SQL service_role has no BYPASSRLS and the login
+// cannot assume it. So this runs as the login itself, with claims explicitly
+// cleared so a pooled connection can never resolve "as" a previous request's
+// user. Use it only to call the resolver; everything else goes through
 // withUserClaims so RLS is in force.
+export async function withIdentityLookup(fn) {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query("SELECT set_config('request.jwt.claims', '', true)")
+    const result = await fn(client)
+    await client.query('COMMIT')
+    return result
+  } catch (err) {
+    try { await client.query('ROLLBACK') } catch { /* released connection resets state */ }
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+// RLS-bypassing service-role work (BYPASSRLS). NOT available on resolute_live
+// (see withIdentityLookup); no API code path uses it. Kept only for the
+// integration suites' fixture setup on disposable databases.
 export async function withServiceRole(fn) {
   const client = await pool.connect()
   try {
