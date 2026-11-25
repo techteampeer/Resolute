@@ -191,6 +191,8 @@ says "the app login (password with a quote) can SET ROLE service_role -- every s
 
 # An untouched copy, for the empty-orders test: schema + identities, no orders.
 new_db resolute_gcp_test_empty resolute_gcp_test_prod >/dev/null || die "create database"
+# Another, for the account-administration authorization suite (section 9).
+new_db resolute_gcp_test_accounts resolute_gcp_test_prod >/dev/null || die "create database"
 
 # ── 3. seed populated data BEFORE any migration ────────────────────────────
 section "seed (identities + populated orders, before migrating)"
@@ -337,7 +339,48 @@ for f in charges clients documents; do
   existing resolute_gcp_test_prod "$f.integration.mjs" "prod shape"
 done
 
-# ── 9. database isolation ──────────────────────────────────────────────────
+# ── 9. account administration: production SQL, real authorization ─────────
+# The auth.* account functions exactly as production defines them (verbatim
+# extracts, gcp/test/account_functions.sql) on a fresh production-shaped copy,
+# exercised by the reference security suite's account series plus R1
+# (gcp/test/account_security.sql) through a RESTRICTED login: NOINHERIT, member
+# of authenticated + anon only -- no service_role, no BYPASSRLS -- inside
+# `set local role authenticated` + claims transactions, as services/api does.
+section "account administration (production auth.* SQL, restricted login, RLS)"
+ACCT_LOGIN=resolute_acct_app
+ACCT_PW="$(rnd)"
+expect nonzero "the fixture refuses to run without -v disposable_test_db=1" \
+  env PGUSER=cloudsql_owner PGPASSWORD="$OWNER_PW" PGOPTIONS="-c resolute.app_user=$ACCT_LOGIN" \
+  psql -X -q -v ON_ERROR_STOP=1 -d resolute_gcp_test_accounts -f "$here/account_functions.sql"
+expect 0 "production account functions and their dependencies applied (verbatim, reference 9d167690)" \
+  env PGUSER=cloudsql_owner PGPASSWORD="$OWNER_PW" PGOPTIONS="-c resolute.app_user=$ACCT_LOGIN" \
+  psql -X -q -v ON_ERROR_STOP=1 -v disposable_test_db=1 -d resolute_gcp_test_accounts -f "$here/account_functions.sql"
+printf '%s\n' "alter role :\"acct\" with password :'acct_pw';" \
+  | PGUSER=cloudsql_owner PGPASSWORD="$OWNER_PW" psql -X -q -v ON_ERROR_STOP=1 -d resolute_gcp_test_accounts \
+      -v acct="$ACCT_LOGIN" -v acct_pw="$ACCT_PW" || die "could not set the test login's password"
+same "the test login is restricted: login, not superuser, no BYPASSRLS/CREATEROLE, NOINHERIT; member of authenticated + anon only" \
+  "$(val resolute_gcp_test_accounts "select format('%s|%s|%s|%s|%s|%s', r.rolcanlogin, r.rolsuper, r.rolbypassrls, r.rolcreaterole, r.rolinherit,
+          (select string_agg(g.rolname, ',' order by g.rolname) from pg_auth_members m join pg_roles g on g.oid = m.roleid where m.member = r.oid))
+     from pg_roles r where r.rolname = '$ACCT_LOGIN'")" \
+  "t|f|f|f|f|anon,authenticated"
+same "  ... and it cannot become service_role" \
+  "$(val resolute_gcp_test_accounts "select pg_has_role('$ACCT_LOGIN', 'service_role', 'MEMBER')::text")" false
+# The suite \connects to the restricted login itself; both passwords come from a
+# throwaway pgpass file, never argv.
+printf '%s\n' "127.0.0.1:$PORT:*:cloudsql_owner:$OWNER_PW" "127.0.0.1:$PORT:*:$ACCT_LOGIN:$ACCT_PW" > "$WORK/pgpass"
+chmod 600 "$WORK/pgpass"
+expect 0 "authorization suite: L0-L3, A1-A3, P1-P14, U1-U2 (reference) + R1" \
+  env PGPASSFILE="$WORK/pgpass" PGUSER=cloudsql_owner \
+  psql -X -v ON_ERROR_STOP=1 -v disposable_test_db=1 -v app_user="$ACCT_LOGIN" \
+       -d resolute_gcp_test_accounts -f "$here/account_security.sql"
+printf '%s\n' "$LAST_OUT" | grep -E '^ok ' | sed 's/^/      /'
+missing=""
+for series in O2-O4 L0 L1 L2 L3 A1 A2 A3 P1 P2 P3-P6 P7 P8 P9 P10 P11 P12 P13 P14 U1 U2 R1; do
+  grep -qE "^ok  $series " <<<"$LAST_OUT" || missing="$missing $series"
+done
+if [ -z "$missing" ]; then ok "  ... all 22 series reported ok"; else bad "  ... series without an ok:$missing" "$LAST_OUT"; fi
+
+# ── 10. database isolation ─────────────────────────────────────────────────
 section "database isolation"
 as_super -d postgres -c "create table if not exists platform_secret (v text); insert into platform_secret values ('x')" >/dev/null
 run env PGUSER=resolute_app PGPASSWORD="$APP_PW" psql -X -Atq -d postgres -c "select count(*) from platform_secret"
