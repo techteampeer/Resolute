@@ -1,67 +1,37 @@
-// Admin user-management route (B4), served at /api/admin/users — the GCP port of
-// the Vercel handler api/admin/users.js, which the admin UI calls directly (not
-// through the provider seam), so the same path serves both backends.
-//
-// VERIFIABLE IN-REPO SLICE (ADR 0003 B4): only the profile-edit path is wired.
-// create / remove / setActive / resetPassword and the user LISTING need Firebase
-// Auth Admin AND the GCP auth.users/firebase_uid schema, which live in the
-// deployed snapshot — not this repo. They FAIL SAFE with a clear 501 (never a
-// fake success) until that auth backend is committed (ADR 0003 B3 / #5).
+// /api/admin/users -- account management for administrators. Thin adapter:
+// provisioning.js orders the Firebase and database steps, and the database
+// decides who may do what. There is no signup: every account is created here
+// by an authorized administrator, disabled and pending until activated.
+//   GET  /                list accounts (active admins only)
+//   POST /                create { email, name?, role, clientCode?, superAdmin?,
+//                         canConfirmPayments?, permissions? } -> 201 { id, status: 'pending' }
+//   POST /:id/activate    -> 200 { id, status: 'active' }
+//   PATCH /:id            { updatedAt, name?, role?, clientCode?, superAdmin?, canConfirmPayments?, permissions? }
+//                         -> 200 the account | 409 changed since read
+//   POST /:id/deactivate  { updatedAt } -> 200 { id, status: 'inactive', signIn } | 502 locked out, sign-in not disabled yet
+//   POST /:id/reactivate  { updatedAt } -> 200 { id, status: 'active', signIn: 'enabled' }
+// No account is ever deleted here.
 import { Router } from 'express'
-import { withServiceRole } from '../db.js'
-import { cleanPermissions, touchesElevated, buildProfilePatch, ROLES } from '../adminUsers.js'
-import { getProfilePrivilege, badClientLink, updateProfile } from '../repositories/adminUsers.js'
+import {
+  AccountError, listAccounts, createAccount, activateAccount, updateAccount, deactivateAccount, reactivateAccount,
+} from '../provisioning.js'
 
 export const adminUsersRouter = Router()
 
-const notWired = (res, what) => res.status(501).json({
-  error: `${what} is not wired on the GCP backend yet — it needs the Firebase Auth admin backend (ADR 0003 B3/B4).`,
-})
-
-// GET → list users: auth email/active come from the auth provider → env-gated.
-adminUsersRouter.get('/', (_req, res) => notWired(res, 'Listing users'))
-
-adminUsersRouter.post('/', async (req, res, next) => {
+const handle = (fn) => async (req, res, next) => {
+  res.set('Cache-Control', 'no-store')
   try {
-    // The ONLY authorization guard (service-role writes bypass RLS): caller must
-    // be an admin; elevated grants additionally need a super admin.
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' })
-    const action = req.body?.action
-
-    if (action === 'update') {
-      const { id } = req.body
-      if (!id) return res.status(400).json({ error: 'id required' })
-      if (req.body.role != null && !ROLES.includes(req.body.role)) return res.status(400).json({ error: 'invalid role' })
-      const perms = cleanPermissions(req.body.permissions)
-      if (!perms.ok) return res.status(400).json({ error: perms.error })
-
-      const caller = await withServiceRole((c) => getProfilePrivilege(c, req.user.id))
-      if (touchesElevated(req.body, perms.value) && !caller?.super_admin) {
-        return res.status(403).json({ error: 'Only a super admin can grant super-admin, billing, or elevated permissions.' })
-      }
-
-      const patch = buildProfilePatch(req.body, perms.value)
-      const outcome = await withServiceRole(async (c) => {
-        // When the edit makes (or keeps) the account a client, never leave it
-        // pointing at a non-existent clients row.
-        if (req.body.role === 'client') {
-          const bad = await badClientLink(c, 'client', req.body.clientCode)
-          if (bad) return { error: bad }
-        }
-        return { n: await updateProfile(c, id, patch) }
-      })
-      if (outcome.error) return res.status(400).json({ error: outcome.error })
-      if (!outcome.n) return res.status(400).json({ error: 'no such user' })
-      // NOTE: the Vercel path also syncs auth user_metadata (name/role). That is
-      // Firebase-coupled and env-gated here; the profiles row is the source of truth.
-      return res.status(200).json({ ok: true })
-    }
-
-    if (['create', 'remove', 'setActive', 'resetPassword'].includes(action)) {
-      return notWired(res, `'${action}'`)
-    }
-    return res.status(400).json({ error: 'Unknown action' })
+    const [status, body] = await fn(req)
+    return res.status(status).json(body)
   } catch (err) {
-    next(err)
+    if (err instanceof AccountError) return res.status(err.status).json({ error: err.message })
+    return next(err)
   }
-})
+}
+
+adminUsersRouter.get('/', handle(async (req) => [200, { users: await listAccounts(req.user) }]))
+adminUsersRouter.post('/', handle(async (req) => [201, await createAccount(req.user, req.body)]))
+adminUsersRouter.post('/:id/activate', handle(async (req) => [200, await activateAccount(req.user, req.params.id)]))
+adminUsersRouter.patch('/:id', handle(async (req) => [200, await updateAccount(req.user, req.params.id, req.body)]))
+adminUsersRouter.post('/:id/deactivate', handle(async (req) => [200, await deactivateAccount(req.user, req.params.id, req.body)]))
+adminUsersRouter.post('/:id/reactivate', handle(async (req) => [200, await reactivateAccount(req.user, req.params.id, req.body)]))

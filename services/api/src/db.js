@@ -66,8 +66,8 @@ export async function withIdentityLookup(fn) {
 }
 
 // RLS-bypassing service-role work (BYPASSRLS). NOT available on resolute_live
-// (see withIdentityLookup); sign-in no longer uses it. Remaining caller: the
-// admin-user route (routes/adminUsers.js).
+// (see withIdentityLookup); no API code path uses it. Kept only for the
+// integration suites' fixture setup on disposable databases.
 export async function withServiceRole(fn) {
   const client = await pool.connect()
   try {

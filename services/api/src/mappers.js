@@ -31,3 +31,22 @@ export function toAppOrder(r) {
     updatedAt: r.updated_at || null,
   }
 }
+
+// Profile row -> the admin user-list entry (api/admin/users.js GET shape, with
+// status from the database instead of the auth ban). Never the Firebase UID.
+export function toAdminUser(r) {
+  return {
+    id: r.id,
+    email: r.email || null,
+    name: r.name || '',
+    role: r.role || null,
+    clientCode: r.client_code || null,
+    superAdmin: !!r.super_admin,
+    canConfirmPayments: !!r.can_confirm_payments,
+    permissions: Array.isArray(r.permissions) ? r.permissions : [],
+    status: r.status || null,
+    active: r.status === 'active',
+    created: r.created_at || null,
+    updatedAt: r.updated_at || null,
+  }
+}

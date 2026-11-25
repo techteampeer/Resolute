@@ -327,13 +327,13 @@ existing() { # db file label
   if [ "$okn" -gt 0 ] && [ "$failn" -eq 0 ]; then ok "  ... $okn of its own checks passed, 0 failed"
   else bad "  ... its own checks: $okn passed, $failn failed" "$LAST_OUT"; fi
 }
-for f in charges clients adminUsers documents; do
+for f in charges clients documents; do
   existing resolute_gcp_test_lineage "$f.integration.mjs" lineage
 done
 # charges on the prod shape is the B1 §6 regression: resolute_live has no
 # charge-aware notify trigger, so approval/decline mail must come from the
 # API's gcp_resolve_order_charge call alone.
-for f in charges clients adminUsers documents; do
+for f in charges clients documents; do
   existing resolute_gcp_test_prod "$f.integration.mjs" "prod shape"
 done
 

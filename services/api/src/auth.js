@@ -10,6 +10,11 @@ if (!getApps().length) {
   initializeApp(config.firebaseProjectId ? { projectId: config.firebaseProjectId } : {})
 }
 
+// The Firebase Admin Auth client, for account management (provisioning.js).
+export async function getFirebaseAuth() {
+  return getAuth()
+}
+
 // Verify `Authorization: Bearer <firebase id token>`. Returns the decoded token
 // ({ uid, email, ... }) or null. checkRevoked: a token whose session was revoked
 // (or whose account was disabled) is refused even before it expires.
@@ -30,6 +35,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 //   SECURITY DEFINER, executed directly by the restricted app login.
 export const RESOLVE_APP_USER_SQL = 'SELECT id, role, status FROM auth.resolve_app_user($1)'
 
+// The profile a Firebase UID maps to, whatever its status ({ id, role, status }),
+// or null. Runs as the login (withIdentityLookup) -- no service_role. Also used
+// by account provisioning to tell whether a Firebase account is already mapped.
+export async function resolveIdentity(firebaseUid) {
+  const rows = await withIdentityLookup(async (client) => (await client.query(RESOLVE_APP_USER_SQL, [firebaseUid])).rows)
+  if (rows.length > 1) throw new Error('auth.resolve_app_user returned more than one row')
+  return rows[0] || null
+}
+
 // Map a VERIFIED Firebase identity to the portal app user, the way production
 // does: the login calls the resolver with the token's uid (never a
 // client-supplied value) — no service_role, no RLS bypass in the API. The
@@ -41,9 +55,7 @@ export async function resolveAppUser(decoded) {
   const uid = decoded && typeof decoded.uid === 'string' ? decoded.uid : ''
   if (!uid) return null
 
-  const rows = await withIdentityLookup(async (client) => (await client.query(RESOLVE_APP_USER_SQL, [uid])).rows)
-  if (rows.length > 1) throw new Error('auth.resolve_app_user returned more than one row')
-  const r = rows[0]
+  const r = await resolveIdentity(uid)
   if (!r || typeof r.id !== 'string' || !UUID.test(r.id) || r.status !== 'active') return null
 
   const profile = await withUserClaims({ id: r.id, email: decoded.email || null }, async (client) => {
