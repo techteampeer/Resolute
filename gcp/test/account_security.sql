@@ -7,13 +7,16 @@
 -- authenticated` + request.jwt.claims transactions -- exactly how
 -- services/api calls them. No mocks.
 --
--- Everything up to the R1 block is extracted VERBATIM from the reference
+-- Everything between the EXTRACT markers is VERBATIM from the reference
 -- security suite (integration-reference/gcp-live/gcp/test_security.sql @
 -- 9d167690) -- only the account-management series and the fixtures they use;
--- each extract's sha256 is recorded. R1 at the end is added here (not in the
--- reference) to state outright what adminUsers.integration.mjs used to:
--- refused writes leave the stored row unchanged, demotion clears super admin
--- and billing, unknown ids are refused by every entry point.
+-- each extract's sha256 is recorded. Two blocks are added here (marked ADDED,
+-- not in the reference): a database-name guard right after the flag checks,
+-- refusing any database but a disposable resolute_gcp_test* one before
+-- anything is written; and R1 at the end, stating outright what
+-- adminUsers.integration.mjs used to: refused writes leave the stored row
+-- unchanged, demotion clears super admin and billing, unknown ids are refused
+-- by every entry point.
 --
 -- Extracts, in run order (file, lines, what):
 --   test_security.sql      27-38   psql settings; refuses without -v disposable_test_db=1 and -v app_user
@@ -59,6 +62,22 @@
 \else
   do $$ begin raise exception 'pass the app login name: -v app_user=<login>'; end $$;
 \endif
+
+-- ┌── ADDED for PR #157 (not in the reference suite): database-name guard
+-- │ The flag above is a promise from whoever runs this; this checks the
+-- │ database itself, independently, before ANY statement that writes. Only the
+-- │ harness's disposable resolute_gcp_test* databases are accepted (underscores
+-- │ matched literally, case-sensitive) -- resolute_live, or any other name,
+-- │ aborts here with nothing written. ON_ERROR_STOP is re-asserted so the abort
+-- │ holds even if the caller left it off.
+-- └──────────────────────────────────────────────────────────────────────────
+\set ON_ERROR_STOP 1
+do $$ begin
+  if current_database() not like 'resolute\_gcp\_test%' then
+    raise exception 'account_security.sql: refusing to run against database "%" -- it writes fixture rows and runs only against a disposable resolute_gcp_test* database', current_database()
+      using errcode = '42501';
+  end if;
+end $$;
 
 -- ┌── EXTRACT must start as the bootstrap admin (operator)
 -- │ integration-reference/gcp-live/gcp/test_security.sql lines 40-45 @ 9d167690, verbatim; sha256 5a0fc94b06147ac8a8c0bfcedbdae8c7fc3d366575c119dfacac7222decdc0c0

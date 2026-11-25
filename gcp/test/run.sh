@@ -369,6 +369,20 @@ same "  ... and it cannot become service_role" \
 # throwaway pgpass file, never argv.
 printf '%s\n' "127.0.0.1:$PORT:*:cloudsql_owner:$OWNER_PW" "127.0.0.1:$PORT:*:$ACCT_LOGIN:$ACCT_PW" > "$WORK/pgpass"
 chmod 600 "$WORK/pgpass"
+# The suite's own database-name guard: WITH the disposable flag, on complete
+# copies of the provisioned schema (so only the guard can stop it), a database
+# not named resolute_gcp_test* is refused before anything is written -- the
+# production name itself, an unrelated one, and one an unescaped `_` wildcard
+# would have let through. All three are throwaway databases in this container.
+for probe in resolute_live gcp_guard_probe resolutexgcpxtest_probe; do
+  new_db "$probe" resolute_gcp_test_accounts >/dev/null || die "create database $probe"
+  expect nonzero "suite refuses database '$probe' even with -v disposable_test_db=1" \
+    env PGPASSFILE="$WORK/pgpass" PGUSER=cloudsql_owner \
+    psql -X -v ON_ERROR_STOP=1 -v disposable_test_db=1 -v app_user="$ACCT_LOGIN" -d "$probe" -f "$here/account_security.sql"
+  says "  ... with the guard's reason" "refusing to run against database \"$probe\""
+  same "  ... and wrote nothing" "$(val "$probe" "select count(*) from public.clients where code like 'ZT%'")" 0
+  drop_db "$probe"
+done
 expect 0 "authorization suite: L0-L3, A1-A3, P1-P14, U1-U2 (reference) + R1" \
   env PGPASSFILE="$WORK/pgpass" PGUSER=cloudsql_owner \
   psql -X -v ON_ERROR_STOP=1 -v disposable_test_db=1 -v app_user="$ACCT_LOGIN" \
