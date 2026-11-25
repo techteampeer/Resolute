@@ -169,12 +169,35 @@ try {
   try { await withServiceRole((c) => c.query(`select public.gcp_raise_order_charge('RTS-20001','x',1)`)); svcRaise = 'allowed' } catch (e) { svcRaise = e.code }
   check('service_role cannot call the charge functions', svcRaise === '42501', svcRaise)
 
-  // ── 2. Identity resolution over the fixed grants (the real auth.js path) ─
-  section('identity resolution (resolveAppUser via withServiceRole)')
-  const who = await resolveAppUser({ uid: 'gcptestCLIENT00000000000010' })
-  check('a mapped Firebase UID resolves to its portal profile',
-    who && who.id === clientA.id && who.role === 'client' && who.email === clientA.email, JSON.stringify(who))
-  check('an unknown Firebase UID resolves to nobody', (await resolveAppUser({ uid: 'gcptestNOSUCHACCOUNT0000000' })) === null)
+  // ── 2. Identity resolution the production way (the real auth.js path) ───
+  // resolute_live: the login calls the SECURITY DEFINER auth.resolve_app_user and
+  // cannot SET ROLE service_role. Its body is not in this repo, so this installs a
+  // TEST STAND-IN with the verified signature -- RETURNS TABLE(id uuid, role text,
+  // status text) -- in the disposable database, and revokes the login's
+  // service_role membership for the duration, then restores it.
+  section('identity resolution (resolveAppUser via auth.resolve_app_user, no service_role)')
+  const appLogin = process.env.DB_USER
+  await owner.query('drop function if exists auth.resolve_app_user(text)')
+  await owner.query(`create function auth.resolve_app_user(p_firebase_uid text)
+    returns table(id uuid, role text, status text)
+    language sql stable security definer set search_path = pg_catalog
+    as $$ select p.id, p.role::text, p.status
+            from auth.users u join public.profiles p on p.id = u.id
+           where u.firebase_uid = p_firebase_uid $$`)
+  await owner.query('revoke all on function auth.resolve_app_user(text) from public')
+  await owner.query(`grant execute on function auth.resolve_app_user(text) to "${appLogin}"`)
+  await owner.query(`revoke service_role from "${appLogin}"`)
+  try {
+    check('production condition: the app login cannot SET ROLE service_role',
+      (await one(`select pg_has_role($1, 'service_role', 'MEMBER') as m`, [appLogin])).m === false)
+    const who = await resolveAppUser({ uid: 'gcptestCLIENT00000000000010', email: clientA.email })
+    check('a mapped Firebase UID resolves to its active portal profile without service_role',
+      who && who.id === clientA.id && who.role === 'client' && who.email === clientA.email, JSON.stringify(who))
+    check('an unknown Firebase UID resolves to nobody', (await resolveAppUser({ uid: 'gcptestNOSUCHACCOUNT0000000' })) === null)
+    check('a disabled profile is refused', (await resolveAppUser({ uid: 'gcptestFORMERADMIN00000013' })) === null)
+  } finally {
+    await owner.query(`grant service_role to "${appLogin}"`)
+  }
 
   // ── 3. RLS isolation on the populated data ──────────────────────────────
   section('row isolation')
