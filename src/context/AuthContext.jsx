@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { isSupabaseConfigured, getCurrentUser, signIn, signOut, onAuthChange, onPasswordRecovery, updatePassword as backendUpdatePassword } from '../lib/backend'
+// hasRealAuth: the provider owns sign-in (Supabase when configured, Firebase on
+// GCP always); false only for the Supabase-less local demo. It replaces
+// isSupabaseConfigured HERE ONLY — data screens keep keying on that flag.
+import { hasRealAuth, getCurrentUser, signIn, signOut, onAuthChange, onPasswordRecovery, updatePassword as backendUpdatePassword } from '../lib/backend'
 import { DEMO_USER } from '../data/demoData'
 
 const AuthContext = createContext(null)
@@ -45,14 +48,15 @@ export function AuthProvider({ children }) {
   // notification email landed on the login page instead of the order. Guards
   // must wait for this, not for `user`.
   // Mock mode has nothing to restore, so it starts ready.
-  const [ready, setReady] = useState(!isSupabaseConfigured)
+  const [ready, setReady] = useState(!hasRealAuth)
   // True after an invite / password-reset link is opened: the app must show a
   // "set your password" screen before the account is usable.
   const [recovery, setRecovery] = useState(false)
 
-  // With Supabase: restore the session on load and track auth changes.
+  // With a real provider (Supabase / Firebase): restore the session on load and
+  // track auth changes.
   useEffect(() => {
-    if (!isSupabaseConfigured) return
+    if (!hasRealAuth) return
     let unsub = () => {}
     // Only restore a session that has a resolved role; never auto-land on client.
     getCurrentUser()
@@ -79,7 +83,7 @@ export function AuthProvider({ children }) {
   }
 
   const login = async (email, password) => {
-    if (isSupabaseConfigured) {
+    if (hasRealAuth) {
       let res
       try {
         res = await signIn(email, password)
@@ -107,7 +111,7 @@ export function AuthProvider({ children }) {
   const loginAsDemo = () => setUser({ ...DEMO_USER })
 
   const logout = async () => {
-    if (isSupabaseConfigured && !user?.demo) await signOut()
+    if (hasRealAuth && !user?.demo) await signOut()
     setUser(null)
   }
 

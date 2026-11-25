@@ -16,7 +16,7 @@ import AdminBilling from './AdminBilling'
 import AdminPlaceOrder from './AdminPlaceOrder'
 import AdminSettings from './AdminSettings'
 import { downloadCsv } from '../../lib/exportCsv'
-import { openDocument, getAccessToken } from '../../lib/backend'
+import { openDocument, getAccessToken, adminUsersApi } from '../../lib/backend'
 import { isSupabaseConfigured } from '../../lib/backend'
 import { useProfiles, refreshProfiles } from '../../lib/useProfiles'
 import { PRODUCT_PRICE } from '../../data/products'
@@ -1723,7 +1723,10 @@ function UserFormModal({ initial, onClose, onSave, busy, canGrantSuper }) {
 function AdminUsers() {
   const { user: me } = useAuth()
   const canGrantSuper = can(me, 'users.grant_super')   // super admins elevate others
-  const live = isSupabaseConfigured
+  // GCP: the provider's REST client (/api/admin/users). Live for THIS screen only —
+  // the global isSupabaseConfigured flag (and every other mock screen) is unchanged.
+  const gcp = adminUsersApi || null
+  const live = isSupabaseConfigured || !!gcp
   const [users, setUsers] = useState(() => live ? [] : USERS.map(u => ({ ...u, active: u.status !== 'inactive' })))
   const [loading, setLoading] = useState(live)
   const [err, setErr] = useState('')
@@ -1734,7 +1737,8 @@ function AdminUsers() {
   const load = () => {
     if (!live) return
     setLoading(true)
-    usersApi('GET').then(j => setUsers(j.users || [])).catch(e => setErr(e.message)).finally(() => setLoading(false))
+    ;(gcp ? gcp.list() : usersApi('GET').then(j => j.users || []))
+      .then(setUsers).catch(e => setErr(e.message)).finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1743,16 +1747,25 @@ function AdminUsers() {
   // the Stage-plan assign picker) so a newly-created production user is immediately
   // selectable for assignment — no page reload required.
   const run = async (fn) => { setErr(''); setBusy(true); try { await fn(); load(); refreshProfiles() } catch (e) { setErr(e.message) } finally { setBusy(false) } }
-  const toggleActive = (u) => run(() => usersApi('POST', { action: 'setActive', id: u.id, active: !u.active }))
-  const remove = (u) => { if (window.confirm(`Remove ${u.name || u.email}? This permanently deletes their account.`)) run(() => usersApi('POST', { action: 'remove', id: u.id })) }
-  const reset = (u) => run(async () => { const j = await usersApi('POST', { action: 'resetPassword', email: u.email }); setNotice(`Password reset link for ${u.email}:\n\n${j.link || '(recovery email sent)'}`) })
+  const toggleActive = (u) => run(() => (gcp ? gcp.setActive(u) : usersApi('POST', { action: 'setActive', id: u.id, active: !u.active })))
+  // Not available on GCP (no deletion / reset there); the buttons are disabled too.
+  const remove = (u) => { if (gcp) return; if (window.confirm(`Remove ${u.name || u.email}? This permanently deletes their account.`)) run(() => usersApi('POST', { action: 'remove', id: u.id })) }
+  const reset = (u) => { if (gcp) return; return run(async () => { const j = await usersApi('POST', { action: 'resetPassword', email: u.email }); setNotice(`Password reset link for ${u.email}:\n\n${j.link || '(recovery email sent)'}`) }) }
   const save = (form) => run(async () => {
     // Forward the elevated bits only when present (the form includes them solely
     // for a super-admin caller editing an admin), plus the stage-scope grants.
     const base = { name: form.name, role: form.role, clientCode: form.clientCode, permissions: form.permissions }
     if ('superAdmin' in form) base.superAdmin = form.superAdmin
     if ('canConfirmPayments' in form) base.canConfirmPayments = form.canConfirmPayments
-    if (form.id) await usersApi('POST', { action: 'update', id: form.id, ...base })
+    if (gcp) {
+      // GCP: edits are saved on the version that was read (409 if it changed);
+      // a new account is created PENDING — nothing is sent to the person.
+      if (form.id) await gcp.update(form.id, base, editing?.updatedAt)
+      else {
+        await gcp.create({ email: form.email, ...base })
+        setNotice(`Account for ${form.email} created — status: pending.\n\nIt cannot sign in until you Activate it.`)
+      }
+    } else if (form.id) await usersApi('POST', { action: 'update', id: form.id, ...base })
     else {
       const j = await usersApi('POST', { action: 'create', email: form.email, ...base })
       setNotice(j.inviteLink
@@ -1769,8 +1782,8 @@ function AdminUsers() {
     { role: 'Production', count: users.filter(u => u.role === 'user').length, color: '#1B34C4' },
     { role: 'Clients', count: users.filter(u => u.role === 'client').length, color: '#2441E5' },
   ]
-  const btn = (label, onClick, tone = 'muted', disabled = false) => (
-    <button onClick={onClick} disabled={disabled || busy}
+  const btn = (label, onClick, tone = 'muted', disabled = false, title) => (
+    <button onClick={onClick} disabled={disabled || busy} title={title}
       style={{ padding: '5px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: (disabled || busy) ? 'not-allowed' : 'pointer',
         background: '#fff', border: `1px solid ${Q.border}`, color: tone === 'danger' ? '#dc2626' : tone === 'accent' ? ROLE_COLOR : Q.muted, whiteSpace: 'nowrap' }}>
       {label}
@@ -1849,17 +1862,17 @@ function AdminUsers() {
                       <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: `${ROLE_COLOR}14`, color: ROLE_COLOR, textTransform: 'capitalize' }}>{u.role || '—'}{u.role === 'client' && u.clientCode ? ` · ${u.clientCode}` : ''}</span>
                     </td>
                     <td style={{ padding: '10px 16px' }}>
-                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, ...(active ? { background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' } : { background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }) }}>
-                        {active ? 'active' : 'inactive'}
+                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, ...(active ? { background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' } : u.status === 'pending' ? { background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' } : { background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }) }}>
+                        {active ? 'active' : u.status === 'pending' ? 'pending' : 'inactive'}
                       </span>
                     </td>
                     {live ? (
                       <td style={{ padding: '10px 16px' }}>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {btn('Edit', () => setEditing({ id: u.id, name: u.name, email: u.email, role: u.role, clientCode: u.clientCode, superAdmin: u.superAdmin, canConfirmPayments: u.canConfirmPayments, permissions: u.permissions }), 'accent')}
+                          {btn('Edit', () => setEditing({ id: u.id, name: u.name, email: u.email, role: u.role, clientCode: u.clientCode, superAdmin: u.superAdmin, canConfirmPayments: u.canConfirmPayments, permissions: u.permissions, updatedAt: u.updatedAt }), 'accent')}
                           {btn(active ? 'Deactivate' : 'Activate', () => toggleActive(u))}
-                          {btn('Reset', () => reset(u))}
-                          {btn('Remove', () => remove(u), 'danger')}
+                          {btn('Reset', () => reset(u), 'muted', !!gcp && !gcp.canResetPassword, gcp && !gcp.canResetPassword ? 'Not available on GCP' : undefined)}
+                          {btn('Remove', () => remove(u), 'danger', !!gcp && !gcp.canRemove, gcp && !gcp.canRemove ? 'Not available on GCP' : undefined)}
                         </div>
                       </td>
                     ) : (

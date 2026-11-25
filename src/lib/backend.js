@@ -13,6 +13,13 @@ import * as gcpProvider from './backends/gcp'
 
 const provider = import.meta.env.VITE_BACKEND === 'gcp' ? gcpProvider : supabaseProvider
 
+// Whether sign-in goes through the provider (true) or the local demo accounts
+// (false). Supabase: only when it is configured — exactly as before. GCP: ALWAYS
+// (Firebase); a GCP build never falls back to demo logins, and an unconfigured
+// one reports why it cannot sign in. Independent of isSupabaseConfigured, which
+// still gates the data screens.
+export const hasRealAuth = provider === gcpProvider ? true : provider.isSupabaseConfigured
+
 // Re-export the whole contract from the selected provider. Keep this list in
 // sync with the provider surface — a name present here but missing on a provider
 // is a contract gap (it re-exports as undefined), which the providers' matching
@@ -46,4 +53,8 @@ export const {
   fetchProfiles, nextOrderId,
   // storage
   uploadDocument, removeDocument, openDocument,
+  // admin user management — OPTIONAL: only the GCP provider defines it (REST,
+  // /api/admin/users). Undefined on Supabase, whose screen keeps its own
+  // action-style calls to the serverless endpoint.
+  adminUsersApi,
 } = provider
